@@ -64,6 +64,46 @@ interface LoginFormDetection {
   domain: string
 }
 
+// Platform types
+type Platform = 'google' | 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'youtube' | 'tiktok'
+
+// Platform session type
+interface PlatformSession {
+  platform: Platform
+  partition: string
+  isAuthenticated: boolean
+  lastVerified: number
+  accountName?: string
+  accountEmail?: string
+  accountAvatar?: string
+}
+
+// Marketing task type
+interface MarketingTask {
+  id: string
+  platform: Platform
+  action: 'post' | 'comment' | 'like' | 'follow' | 'dm' | 'search' | 'scrape' | 'custom'
+  content?: string
+  targetUrl?: string
+  priority: number
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  result?: any
+  error?: string
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  tabId?: number
+}
+
+// Queue stats type
+interface QueueStats {
+  total: number
+  queued: number
+  running: number
+  completed: number
+  failed: number
+}
+
 // Expose protected methods for window controls
 contextBridge.exposeInMainWorld('electronAPI', {
   // ==================== WINDOW CONTROLS ====================
@@ -169,6 +209,43 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Login form detection
   credentialDetectLoginForm: (tabId: number) =>
     ipcRenderer.invoke('credential:detectLoginForm', tabId),
+
+  // ==================== PLATFORM SESSION API ====================
+  sessionList: () => ipcRenderer.invoke('session:list'),
+  sessionGet: (platform: Platform) => ipcRenderer.invoke('session:get', platform),
+  sessionVerify: (platform: Platform) => ipcRenderer.invoke('session:verify', platform),
+  sessionUpdate: (platform: Platform, updates: Partial<PlatformSession>) =>
+    ipcRenderer.invoke('session:update', { platform, updates }),
+
+  // Create platform-shared tab
+  tabCreatePlatform: (platform: Platform, url?: string) =>
+    ipcRenderer.invoke('tab:createPlatform', { platform, url }),
+
+  // ==================== MARKETING QUEUE API ====================
+  queueStatus: () => ipcRenderer.invoke('queue:status'),
+  queueAdd: (task: {
+    platform: Platform
+    action: MarketingTask['action']
+    content?: string
+    targetUrl?: string
+    priority?: number
+  }) => ipcRenderer.invoke('queue:add', task),
+  queueProcess: (platform: Platform) => ipcRenderer.invoke('queue:process', platform),
+  queueComplete: (taskId: string, result?: any, error?: string) =>
+    ipcRenderer.invoke('queue:complete', { taskId, result, error }),
+  queueRemove: (taskId: string) => ipcRenderer.invoke('queue:remove', taskId),
+  queueClear: (status?: 'completed' | 'failed' | 'all') => ipcRenderer.invoke('queue:clear', status),
+
+  // Queue event listeners
+  onQueueUpdated: (callback: (queue: MarketingTask[]) => void) => {
+    ipcRenderer.on('queue:updated', (_event, queue) => callback(queue))
+  },
+  onTaskStarted: (callback: (task: MarketingTask) => void) => {
+    ipcRenderer.on('queue:taskStarted', (_event, task) => callback(task))
+  },
+  onTaskCompleted: (callback: (task: MarketingTask) => void) => {
+    ipcRenderer.on('queue:taskCompleted', (_event, task) => callback(task))
+  },
 })
 
 // Type definitions for the exposed API
@@ -247,6 +324,24 @@ declare global {
       credentialCopyPassword: (credentialId: string) => Promise<{ success: boolean; clearAfterSeconds?: number; error?: string }>
       credentialCopyUsername: (credentialId: string) => Promise<{ success: boolean; error?: string }>
       credentialDetectLoginForm: (tabId: number) => Promise<{ success: boolean; hasLoginForm?: boolean; forms?: LoginFormDetection['forms']; domain?: string; error?: string }>
+
+      // Platform Session API
+      sessionList: () => Promise<{ success: boolean; sessions: PlatformSession[] }>
+      sessionGet: (platform: Platform) => Promise<{ success: boolean; session: PlatformSession | null }>
+      sessionVerify: (platform: Platform) => Promise<{ success: boolean; platform: Platform; isAuthenticated: boolean }>
+      sessionUpdate: (platform: Platform, updates: Partial<PlatformSession>) => Promise<{ success: boolean; session: PlatformSession | null }>
+      tabCreatePlatform: (platform: Platform, url?: string) => Promise<{ success: boolean; id: number; platform: Platform; tabs: TabInfo[] }>
+
+      // Marketing Queue API
+      queueStatus: () => Promise<{ success: boolean; queue: MarketingTask[]; activeTasks: Record<string, MarketingTask>; stats: QueueStats }>
+      queueAdd: (task: { platform: Platform; action: MarketingTask['action']; content?: string; targetUrl?: string; priority?: number }) => Promise<{ success: boolean; task: MarketingTask }>
+      queueProcess: (platform: Platform) => Promise<{ success: boolean; task: MarketingTask | null; error?: string }>
+      queueComplete: (taskId: string, result?: any, error?: string) => Promise<{ success: boolean; task?: MarketingTask; error?: string }>
+      queueRemove: (taskId: string) => Promise<{ success: boolean; error?: string }>
+      queueClear: (status?: 'completed' | 'failed' | 'all') => Promise<{ success: boolean; remaining: number }>
+      onQueueUpdated: (callback: (queue: MarketingTask[]) => void) => void
+      onTaskStarted: (callback: (task: MarketingTask) => void) => void
+      onTaskCompleted: (callback: (task: MarketingTask) => void) => void
     }
   }
 }

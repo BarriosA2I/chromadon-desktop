@@ -3,8 +3,29 @@ import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
 import * as fs from 'fs'
-import { browserViewManager, TabInfo } from './browser-view-manager'
+import { browserViewManager, TabInfo, Platform, SessionMode, PlatformSession } from './browser-view-manager'
 import { vault, ChromadonProfile, StoredCredential } from './security/vault'
+
+// Marketing task queue types
+export interface MarketingTask {
+  id: string
+  platform: Platform
+  action: 'post' | 'comment' | 'like' | 'follow' | 'dm' | 'search' | 'scrape' | 'custom'
+  content?: string
+  targetUrl?: string
+  priority: number
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  result?: any
+  error?: string
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  tabId?: number
+}
+
+// Marketing queue state
+let marketingQueue: MarketingTask[] = []
+let activeTasksByPlatform: Map<Platform, MarketingTask> = new Map()
 
 let mainWindow: BrowserWindow | null = null
 const CONTROL_PORT = 3002
@@ -420,18 +441,328 @@ function startControlServer() {
     })
   })
 
+  // Native click endpoint - sends real mouse events that bypass bot detection
+  server.post('/tabs/click/:id', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10)
+      const { x, y } = req.body
+      const view = browserViewManager.getView(id)
+      if (!view) {
+        res.status(404).json({ success: false, error: 'Tab not found' })
+        return
+      }
+      // Send native mouse events
+      view.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+      view.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
+      console.log(`[CHROMADON] Native click at (${x}, ${y}) on tab ${id}`)
+      res.json({ success: true, x, y })
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) })
+    }
+  })
+
+  // Native keyboard input endpoint
+  server.post('/tabs/type/:id', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10)
+      const { text } = req.body
+      const view = browserViewManager.getView(id)
+      if (!view) {
+        res.status(404).json({ success: false, error: 'Tab not found' })
+        return
+      }
+      // Type each character
+      for (const char of text) {
+        view.webContents.sendInputEvent({ type: 'char', keyCode: char })
+      }
+      console.log(`[CHROMADON] Typed "${text}" on tab ${id}`)
+      res.json({ success: true, text })
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) })
+    }
+  })
+
+  // Native key press endpoint
+  server.post('/tabs/key/:id', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10)
+      const { key } = req.body
+      const view = browserViewManager.getView(id)
+      if (!view) {
+        res.status(404).json({ success: false, error: 'Tab not found' })
+        return
+      }
+      view.webContents.sendInputEvent({ type: 'keyDown', keyCode: key })
+      view.webContents.sendInputEvent({ type: 'keyUp', keyCode: key })
+      console.log(`[CHROMADON] Key press "${key}" on tab ${id}`)
+      res.json({ success: true, key })
+    } catch (error) {
+      res.status(500).json({ success: false, error: String(error) })
+    }
+  })
+
+  // ==================== PLATFORM SESSION ENDPOINTS ====================
+
+  // Get all platform sessions
+  server.get('/sessions', (_req: Request, res: Response) => {
+    res.json({
+      success: true,
+      sessions: browserViewManager.getPlatformSessions(),
+    })
+  })
+
+  // Get specific platform session
+  server.get('/sessions/:platform', (req: Request, res: Response) => {
+    const platform = req.params.platform as Platform
+    const session = browserViewManager.getPlatformSession(platform)
+    res.json({ success: true, session })
+  })
+
+  // Verify platform authentication
+  server.post('/sessions/:platform/verify', async (req: Request, res: Response) => {
+    try {
+      const platform = req.params.platform as Platform
+      const isAuthenticated = await browserViewManager.verifyPlatformAuth(platform)
+      res.json({ success: true, platform, isAuthenticated })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Update platform session
+  server.post('/sessions/:platform', (req: Request, res: Response) => {
+    try {
+      const platform = req.params.platform as Platform
+      const updates = req.body
+      browserViewManager.updatePlatformSession(platform, updates)
+      res.json({ success: true, session: browserViewManager.getPlatformSession(platform) })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Create platform-specific tab (uses shared session)
+  server.post('/tabs/platform', (req: Request, res: Response) => {
+    try {
+      const { url, platform } = req.body
+      if (!platform) {
+        res.status(400).json({ success: false, error: 'Platform is required' })
+        return
+      }
+      const id = browserViewManager.createPlatformView(url || 'about:blank', platform)
+      res.json({ success: true, id, platform, tabs: browserViewManager.getTabs() })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // ==================== MARKETING QUEUE ENDPOINTS ====================
+
+  // Get queue status
+  server.get('/queue', (_req: Request, res: Response) => {
+    const activeTasks: Record<string, MarketingTask> = {}
+    activeTasksByPlatform.forEach((task, platform) => {
+      activeTasks[platform] = task
+    })
+    res.json({
+      success: true,
+      queue: marketingQueue,
+      activeTasks,
+      stats: {
+        total: marketingQueue.length,
+        queued: marketingQueue.filter(t => t.status === 'queued').length,
+        running: marketingQueue.filter(t => t.status === 'running').length,
+        completed: marketingQueue.filter(t => t.status === 'completed').length,
+        failed: marketingQueue.filter(t => t.status === 'failed').length,
+      },
+    })
+  })
+
+  // Add task to queue
+  server.post('/queue/add', (req: Request, res: Response) => {
+    try {
+      const { platform, action, content, targetUrl, priority = 0 } = req.body
+      if (!platform || !action) {
+        res.status(400).json({ success: false, error: 'Platform and action are required' })
+        return
+      }
+
+      const task: MarketingTask = {
+        id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        platform,
+        action,
+        content,
+        targetUrl,
+        priority,
+        status: 'queued',
+        createdAt: Date.now(),
+      }
+
+      marketingQueue.push(task)
+      // Sort by priority (higher first)
+      marketingQueue.sort((a, b) => b.priority - a.priority)
+
+      // Notify renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('queue:updated', marketingQueue)
+      }
+
+      res.json({ success: true, task })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Process next available task for a platform
+  server.post('/queue/process/:platform', async (req: Request, res: Response) => {
+    try {
+      const platform = req.params.platform as Platform
+
+      // Check if platform already has active task
+      if (activeTasksByPlatform.has(platform)) {
+        res.status(409).json({
+          success: false,
+          error: `Platform ${platform} already has an active task`,
+          activeTask: activeTasksByPlatform.get(platform),
+        })
+        return
+      }
+
+      // Find next queued task for this platform
+      const taskIndex = marketingQueue.findIndex(
+        t => t.platform === platform && t.status === 'queued'
+      )
+
+      if (taskIndex === -1) {
+        res.json({ success: true, message: 'No queued tasks for this platform', task: null })
+        return
+      }
+
+      const task = marketingQueue[taskIndex]
+      task.status = 'running'
+      task.startedAt = Date.now()
+      activeTasksByPlatform.set(platform, task)
+
+      // Create platform tab if needed
+      const tabId = browserViewManager.createPlatformView(task.targetUrl || 'about:blank', platform)
+      task.tabId = tabId
+
+      // Notify renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('queue:updated', marketingQueue)
+        mainWindow.webContents.send('queue:taskStarted', task)
+      }
+
+      res.json({ success: true, task })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Complete a task
+  server.post('/queue/complete/:taskId', (req: Request, res: Response) => {
+    try {
+      const { taskId } = req.params
+      const { result, error } = req.body
+
+      const task = marketingQueue.find(t => t.id === taskId)
+      if (!task) {
+        res.status(404).json({ success: false, error: 'Task not found' })
+        return
+      }
+
+      task.status = error ? 'failed' : 'completed'
+      task.completedAt = Date.now()
+      task.result = result
+      task.error = error
+
+      // Remove from active tasks
+      activeTasksByPlatform.delete(task.platform)
+
+      // Notify renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('queue:updated', marketingQueue)
+        mainWindow.webContents.send('queue:taskCompleted', task)
+      }
+
+      res.json({ success: true, task })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Remove task from queue
+  server.delete('/queue/:taskId', (req: Request, res: Response) => {
+    try {
+      const { taskId } = req.params
+      const taskIndex = marketingQueue.findIndex(t => t.id === taskId)
+      if (taskIndex === -1) {
+        res.status(404).json({ success: false, error: 'Task not found' })
+        return
+      }
+
+      const task = marketingQueue[taskIndex]
+      if (task.status === 'running') {
+        activeTasksByPlatform.delete(task.platform)
+      }
+
+      marketingQueue.splice(taskIndex, 1)
+
+      // Notify renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('queue:updated', marketingQueue)
+      }
+
+      res.json({ success: true })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Clear completed/failed tasks
+  server.post('/queue/clear', (req: Request, res: Response) => {
+    try {
+      const { status } = req.body // 'completed', 'failed', or 'all'
+      if (status === 'all') {
+        marketingQueue = marketingQueue.filter(t => t.status === 'running')
+      } else if (status) {
+        marketingQueue = marketingQueue.filter(t => t.status !== status)
+      } else {
+        marketingQueue = marketingQueue.filter(t => t.status !== 'completed' && t.status !== 'failed')
+      }
+
+      // Notify renderer
+      if (mainWindow) {
+        mainWindow.webContents.send('queue:updated', marketingQueue)
+      }
+
+      res.json({ success: true, remaining: marketingQueue.length })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   server.listen(CONTROL_PORT, '127.0.0.1', () => {
     console.log(`[CHROMADON Desktop] Control server running on http://127.0.0.1:${CONTROL_PORT}`)
     console.log(`[CHROMADON Desktop] Endpoints:`)
-    console.log(`  GET  /health     - Health check`)
-    console.log(`  GET  /state      - Get app state`)
-    console.log(`  POST /command    - Send command to execute`)
-    console.log(`  GET  /screenshot - Capture window screenshot`)
-    console.log(`  POST /design/css - Inject CSS for design`)
-    console.log(`  POST /execute    - Run JavaScript in renderer`)
-    console.log(`  POST /focus      - Focus the window`)
-    console.log(`  POST /debug/bounds - Set BrowserView bounds`)
-    console.log(`  GET  /debug/info   - Get window info`)
+    console.log(`  GET  /health              - Health check`)
+    console.log(`  GET  /state               - Get app state`)
+    console.log(`  POST /command             - Send command to execute`)
+    console.log(`  GET  /screenshot          - Capture window screenshot`)
+    console.log(`  POST /design/css          - Inject CSS for design`)
+    console.log(`  POST /execute             - Run JavaScript in renderer`)
+    console.log(`  POST /focus               - Focus the window`)
+    console.log(`  POST /debug/bounds        - Set BrowserView bounds`)
+    console.log(`  GET  /debug/info          - Get window info`)
+    console.log(`  POST /tabs/click/:id      - Native mouse click`)
+    console.log(`  POST /tabs/type/:id       - Native keyboard input`)
+    console.log(`  POST /tabs/key/:id        - Native key press`)
+    console.log(`  POST /tabs/platform       - Create platform-shared tab`)
+    console.log(`  GET  /sessions            - List platform sessions`)
+    console.log(`  POST /sessions/:platform  - Update platform session`)
+    console.log(`  GET  /queue               - Get marketing queue status`)
+    console.log(`  POST /queue/add           - Add task to queue`)
+    console.log(`  POST /queue/process/:plat - Process next task`)
   })
 }
 
@@ -760,6 +1091,172 @@ ipcMain.handle('credential:copyUsername', async (_event, credentialId: string) =
 
   clipboard.writeText(credential.username)
   return { success: true }
+})
+
+// ==================== PLATFORM SESSION IPC HANDLERS ====================
+
+// Get all platform sessions
+ipcMain.handle('session:list', () => {
+  return { success: true, sessions: browserViewManager.getPlatformSessions() }
+})
+
+// Get specific platform session
+ipcMain.handle('session:get', (_event, platform: Platform) => {
+  return { success: true, session: browserViewManager.getPlatformSession(platform) }
+})
+
+// Verify platform authentication
+ipcMain.handle('session:verify', async (_event, platform: Platform) => {
+  const isAuthenticated = await browserViewManager.verifyPlatformAuth(platform)
+  return { success: true, platform, isAuthenticated }
+})
+
+// Update platform session
+ipcMain.handle('session:update', (_event, { platform, updates }: { platform: Platform; updates: Partial<PlatformSession> }) => {
+  browserViewManager.updatePlatformSession(platform, updates)
+  return { success: true, session: browserViewManager.getPlatformSession(platform) }
+})
+
+// Create platform-specific tab
+ipcMain.handle('tab:createPlatform', (_event, { url, platform }: { url?: string; platform: Platform }) => {
+  const id = browserViewManager.createPlatformView(url || 'about:blank', platform)
+  return { success: true, id, platform, tabs: browserViewManager.getTabs() }
+})
+
+// ==================== MARKETING QUEUE IPC HANDLERS ====================
+
+// Get queue status
+ipcMain.handle('queue:status', () => {
+  const activeTasks: Record<string, MarketingTask> = {}
+  activeTasksByPlatform.forEach((task, platform) => {
+    activeTasks[platform] = task
+  })
+  return {
+    success: true,
+    queue: marketingQueue,
+    activeTasks,
+    stats: {
+      total: marketingQueue.length,
+      queued: marketingQueue.filter(t => t.status === 'queued').length,
+      running: marketingQueue.filter(t => t.status === 'running').length,
+      completed: marketingQueue.filter(t => t.status === 'completed').length,
+      failed: marketingQueue.filter(t => t.status === 'failed').length,
+    },
+  }
+})
+
+// Add task to queue
+ipcMain.handle('queue:add', (_event, task: Omit<MarketingTask, 'id' | 'status' | 'createdAt'>) => {
+  const newTask: MarketingTask = {
+    ...task,
+    id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    status: 'queued',
+    createdAt: Date.now(),
+    priority: task.priority ?? 0,
+  }
+
+  marketingQueue.push(newTask)
+  marketingQueue.sort((a, b) => b.priority - a.priority)
+
+  if (mainWindow) {
+    mainWindow.webContents.send('queue:updated', marketingQueue)
+  }
+
+  return { success: true, task: newTask }
+})
+
+// Process next task for platform
+ipcMain.handle('queue:process', async (_event, platform: Platform) => {
+  if (activeTasksByPlatform.has(platform)) {
+    return {
+      success: false,
+      error: `Platform ${platform} already has an active task`,
+      activeTask: activeTasksByPlatform.get(platform),
+    }
+  }
+
+  const taskIndex = marketingQueue.findIndex(
+    t => t.platform === platform && t.status === 'queued'
+  )
+
+  if (taskIndex === -1) {
+    return { success: true, message: 'No queued tasks for this platform', task: null }
+  }
+
+  const task = marketingQueue[taskIndex]
+  task.status = 'running'
+  task.startedAt = Date.now()
+  activeTasksByPlatform.set(platform, task)
+
+  const tabId = browserViewManager.createPlatformView(task.targetUrl || 'about:blank', platform)
+  task.tabId = tabId
+
+  if (mainWindow) {
+    mainWindow.webContents.send('queue:updated', marketingQueue)
+    mainWindow.webContents.send('queue:taskStarted', task)
+  }
+
+  return { success: true, task }
+})
+
+// Complete task
+ipcMain.handle('queue:complete', (_event, { taskId, result, error }: { taskId: string; result?: any; error?: string }) => {
+  const task = marketingQueue.find(t => t.id === taskId)
+  if (!task) {
+    return { success: false, error: 'Task not found' }
+  }
+
+  task.status = error ? 'failed' : 'completed'
+  task.completedAt = Date.now()
+  task.result = result
+  task.error = error
+
+  activeTasksByPlatform.delete(task.platform)
+
+  if (mainWindow) {
+    mainWindow.webContents.send('queue:updated', marketingQueue)
+    mainWindow.webContents.send('queue:taskCompleted', task)
+  }
+
+  return { success: true, task }
+})
+
+// Remove task
+ipcMain.handle('queue:remove', (_event, taskId: string) => {
+  const taskIndex = marketingQueue.findIndex(t => t.id === taskId)
+  if (taskIndex === -1) {
+    return { success: false, error: 'Task not found' }
+  }
+
+  const task = marketingQueue[taskIndex]
+  if (task.status === 'running') {
+    activeTasksByPlatform.delete(task.platform)
+  }
+
+  marketingQueue.splice(taskIndex, 1)
+
+  if (mainWindow) {
+    mainWindow.webContents.send('queue:updated', marketingQueue)
+  }
+
+  return { success: true }
+})
+
+// Clear queue
+ipcMain.handle('queue:clear', (_event, status?: 'completed' | 'failed' | 'all') => {
+  if (status === 'all') {
+    marketingQueue = marketingQueue.filter(t => t.status === 'running')
+  } else if (status) {
+    marketingQueue = marketingQueue.filter(t => t.status !== status)
+  } else {
+    marketingQueue = marketingQueue.filter(t => t.status !== 'completed' && t.status !== 'failed')
+  }
+
+  if (mainWindow) {
+    mainWindow.webContents.send('queue:updated', marketingQueue)
+  }
+
+  return { success: true, remaining: marketingQueue.length }
 })
 
 // Detect login form on current tab

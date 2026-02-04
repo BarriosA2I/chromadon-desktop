@@ -42,6 +42,46 @@ export interface StoredCredential {
   usageCount: number
 }
 
+// Platform types
+export type Platform = 'google' | 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'youtube' | 'tiktok'
+
+// Platform session state
+export interface PlatformSession {
+  platform: Platform
+  partition: string
+  isAuthenticated: boolean
+  lastVerified: number
+  accountName?: string
+  accountEmail?: string
+  accountAvatar?: string
+}
+
+// Marketing task type
+export interface MarketingTask {
+  id: string
+  platform: Platform
+  action: 'post' | 'comment' | 'like' | 'follow' | 'dm' | 'search' | 'scrape' | 'custom'
+  content?: string
+  targetUrl?: string
+  priority: number
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  result?: any
+  error?: string
+  createdAt: number
+  startedAt?: number
+  completedAt?: number
+  tabId?: number
+}
+
+// Queue stats
+export interface QueueStats {
+  total: number
+  queued: number
+  running: number
+  completed: number
+  failed: number
+}
+
 export interface ActionLog {
   id: string
   timestamp: Date
@@ -103,6 +143,16 @@ interface ChromadonState {
   showCredentialVault: boolean
   showProfileManager: boolean
 
+  // Platform session state
+  platformSessions: Record<Platform, PlatformSession>
+  showSessionSetup: boolean
+
+  // Marketing queue state
+  marketingQueue: MarketingTask[]
+  activeTasksByPlatform: Record<Platform, MarketingTask | null>
+  queueStats: QueueStats
+  showMarketingQueue: boolean
+
   // Actions
   setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
   setAIState: (state: AIState) => void
@@ -127,6 +177,20 @@ interface ChromadonState {
   setShowVaultModal: (show: boolean, mode?: 'create' | 'unlock') => void
   setShowCredentialVault: (show: boolean) => void
   setShowProfileManager: (show: boolean) => void
+
+  // Platform session actions
+  setPlatformSessions: (sessions: PlatformSession[]) => void
+  updatePlatformSession: (platform: Platform, updates: Partial<PlatformSession>) => void
+  setShowSessionSetup: (show: boolean) => void
+
+  // Marketing queue actions
+  setMarketingQueue: (queue: MarketingTask[]) => void
+  addMarketingTask: (task: MarketingTask) => void
+  updateMarketingTask: (taskId: string, updates: Partial<MarketingTask>) => void
+  removeMarketingTask: (taskId: string) => void
+  setActiveTaskForPlatform: (platform: Platform, task: MarketingTask | null) => void
+  setQueueStats: (stats: QueueStats) => void
+  setShowMarketingQueue: (show: boolean) => void
 }
 
 export const useChromadonStore = create<ChromadonState>((set) => ({
@@ -163,6 +227,16 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   vaultModalMode: 'create',  // Default to create, will be set properly when showing modal
   showCredentialVault: false,
   showProfileManager: false,
+
+  // Platform session initial state
+  platformSessions: {} as Record<Platform, PlatformSession>,
+  showSessionSetup: false,
+
+  // Marketing queue initial state
+  marketingQueue: [],
+  activeTasksByPlatform: {} as Record<Platform, MarketingTask | null>,
+  queueStats: { total: 0, queued: 0, running: 0, completed: 0, failed: 0 },
+  showMarketingQueue: false,
 
   // Actions
   setConnected: (connected, mode) => set({ isConnected: connected, connectionMode: mode ?? null }),
@@ -203,4 +277,79 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   })),
   setShowCredentialVault: (show) => set({ showCredentialVault: show }),
   setShowProfileManager: (show) => set({ showProfileManager: show }),
+
+  // Platform session actions
+  setPlatformSessions: (sessions) => set(() => {
+    const sessionsMap: Record<Platform, PlatformSession> = {} as Record<Platform, PlatformSession>
+    sessions.forEach((s) => {
+      sessionsMap[s.platform] = s
+    })
+    return { platformSessions: sessionsMap }
+  }),
+  updatePlatformSession: (platform, updates) => set((state) => ({
+    platformSessions: {
+      ...state.platformSessions,
+      [platform]: {
+        ...state.platformSessions[platform],
+        ...updates,
+        platform,
+      },
+    },
+  })),
+  setShowSessionSetup: (show) => set({ showSessionSetup: show }),
+
+  // Marketing queue actions
+  setMarketingQueue: (queue) => set(() => {
+    const stats: QueueStats = {
+      total: queue.length,
+      queued: queue.filter((t) => t.status === 'queued').length,
+      running: queue.filter((t) => t.status === 'running').length,
+      completed: queue.filter((t) => t.status === 'completed').length,
+      failed: queue.filter((t) => t.status === 'failed').length,
+    }
+    return { marketingQueue: queue, queueStats: stats }
+  }),
+  addMarketingTask: (task) => set((state) => {
+    const newQueue = [...state.marketingQueue, task].sort((a, b) => b.priority - a.priority)
+    const stats: QueueStats = {
+      total: newQueue.length,
+      queued: newQueue.filter((t) => t.status === 'queued').length,
+      running: newQueue.filter((t) => t.status === 'running').length,
+      completed: newQueue.filter((t) => t.status === 'completed').length,
+      failed: newQueue.filter((t) => t.status === 'failed').length,
+    }
+    return { marketingQueue: newQueue, queueStats: stats }
+  }),
+  updateMarketingTask: (taskId, updates) => set((state) => {
+    const newQueue = state.marketingQueue.map((t) =>
+      t.id === taskId ? { ...t, ...updates } : t
+    )
+    const stats: QueueStats = {
+      total: newQueue.length,
+      queued: newQueue.filter((t) => t.status === 'queued').length,
+      running: newQueue.filter((t) => t.status === 'running').length,
+      completed: newQueue.filter((t) => t.status === 'completed').length,
+      failed: newQueue.filter((t) => t.status === 'failed').length,
+    }
+    return { marketingQueue: newQueue, queueStats: stats }
+  }),
+  removeMarketingTask: (taskId) => set((state) => {
+    const newQueue = state.marketingQueue.filter((t) => t.id !== taskId)
+    const stats: QueueStats = {
+      total: newQueue.length,
+      queued: newQueue.filter((t) => t.status === 'queued').length,
+      running: newQueue.filter((t) => t.status === 'running').length,
+      completed: newQueue.filter((t) => t.status === 'completed').length,
+      failed: newQueue.filter((t) => t.status === 'failed').length,
+    }
+    return { marketingQueue: newQueue, queueStats: stats }
+  }),
+  setActiveTaskForPlatform: (platform, task) => set((state) => ({
+    activeTasksByPlatform: {
+      ...state.activeTasksByPlatform,
+      [platform]: task,
+    },
+  })),
+  setQueueStats: (stats) => set({ queueStats: stats }),
+  setShowMarketingQueue: (show) => set({ showMarketingQueue: show }),
 }))

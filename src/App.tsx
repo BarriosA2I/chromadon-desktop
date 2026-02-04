@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { useChromadonStore, EmbeddedTab, VaultStatus, ChromadonProfile, StoredCredential } from './store/chromadonStore'
+import { useChromadonStore, EmbeddedTab, VaultStatus, ChromadonProfile, StoredCredential, Platform } from './store/chromadonStore'
 import { useChromadonAPI } from './hooks/useChromadonAPI'
 import SplashScreen from './components/SplashScreen'
 import TitleBar from './components/TitleBar'
@@ -11,6 +11,8 @@ import ActionLog from './components/ActionLog'
 import MasterPasswordModal from './components/MasterPasswordModal'
 import CredentialVault from './components/CredentialVault'
 import ProfileManager from './components/ProfileManager'
+import SessionSetup from './components/SessionSetup'
+import MarketingQueue from './components/MarketingQueue'
 
 function App() {
   const store = useChromadonStore()
@@ -48,8 +50,9 @@ function App() {
         else if (!status.exists) {
           setShowVaultModal(true, 'create')
         }
-        // If vault is unlocked, load profiles and credentials
-        else if (!status.isLocked) {
+        // If vault is unlocked, hide modal and load data
+        else if (status.exists && !status.isLocked) {
+          setShowVaultModal(false)
           await loadVaultData()
         }
       }
@@ -279,9 +282,35 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setShowCredentialVault,
     showProfileManager,
     setShowProfileManager,
+    showSessionSetup,
+    setShowSessionSetup,
+    showMarketingQueue,
+    setShowMarketingQueue,
+    setPlatformSessions,
+    setMarketingQueue,
   } = useChromadonStore()
 
   const [currentDomain, setCurrentDomain] = useState<string | undefined>()
+
+  // Load platform sessions on mount
+  useEffect(() => {
+    if (window.electronAPI?.sessionList) {
+      window.electronAPI.sessionList().then((result) => {
+        if (result.success && result.sessions) {
+          setPlatformSessions(result.sessions)
+        }
+      })
+    }
+  }, [setPlatformSessions])
+
+  // Listen for queue updates
+  useEffect(() => {
+    if (window.electronAPI?.onQueueUpdated) {
+      window.electronAPI.onQueueUpdated((queue) => {
+        setMarketingQueue(queue)
+      })
+    }
+  }, [setMarketingQueue])
 
   // Get current domain from active tab
   useEffect(() => {
@@ -496,6 +525,21 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     }
   }
 
+  // Open platform tab for authentication
+  const handleOpenPlatformTab = async (platform: Platform, url: string) => {
+    if (window.electronAPI?.tabCreatePlatform) {
+      const result = await window.electronAPI.tabCreatePlatform(platform, url)
+      if (result.success) {
+        addActionLog({
+          type: 'navigate',
+          description: `Opened ${platform} for sign-in`,
+          success: true,
+        })
+        setShowSessionSetup(false)
+      }
+    }
+  }
+
   return (
     <>
       <TitleBar />
@@ -595,6 +639,22 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
                   </button>
                 </>
               )}
+              {/* Session Setup - always visible */}
+              <button
+                onClick={() => setShowSessionSetup(true)}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                title="Platform Sessions"
+              >
+                <SessionIcon />
+              </button>
+              {/* Marketing Queue */}
+              <button
+                onClick={() => setShowMarketingQueue(true)}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-purple hover:bg-chroma-purple/10 transition-colors"
+                title="Marketing Queue"
+              >
+                <QueueIcon />
+              </button>
             </div>
           </div>
 
@@ -616,6 +676,19 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
         onAutofill={handleAutofill}
         onCopyUsername={handleCopyUsername}
         onCopyPassword={handleCopyPassword}
+      />
+
+      {/* Session Setup Modal */}
+      <SessionSetup
+        isOpen={showSessionSetup}
+        onClose={() => setShowSessionSetup(false)}
+        onOpenPlatform={handleOpenPlatformTab}
+      />
+
+      {/* Marketing Queue Modal */}
+      <MarketingQueue
+        isOpen={showMarketingQueue}
+        onClose={() => setShowMarketingQueue(false)}
       />
     </>
   )
@@ -644,6 +717,28 @@ function LockIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <rect x="3" y="11" width="18" height="11" rx="2" />
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  )
+}
+
+function SessionIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+      <path d="M16 11h6" />
+      <path d="M19 8v6" />
+    </svg>
+  )
+}
+
+function QueueIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="7" y1="8" x2="17" y2="8" />
+      <line x1="7" y1="12" x2="17" y2="12" />
+      <line x1="7" y1="16" x2="13" y2="16" />
     </svg>
   )
 }

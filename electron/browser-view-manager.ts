@@ -1,5 +1,7 @@
 import { BrowserView, BrowserWindow, session, shell } from 'electron'
 import * as path from 'path'
+import * as fs from 'fs'
+import { app } from 'electron'
 
 // OAuth provider patterns - allow these as popup windows
 const OAUTH_PATTERNS = [
@@ -14,6 +16,40 @@ const OAUTH_PATTERNS = [
   /discord\.com\/api\/oauth/,
 ]
 
+// Supported platforms for session sharing
+export type Platform = 'google' | 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'youtube' | 'tiktok'
+
+// Session mode determines how cookies/auth are shared
+export type SessionMode = 'isolated' | 'platform-shared' | 'global-shared'
+
+// Options for creating a new view
+export interface CreateViewOptions {
+  sessionMode?: SessionMode
+  platform?: Platform
+}
+
+// Platform session state
+export interface PlatformSession {
+  platform: Platform
+  partition: string
+  isAuthenticated: boolean
+  lastVerified: number
+  accountName?: string
+  accountEmail?: string
+  accountAvatar?: string
+}
+
+// URL patterns to detect platform
+const PLATFORM_URL_PATTERNS: Record<Platform, RegExp[]> = {
+  google: [/google\.com/, /youtube\.com/, /gmail\.com/],
+  twitter: [/twitter\.com/, /x\.com/],
+  linkedin: [/linkedin\.com/],
+  facebook: [/facebook\.com/, /fb\.com/],
+  instagram: [/instagram\.com/],
+  youtube: [/youtube\.com/],
+  tiktok: [/tiktok\.com/],
+}
+
 export interface TabInfo {
   id: number
   url: string
@@ -21,6 +57,8 @@ export interface TabInfo {
   isActive: boolean
   canGoBack: boolean
   canGoForward: boolean
+  sessionMode?: SessionMode
+  platform?: Platform
 }
 
 export interface ViewBounds {
@@ -42,7 +80,155 @@ export class BrowserViewManager {
   private viewBounds: ViewBounds = { x: 0, y: 90, width: 1050, height: 700 }
   private onTabUpdateCallback: ((tabs: TabInfo[]) => void) | null = null
 
-  constructor() {}
+  // Platform session management
+  private platformSessions: Map<Platform, PlatformSession> = new Map()
+  private sessionsFilePath: string = ''
+
+  constructor() {
+    // Initialize sessions file path (will be set properly after app is ready)
+    this.sessionsFilePath = path.join(app.getPath('userData'), 'platform-sessions.json')
+    this.loadPlatformSessions()
+  }
+
+  /**
+   * Load platform sessions from disk
+   */
+  private loadPlatformSessions() {
+    try {
+      if (fs.existsSync(this.sessionsFilePath)) {
+        const data = JSON.parse(fs.readFileSync(this.sessionsFilePath, 'utf-8'))
+        for (const [platform, sessionData] of Object.entries(data)) {
+          this.platformSessions.set(platform as Platform, sessionData as PlatformSession)
+        }
+        console.log(`[BrowserViewManager] Loaded ${this.platformSessions.size} platform sessions`)
+      }
+    } catch (err) {
+      console.error('[BrowserViewManager] Failed to load platform sessions:', err)
+    }
+  }
+
+  /**
+   * Save platform sessions to disk
+   */
+  private savePlatformSessions() {
+    try {
+      const data: Record<string, PlatformSession> = {}
+      for (const [platform, session] of this.platformSessions.entries()) {
+        data[platform] = session
+      }
+      fs.writeFileSync(this.sessionsFilePath, JSON.stringify(data, null, 2))
+      console.log(`[BrowserViewManager] Saved ${this.platformSessions.size} platform sessions`)
+    } catch (err) {
+      console.error('[BrowserViewManager] Failed to save platform sessions:', err)
+    }
+  }
+
+  /**
+   * Get partition string for session mode
+   */
+  private getPartition(options: CreateViewOptions, tabId: number): string {
+    const { sessionMode = 'isolated', platform } = options
+
+    switch (sessionMode) {
+      case 'platform-shared':
+        if (!platform) {
+          console.warn('[BrowserViewManager] Platform required for platform-shared mode, falling back to isolated')
+          return `persist:tab-${tabId}`
+        }
+        return `persist:platform-${platform}`
+      case 'global-shared':
+        return 'persist:global'
+      case 'isolated':
+      default:
+        return `persist:tab-${tabId}`
+    }
+  }
+
+  /**
+   * Detect platform from URL
+   */
+  detectPlatform(url: string): Platform | null {
+    for (const [platform, patterns] of Object.entries(PLATFORM_URL_PATTERNS)) {
+      if (patterns.some(pattern => pattern.test(url))) {
+        return platform as Platform
+      }
+    }
+    return null
+  }
+
+  /**
+   * Get all platform sessions
+   */
+  getPlatformSessions(): PlatformSession[] {
+    return Array.from(this.platformSessions.values())
+  }
+
+  /**
+   * Get a specific platform session
+   */
+  getPlatformSession(platform: Platform): PlatformSession | null {
+    return this.platformSessions.get(platform) || null
+  }
+
+  /**
+   * Update platform session status
+   */
+  updatePlatformSession(platform: Platform, updates: Partial<PlatformSession>) {
+    const existing = this.platformSessions.get(platform) || {
+      platform,
+      partition: `persist:platform-${platform}`,
+      isAuthenticated: false,
+      lastVerified: 0,
+    }
+    const updated = { ...existing, ...updates, lastVerified: Date.now() }
+    this.platformSessions.set(platform, updated)
+    this.savePlatformSessions()
+    console.log(`[BrowserViewManager] Updated ${platform} session:`, updated)
+  }
+
+  /**
+   * Check if a platform is authenticated (check cookies/session)
+   */
+  async verifyPlatformAuth(platform: Platform): Promise<boolean> {
+    const partition = `persist:platform-${platform}`
+    const ses = session.fromPartition(partition)
+
+    // Check for auth cookies based on platform
+    const cookiePatterns: Record<Platform, string[]> = {
+      google: ['.google.com'],
+      twitter: ['.twitter.com', '.x.com'],
+      linkedin: ['.linkedin.com'],
+      facebook: ['.facebook.com'],
+      instagram: ['.instagram.com'],
+      youtube: ['.youtube.com', '.google.com'],
+      tiktok: ['.tiktok.com'],
+    }
+
+    const domains = cookiePatterns[platform] || []
+
+    for (const domain of domains) {
+      try {
+        const cookies = await ses.cookies.get({ domain })
+        // Look for session cookies that indicate auth
+        const hasAuthCookie = cookies.some(c =>
+          c.name.toLowerCase().includes('sid') ||
+          c.name.toLowerCase().includes('session') ||
+          c.name.toLowerCase().includes('auth') ||
+          c.name.toLowerCase().includes('login') ||
+          c.name.toLowerCase().includes('token')
+        )
+        if (hasAuthCookie) {
+          this.updatePlatformSession(platform, { isAuthenticated: true })
+          return true
+        }
+      } catch (err) {
+        console.error(`[BrowserViewManager] Error checking cookies for ${platform}:`, err)
+      }
+    }
+
+    this.updatePlatformSession(platform, { isAuthenticated: false })
+    return false
+  }
 
   /**
    * Set the main window reference
@@ -74,17 +260,22 @@ export class BrowserViewManager {
 
   /**
    * Create a new browser tab
+   * @param url - URL to navigate to
+   * @param options - Session mode and platform options
    */
-  createView(url: string = 'about:blank'): number {
+  createView(url: string = 'about:blank', options: CreateViewOptions = {}): number {
     if (!this.mainWindow) {
       throw new Error('Main window not set')
     }
 
     const id = this.nextId++
+    const { sessionMode = 'isolated', platform } = options
 
-    // Create persistent session for this tab (preserves cookies/logins)
-    const partition = `persist:tab-${id}`
+    // Get partition based on session mode
+    const partition = this.getPartition(options, id)
     const ses = session.fromPartition(partition)
+
+    console.log(`[BrowserViewManager] Creating tab ${id} with partition: ${partition}, mode: ${sessionMode}, platform: ${platform || 'none'}`)
 
     const view = new BrowserView({
       webPreferences: {
@@ -106,6 +297,7 @@ export class BrowserViewManager {
 
       if (isOAuth && this.mainWindow) {
         // Allow OAuth popups to open as modal windows
+        // Use same partition as parent tab to share auth state
         return {
           action: 'allow',
           overrideBrowserWindowOptions: {
@@ -118,7 +310,7 @@ export class BrowserViewManager {
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
-              partition: `persist:oauth-tab-${id}`,
+              partition: partition, // Share session with parent tab
             },
           },
         }
@@ -164,6 +356,8 @@ export class BrowserViewManager {
       isActive: false,
       canGoBack: false,
       canGoForward: false,
+      sessionMode,
+      platform,
     })
 
     // Add to window
@@ -177,8 +371,19 @@ export class BrowserViewManager {
     // Focus this new tab
     this.focusView(id)
 
-    console.log(`[BrowserViewManager] Created tab ${id} with URL: ${url}`)
+    console.log(`[BrowserViewManager] Created tab ${id} with URL: ${url}, partition: ${partition}`)
     return id
+  }
+
+  /**
+   * Create a platform-specific tab with shared session
+   * Convenience method for creating tabs that share auth with a platform
+   */
+  createPlatformView(url: string, platform: Platform): number {
+    return this.createView(url, {
+      sessionMode: 'platform-shared',
+      platform,
+    })
   }
 
   /**

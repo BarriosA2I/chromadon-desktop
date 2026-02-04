@@ -1,0 +1,627 @@
+import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useChromadonStore, Platform, MarketingTask } from '../store/chromadonStore'
+
+interface MarketingQueueProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+// Platform colors
+const PLATFORM_COLORS: Record<Platform, string> = {
+  google: '#4285F4',
+  twitter: '#1DA1F2',
+  linkedin: '#0077B5',
+  facebook: '#1877F2',
+  instagram: '#E4405F',
+  youtube: '#FF0000',
+  tiktok: '#000000',
+}
+
+// Platform icons
+const PLATFORM_ICONS: Record<Platform, string> = {
+  google: 'G',
+  twitter: 'X',
+  linkedin: 'in',
+  facebook: 'f',
+  instagram: 'IG',
+  youtube: 'YT',
+  tiktok: 'TT',
+}
+
+// Action labels
+const ACTION_LABELS: Record<MarketingTask['action'], string> = {
+  post: 'Post Content',
+  comment: 'Comment',
+  like: 'Like',
+  follow: 'Follow',
+  dm: 'Direct Message',
+  search: 'Search',
+  scrape: 'Scrape Data',
+  custom: 'Custom Action',
+}
+
+export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps) {
+  const {
+    marketingQueue,
+    queueStats,
+    activeTasksByPlatform,
+    setMarketingQueue,
+    addMarketingTask,
+    removeMarketingTask,
+  } = useChromadonStore()
+
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'queued' | 'running' | 'completed' | 'failed'>('all')
+
+  // Load queue on mount
+  useEffect(() => {
+    if (isOpen && window.electronAPI?.queueStatus) {
+      window.electronAPI.queueStatus().then((result) => {
+        if (result.success) {
+          setMarketingQueue(result.queue)
+        }
+      })
+    }
+  }, [isOpen, setMarketingQueue])
+
+  // Listen for queue updates
+  useEffect(() => {
+    if (window.electronAPI?.onQueueUpdated) {
+      window.electronAPI.onQueueUpdated((queue) => {
+        setMarketingQueue(queue)
+      })
+    }
+  }, [setMarketingQueue])
+
+  // Filter tasks
+  const filteredTasks = marketingQueue.filter((task) => {
+    if (filter === 'all') return true
+    return task.status === filter
+  })
+
+  // Delete task
+  const handleDeleteTask = async (taskId: string) => {
+    if (window.electronAPI?.queueRemove) {
+      await window.electronAPI.queueRemove(taskId)
+      removeMarketingTask(taskId)
+    }
+  }
+
+  // Clear completed/failed
+  const handleClearTasks = async (status: 'completed' | 'failed' | 'all') => {
+    if (window.electronAPI?.queueClear) {
+      const result = await window.electronAPI.queueClear(status)
+      if (result.success) {
+        // Queue will be updated via listener
+      }
+    }
+  }
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center"
+        >
+          {/* Backdrop */}
+          <motion.div
+            initial={{ backdropFilter: 'blur(0px)' }}
+            animate={{ backdropFilter: 'blur(20px)' }}
+            exit={{ backdropFilter: 'blur(0px)' }}
+            className="absolute inset-0 bg-chroma-black/80"
+            onClick={onClose}
+          />
+
+          {/* Modal */}
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+            className="relative z-10 w-full max-w-4xl mx-4 max-h-[80vh] flex flex-col"
+          >
+            {/* Outer glow */}
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-chroma-teal/30 via-chroma-purple/20 to-chroma-gold/30 blur-xl opacity-50" />
+
+            {/* Main container */}
+            <div className="relative cyber-panel rounded-2xl overflow-hidden flex flex-col max-h-[80vh]">
+              {/* Animated gradient border */}
+              <div
+                className="absolute inset-0 rounded-2xl pointer-events-none"
+                style={{
+                  padding: '2px',
+                  background: 'linear-gradient(135deg, #00CED1, #8B5CF6, #D4AF37, #00CED1)',
+                  backgroundSize: '300% 300%',
+                  animation: 'gradient-shift 4s ease infinite',
+                  WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                  mask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                  WebkitMaskComposite: 'xor',
+                  maskComposite: 'exclude',
+                }}
+              />
+
+              {/* Header */}
+              <div className="relative p-6 border-b border-chroma-teal/10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <QueueIcon />
+                    <div>
+                      <h2 className="heading-cyber text-xl">MARKETING QUEUE</h2>
+                      <p className="text-xs text-chroma-muted font-mono">
+                        One task per platform, all platforms in parallel
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={onClose}
+                    className="p-2 rounded-lg hover:bg-white/5 transition-colors"
+                  >
+                    <CloseIcon />
+                  </button>
+                </div>
+
+                {/* Stats */}
+                <div className="flex gap-4 mt-4">
+                  {[
+                    { label: 'Total', value: queueStats.total, color: '#00CED1' },
+                    { label: 'Queued', value: queueStats.queued, color: '#8B5CF6' },
+                    { label: 'Running', value: queueStats.running, color: '#FBBF24' },
+                    { label: 'Completed', value: queueStats.completed, color: '#10B981' },
+                    { label: 'Failed', value: queueStats.failed, color: '#EF4444' },
+                  ].map((stat) => (
+                    <div key={stat.label} className="flex items-center gap-2">
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: stat.color }}
+                      />
+                      <span className="text-xs text-chroma-muted">{stat.label}:</span>
+                      <span className="text-sm font-mono" style={{ color: stat.color }}>
+                        {stat.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Active Tasks by Platform */}
+                {Object.keys(activeTasksByPlatform).length > 0 && (
+                  <div className="mt-4 p-3 rounded-lg bg-chroma-teal/5 border border-chroma-teal/20">
+                    <div className="text-xs text-chroma-muted mb-2">Active Tasks:</div>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(activeTasksByPlatform).map(([platform, task]) => {
+                        if (!task) return null
+                        return (
+                          <div
+                            key={platform}
+                            className="flex items-center gap-2 px-3 py-1 rounded-full text-xs"
+                            style={{
+                              backgroundColor: `${PLATFORM_COLORS[platform as Platform]}20`,
+                              borderColor: PLATFORM_COLORS[platform as Platform],
+                              borderWidth: 1,
+                            }}
+                          >
+                            <span className="font-bold">{PLATFORM_ICONS[platform as Platform]}</span>
+                            <span>{ACTION_LABELS[task.action]}</span>
+                            <LoadingDots />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Toolbar */}
+              <div className="relative px-6 py-3 border-b border-chroma-teal/10 flex items-center justify-between">
+                {/* Filters */}
+                <div className="flex gap-2">
+                  {(['all', 'queued', 'running', 'completed', 'failed'] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setFilter(f)}
+                      className={`px-3 py-1 rounded-lg text-xs font-mono uppercase transition-colors ${
+                        filter === f
+                          ? 'bg-chroma-teal/20 text-chroma-teal'
+                          : 'text-chroma-muted hover:text-white'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleClearTasks('completed')}
+                    className="px-3 py-1 rounded-lg text-xs text-chroma-muted hover:text-chroma-teal transition-colors"
+                  >
+                    Clear Completed
+                  </button>
+                  <motion.button
+                    onClick={() => setShowAddModal(true)}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="px-4 py-1 rounded-lg text-xs font-bold uppercase tracking-wider"
+                    style={{
+                      background: 'linear-gradient(135deg, #00CED1, #00FFFF)',
+                      color: '#0A0A0F',
+                    }}
+                  >
+                    + Add Task
+                  </motion.button>
+                </div>
+              </div>
+
+              {/* Task List */}
+              <div className="relative flex-1 overflow-y-auto p-6 space-y-3">
+                {filteredTasks.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-chroma-muted">
+                    <EmptyQueueIcon />
+                    <p className="mt-4 text-sm">No tasks in queue</p>
+                    <p className="text-xs">Click "Add Task" to create marketing automation tasks</p>
+                  </div>
+                ) : (
+                  filteredTasks.map((task, index) => (
+                    <motion.div
+                      key={task.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className={`p-4 rounded-xl border transition-all ${
+                        task.status === 'running'
+                          ? 'border-yellow-500/50 bg-yellow-500/5'
+                          : task.status === 'completed'
+                          ? 'border-green-500/30 bg-green-500/5'
+                          : task.status === 'failed'
+                          ? 'border-red-500/30 bg-red-500/5'
+                          : 'border-chroma-teal/20 bg-chroma-black/40'
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        {/* Platform Badge */}
+                        <div
+                          className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white text-sm flex-shrink-0"
+                          style={{ backgroundColor: PLATFORM_COLORS[task.platform] }}
+                        >
+                          {PLATFORM_ICONS[task.platform]}
+                        </div>
+
+                        {/* Task Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-display text-white">
+                              {ACTION_LABELS[task.action]}
+                            </span>
+                            <StatusBadge status={task.status} />
+                            {task.priority > 0 && (
+                              <span className="px-2 py-0.5 rounded text-xs bg-chroma-gold/20 text-chroma-gold">
+                                P{task.priority}
+                              </span>
+                            )}
+                          </div>
+
+                          {task.content && (
+                            <p className="text-sm text-chroma-muted truncate">{task.content}</p>
+                          )}
+
+                          {task.targetUrl && (
+                            <p className="text-xs text-chroma-teal/60 truncate font-mono">
+                              {task.targetUrl}
+                            </p>
+                          )}
+
+                          {/* Timestamps */}
+                          <div className="flex gap-4 mt-2 text-xs text-chroma-muted">
+                            <span>Created: {new Date(task.createdAt).toLocaleTimeString()}</span>
+                            {task.startedAt && (
+                              <span>Started: {new Date(task.startedAt).toLocaleTimeString()}</span>
+                            )}
+                            {task.completedAt && (
+                              <span>
+                                {task.status === 'completed' ? 'Completed' : 'Failed'}:{' '}
+                                {new Date(task.completedAt).toLocaleTimeString()}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Error message */}
+                          {task.error && (
+                            <p className="mt-2 text-xs text-red-400 font-mono">{task.error}</p>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          {task.status === 'queued' && (
+                            <button
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="p-2 rounded-lg text-chroma-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                            >
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Add Task Modal */}
+          <AddTaskModal
+            isOpen={showAddModal}
+            onClose={() => setShowAddModal(false)}
+            onAdd={(task) => {
+              if (window.electronAPI?.queueAdd) {
+                window.electronAPI.queueAdd(task).then((result) => {
+                  if (result.success && result.task) {
+                    addMarketingTask(result.task)
+                  }
+                })
+              }
+              setShowAddModal(false)
+            }}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+// Add Task Modal
+function AddTaskModal({
+  isOpen,
+  onClose,
+  onAdd,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onAdd: (task: {
+    platform: Platform
+    action: MarketingTask['action']
+    content?: string
+    targetUrl?: string
+    priority?: number
+  }) => void
+}) {
+  const [platform, setPlatform] = useState<Platform>('twitter')
+  const [action, setAction] = useState<MarketingTask['action']>('post')
+  const [content, setContent] = useState('')
+  const [targetUrl, setTargetUrl] = useState('')
+  const [priority, setPriority] = useState(0)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onAdd({
+      platform,
+      action,
+      content: content || undefined,
+      targetUrl: targetUrl || undefined,
+      priority,
+    })
+    // Reset form
+    setContent('')
+    setTargetUrl('')
+    setPriority(0)
+  }
+
+  if (!isOpen) return null
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 flex items-center justify-center z-20"
+    >
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="relative bg-chroma-dark rounded-xl border border-chroma-teal/30 p-6 w-full max-w-md"
+      >
+        <h3 className="text-lg font-display text-white mb-4">Add Marketing Task</h3>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Platform Select */}
+          <div>
+            <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
+              Platform
+            </label>
+            <select
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value as Platform)}
+              className="w-full px-4 py-2 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-white focus:outline-none focus:border-chroma-teal/50"
+            >
+              {(['google', 'twitter', 'linkedin', 'facebook', 'instagram', 'youtube', 'tiktok'] as Platform[]).map(
+                (p) => (
+                  <option key={p} value={p}>
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+
+          {/* Action Select */}
+          <div>
+            <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
+              Action
+            </label>
+            <select
+              value={action}
+              onChange={(e) => setAction(e.target.value as MarketingTask['action'])}
+              className="w-full px-4 py-2 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-white focus:outline-none focus:border-chroma-teal/50"
+            >
+              {Object.entries(ACTION_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Content */}
+          <div>
+            <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
+              Content (optional)
+            </label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Post content, message text, etc."
+              className="w-full px-4 py-2 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-white placeholder-chroma-muted/40 focus:outline-none focus:border-chroma-teal/50 resize-none"
+              rows={3}
+            />
+          </div>
+
+          {/* Target URL */}
+          <div>
+            <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
+              Target URL (optional)
+            </label>
+            <input
+              type="text"
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full px-4 py-2 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-white placeholder-chroma-muted/40 focus:outline-none focus:border-chroma-teal/50 font-mono text-sm"
+            />
+          </div>
+
+          {/* Priority */}
+          <div>
+            <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
+              Priority (0-10)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              value={priority}
+              onChange={(e) => setPriority(parseInt(e.target.value) || 0)}
+              className="w-full px-4 py-2 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-white focus:outline-none focus:border-chroma-teal/50"
+            />
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-lg border border-chroma-teal/20 text-chroma-muted hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 py-2 rounded-lg font-bold"
+              style={{
+                background: 'linear-gradient(135deg, #00CED1, #00FFFF)',
+                color: '#0A0A0F',
+              }}
+            >
+              Add Task
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// Status Badge Component
+function StatusBadge({ status }: { status: MarketingTask['status'] }) {
+  const colors = {
+    queued: { bg: '#8B5CF620', text: '#8B5CF6' },
+    running: { bg: '#FBBF2420', text: '#FBBF24' },
+    completed: { bg: '#10B98120', text: '#10B981' },
+    failed: { bg: '#EF444420', text: '#EF4444' },
+  }
+
+  return (
+    <span
+      className="px-2 py-0.5 rounded text-xs font-mono uppercase"
+      style={{
+        backgroundColor: colors[status].bg,
+        color: colors[status].text,
+      }}
+    >
+      {status}
+    </span>
+  )
+}
+
+// Loading Dots
+function LoadingDots() {
+  return (
+    <span className="inline-flex gap-0.5">
+      {[0, 1, 2].map((i) => (
+        <motion.span
+          key={i}
+          className="w-1 h-1 rounded-full bg-current"
+          animate={{ opacity: [0.3, 1, 0.3] }}
+          transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+        />
+      ))}
+    </span>
+  )
+}
+
+// Icons
+function QueueIcon() {
+  return (
+    <svg
+      width="32"
+      height="32"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="url(#queueGradient)"
+      strokeWidth="2"
+    >
+      <defs>
+        <linearGradient id="queueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#00CED1" />
+          <stop offset="100%" stopColor="#8B5CF6" />
+        </linearGradient>
+      </defs>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="7" y1="8" x2="17" y2="8" />
+      <line x1="7" y1="12" x2="17" y2="12" />
+      <line x1="7" y1="16" x2="13" y2="16" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
+  )
+}
+
+function EmptyQueueIcon() {
+  return (
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" className="opacity-30">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="7" y1="12" x2="17" y2="12" />
+    </svg>
+  )
+}
