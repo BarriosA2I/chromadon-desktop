@@ -525,21 +525,6 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     }
   }
 
-  // Open platform tab for authentication
-  const handleOpenPlatformTab = async (platform: Platform, url: string) => {
-    if (window.electronAPI?.tabCreatePlatform) {
-      const result = await window.electronAPI.tabCreatePlatform(platform, url)
-      if (result.success) {
-        addActionLog({
-          type: 'navigate',
-          description: `Opened ${platform} for sign-in`,
-          success: true,
-        })
-        setShowSessionSetup(false)
-      }
-    }
-  }
-
   return (
     <>
       <TitleBar />
@@ -574,8 +559,8 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
           )}
           {/* BrowserView renders in this space (managed by Electron main process) */}
           {embeddedTabs.length > 0 && (
-            <div className="flex-1 bg-chroma-dark/20 m-2 rounded-lg border border-chroma-teal/10">
-              {/* BrowserView is positioned here by Electron */}
+            <div className="flex-1 m-2 rounded-lg border border-chroma-teal/10 pointer-events-none">
+              {/* BrowserView is positioned here by Electron - this div is transparent overlay for border only */}
             </div>
           )}
           {/* Command Input at bottom */}
@@ -682,7 +667,6 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
       <SessionSetup
         isOpen={showSessionSetup}
         onClose={() => setShowSessionSetup(false)}
-        onOpenPlatform={handleOpenPlatformTab}
       />
 
       {/* Marketing Queue Modal */}

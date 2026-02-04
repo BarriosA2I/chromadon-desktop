@@ -1313,6 +1313,104 @@ ipcMain.handle('credential:detectLoginForm', async (_event, tabId: number) => {
   }
 })
 
+// ==================== OAUTH POPUP WINDOW ====================
+
+// Platform login URLs
+const PLATFORM_LOGIN_URLS: Record<Platform, string> = {
+  google: 'https://accounts.google.com',
+  twitter: 'https://twitter.com/login',
+  linkedin: 'https://linkedin.com/login',
+  facebook: 'https://facebook.com/login',
+  instagram: 'https://instagram.com/accounts/login',
+  youtube: 'https://accounts.google.com', // Uses Google auth
+  tiktok: 'https://tiktok.com/login',
+}
+
+// Open OAuth popup window for platform sign-in
+ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
+  if (!mainWindow) {
+    return { success: false, error: 'Main window not available' }
+  }
+
+  const loginUrl = PLATFORM_LOGIN_URLS[platform]
+  if (!loginUrl) {
+    return { success: false, error: `Unknown platform: ${platform}` }
+  }
+
+  console.log(`[CHROMADON] Opening OAuth popup for ${platform}`)
+
+  // Create popup window with platform-specific partition
+  const oauthWindow = new BrowserWindow({
+    width: 500,
+    height: 700,
+    center: true,
+    parent: mainWindow,
+    modal: false,        // Don't use modal - it blocks input on Windows
+    alwaysOnTop: true,   // Keep on top instead
+    show: false,         // Wait for ready-to-show
+    autoHideMenuBar: true,
+    title: `Sign in to ${platform}`,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      partition: `persist:platform-${platform}`, // Share session with BrowserViews!
+    }
+  })
+
+  // Show when ready (ensures proper rendering before display)
+  oauthWindow.once('ready-to-show', () => {
+    oauthWindow.show()
+    oauthWindow.focus()
+  })
+
+  // Load the login page
+  oauthWindow.loadURL(loginUrl)
+
+  // Return a promise that resolves when auth completes or window closes
+  return new Promise((resolve) => {
+    let authCheckInterval: NodeJS.Timeout | null = null
+    let resolved = false
+
+    // Check for auth completion every second
+    const checkAuth = async () => {
+      if (resolved) return
+
+      try {
+        const isAuth = await browserViewManager.verifyPlatformAuth(platform)
+        if (isAuth) {
+          console.log(`[CHROMADON] OAuth completed for ${platform}`)
+          resolved = true
+          if (authCheckInterval) clearInterval(authCheckInterval)
+          oauthWindow.close()
+          resolve({ success: true, platform })
+        }
+      } catch (error) {
+        console.error(`[CHROMADON] Error checking auth for ${platform}:`, error)
+      }
+    }
+
+    authCheckInterval = setInterval(checkAuth, 1000)
+
+    // Handle window close (user closed manually)
+    oauthWindow.on('closed', () => {
+      if (!resolved) {
+        resolved = true
+        if (authCheckInterval) clearInterval(authCheckInterval)
+        // Check one final time if they authenticated before closing
+        browserViewManager.verifyPlatformAuth(platform).then(isAuth => {
+          if (isAuth) {
+            resolve({ success: true, platform })
+          } else {
+            resolve({ success: false, platform, userClosed: true })
+          }
+        }).catch(() => {
+          resolve({ success: false, platform, userClosed: true })
+        })
+      }
+    })
+  })
+})
+
 // App lifecycle
 app.whenReady().then(() => {
   createWindow()

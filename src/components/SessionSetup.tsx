@@ -5,7 +5,6 @@ import { useChromadonStore, Platform, PlatformSession } from '../store/chromadon
 interface SessionSetupProps {
   isOpen: boolean
   onClose: () => void
-  onOpenPlatform: (platform: Platform, url: string) => void
 }
 
 // Platform configuration
@@ -70,7 +69,6 @@ const PLATFORMS: {
 export default function SessionSetup({
   isOpen,
   onClose,
-  onOpenPlatform,
 }: SessionSetupProps) {
   const { platformSessions, setPlatformSessions } = useChromadonStore()
   const [verifyingPlatform, setVerifyingPlatform] = useState<Platform | null>(null)
@@ -107,9 +105,32 @@ export default function SessionSetup({
     setVerifyingPlatform(null)
   }
 
-  // Open platform for sign-in
-  const handleOpenPlatform = (platform: Platform, url: string) => {
-    onOpenPlatform(platform, url)
+  // Open OAuth popup for sign-in
+  const handleOpenPlatform = async (platform: Platform) => {
+    if (!window.electronAPI?.oauthSignIn) {
+      console.error('OAuth sign-in API not available')
+      return
+    }
+
+    setVerifyingPlatform(platform)
+    try {
+      console.log(`[SessionSetup] Opening OAuth popup for ${platform}`)
+      const result = await window.electronAPI.oauthSignIn(platform)
+
+      if (result.success) {
+        console.log(`[SessionSetup] OAuth success for ${platform}`)
+        // Refresh session list to show authenticated status
+        const sessions = await window.electronAPI.sessionList()
+        if (sessions.success && sessions.sessions) {
+          setPlatformSessions(sessions.sessions)
+        }
+      } else if (result.userClosed) {
+        console.log(`[SessionSetup] User closed OAuth popup for ${platform}`)
+      }
+    } catch (err) {
+      console.error('Failed to open OAuth popup:', err)
+    }
+    setVerifyingPlatform(null)
   }
 
   // Get session status for platform
@@ -231,8 +252,8 @@ export default function SessionSetup({
                             : 'border-chroma-teal/20 bg-chroma-black/40 hover:border-chroma-teal/40'
                         }`}
                         onClick={() => {
-                          if (!isAuthenticated) {
-                            handleOpenPlatform(platform.id, platform.url)
+                          if (!isAuthenticated && !verifyingPlatform) {
+                            handleOpenPlatform(platform.id)
                           }
                         }}
                       >
