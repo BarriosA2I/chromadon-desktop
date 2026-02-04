@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, clipboard, session } from 'electron'
 import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
@@ -1789,33 +1789,92 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     return { success: false, error: `Unknown platform: ${platform}` }
   }
 
-  // For Google/YouTube, open system browser and import cookies after manual sign-in
-  // Google's detection is too strong for Electron - manual sign-in is required
+  // For Google/YouTube, use puppeteer to open Chrome visibly and import cookies after sign-in
   if (platform === 'google' || platform === 'youtube') {
-    console.log(`[CHROMADON] Opening Chrome for ${platform} sign-in (manual required)`)
+    console.log(`[CHROMADON] Using Chrome for ${platform} sign-in`)
 
-    // Launch Chrome with remote debugging
-    const chromePath = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
-    const debugPort = 9223
-    const { spawn } = require('child_process')
+    const puppeteer = require('puppeteer-core')
+    const fs = require('fs')
 
-    const chromeProcess = spawn(chromePath, [
-      `--remote-debugging-port=${debugPort}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--user-data-dir=' + require('path').join(require('os').tmpdir(), 'chromadon-google-temp'),
-      'https://accounts.google.com'
-    ], { detached: true, stdio: 'ignore' })
+    // Find Chrome
+    const chromePaths = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    ]
 
-    chromeProcess.unref()
+    let chromePath = ''
+    for (const p of chromePaths) {
+      if (fs.existsSync(p)) {
+        chromePath = p
+        break
+      }
+    }
 
-    // Return immediately - user will sign in manually
-    // After sign-in, call /auth/import-from-chrome-debug to extract cookies
-    return {
-      success: true,
-      platform,
-      message: 'Chrome opened for manual sign-in. After signing in, the cookies will be imported.',
-      debugPort
+    if (!chromePath) {
+      return { success: false, error: 'Chrome not found' }
+    }
+
+    try {
+      // Launch Chrome with puppeteer (visible)
+      const browser = await puppeteer.launch({
+        executablePath: chromePath,
+        headless: false,
+        args: ['--no-first-run', '--no-default-browser-check', '--disable-blink-features=AutomationControlled'],
+        ignoreDefaultArgs: ['--enable-automation'],
+      })
+
+      const pages = await browser.pages()
+      const page = pages[0] || await browser.newPage()
+      await page.goto('https://accounts.google.com')
+
+      // Wait for sign-in (check every 2 seconds for 5 minutes)
+      let signedIn = false
+      for (let i = 0; i < 150; i++) {
+        await new Promise(r => setTimeout(r, 2000))
+        try {
+          const url = page.url()
+          if (url.includes('myaccount.google.com') ||
+              (url.includes('google.com') && !url.includes('signin') && !url.includes('accounts.google.com'))) {
+            signedIn = true
+            break
+          }
+        } catch (e) {
+          // Browser was closed by user
+          console.log('[CHROMADON] Browser closed by user')
+          break
+        }
+      }
+
+      if (signedIn) {
+        // Import cookies
+        const cookies = await page.cookies()
+        const googleSession = session.fromPartition('persist:platform-google')
+        let imported = 0
+        for (const cookie of cookies) {
+          try {
+            await googleSession.cookies.set({
+              url: `https://${cookie.domain.replace(/^\./, '')}`,
+              name: cookie.name,
+              value: cookie.value,
+              domain: cookie.domain,
+              path: cookie.path,
+              secure: cookie.secure,
+              httpOnly: cookie.httpOnly,
+              expirationDate: cookie.expires,
+            })
+            imported++
+          } catch (e) {}
+        }
+        console.log(`[CHROMADON] Imported ${imported} cookies for ${platform}`)
+        await browser.close()
+        return { success: true, platform, cookies: imported }
+      }
+
+      await browser.close()
+      return { success: false, platform, error: 'Sign-in timed out or cancelled' }
+    } catch (err: any) {
+      console.error(`[CHROMADON] Chrome sign-in error:`, err)
+      return { success: false, platform, error: err.message }
     }
   }
 
