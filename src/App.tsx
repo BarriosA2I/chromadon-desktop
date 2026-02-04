@@ -139,6 +139,29 @@ function App() {
     return () => clearInterval(pollInterval)
   }, [isConnected])
 
+  // Retry connecting to Brain API when disconnected
+  useEffect(() => {
+    if (isConnected) return
+
+    const retryInterval = setInterval(async () => {
+      console.log('[CHROMADON] Attempting to reconnect to Brain API...')
+      const connected = await connect()
+      if (connected) {
+        console.log('[CHROMADON] Successfully reconnected to Brain API')
+      }
+    }, 10000) // Retry every 10 seconds
+
+    return () => clearInterval(retryInterval)
+  }, [isConnected])
+
+  // Expose reconnect function globally for debugging
+  useEffect(() => {
+    (window as any).chromadonReconnect = async () => {
+      console.log('[CHROMADON] Manual reconnect triggered')
+      return await connect()
+    }
+  }, [connect])
+
   // Listen for embedded tab updates from Electron
   useEffect(() => {
     if (window.electronAPI?.onTabsUpdated) {
@@ -581,50 +604,46 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
               </span>
             </div>
             <div className="flex items-center gap-1">
-              {!vaultStatus.isLocked && (
-                <>
-                  {/* Profile Switcher */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowProfileManager(!showProfileManager)}
-                      className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
-                      title="Switch Profile"
-                    >
-                      <UserIcon />
-                    </button>
-                    <AnimatePresence>
-                      {showProfileManager && (
-                        <ProfileManager
-                          profiles={profiles}
-                          currentProfileId={currentProfile?.id || null}
-                          onSelect={handleSelectProfile}
-                          onCreate={handleCreateProfile}
-                          onDelete={handleDeleteProfile}
-                          onClose={() => setShowProfileManager(false)}
-                        />
-                      )}
-                    </AnimatePresence>
-                  </div>
+              {/* Profile Switcher */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowProfileManager(!showProfileManager)}
+                  className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                  title="Switch Profile"
+                >
+                  <UserIcon />
+                </button>
+                <AnimatePresence>
+                  {showProfileManager && (
+                    <ProfileManager
+                      profiles={profiles}
+                      currentProfileId={currentProfile?.id || null}
+                      onSelect={handleSelectProfile}
+                      onCreate={handleCreateProfile}
+                      onDelete={handleDeleteProfile}
+                      onClose={() => setShowProfileManager(false)}
+                    />
+                  )}
+                </AnimatePresence>
+              </div>
 
-                  {/* Credential Vault */}
-                  <button
-                    onClick={() => setShowCredentialVault(true)}
-                    className="p-2 rounded-lg text-chroma-muted hover:text-chroma-purple hover:bg-chroma-purple/10 transition-colors"
-                    title="Credential Vault"
-                  >
-                    <KeyIcon />
-                  </button>
+              {/* Credential Vault */}
+              <button
+                onClick={() => setShowCredentialVault(true)}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-purple hover:bg-chroma-purple/10 transition-colors"
+                title="Credential Vault"
+              >
+                <KeyIcon />
+              </button>
 
-                  {/* Lock Vault */}
-                  <button
-                    onClick={handleLockVault}
-                    className="p-2 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
-                    title="Lock Vault"
-                  >
-                    <LockIcon />
-                  </button>
-                </>
-              )}
+              {/* Lock Vault */}
+              <button
+                onClick={handleLockVault}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
+                title="Lock Vault"
+              >
+                <LockIcon />
+              </button>
               {/* Session Setup - always visible */}
               <button
                 onClick={() => setShowSessionSetup(true)}
