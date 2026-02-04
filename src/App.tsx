@@ -75,6 +75,7 @@ function App() {
       window.electronAPI.onVaultUnlocked(async () => {
         const status = await window.electronAPI.vaultStatus()
         setVaultStatus(status)
+        setShowVaultModal(false) // Close the vault modal
         await loadVaultData()
       })
     }

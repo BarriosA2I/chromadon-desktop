@@ -321,6 +321,58 @@ export class BrowserViewManager {
       return { action: 'deny' }
     })
 
+    // Anti-detection for Google - inject scripts before navigation completes
+    view.webContents.on('did-start-navigation', (_event, url) => {
+      // Inject anti-detection for Google pages
+      if (url.includes('google.com') || url.includes('youtube.com')) {
+        view.webContents.executeJavaScript(`
+          // Remove webdriver flag
+          Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined,
+            configurable: true
+          });
+
+          // Add chrome object
+          if (!window.chrome) {
+            window.chrome = {
+              runtime: {},
+              loadTimes: function() {},
+              csi: function() {},
+              app: {}
+            };
+          }
+
+          // Fix permissions API
+          const originalQuery = window.navigator.permissions?.query;
+          if (originalQuery) {
+            window.navigator.permissions.query = (parameters) => (
+              parameters.name === 'notifications' ?
+                Promise.resolve({ state: Notification.permission }) :
+                originalQuery(parameters)
+            );
+          }
+
+          // Add plugins
+          Object.defineProperty(navigator, 'plugins', {
+            get: () => [
+              { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+              { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+              { name: 'Native Client', filename: 'internal-nacl-plugin' }
+            ],
+            configurable: true
+          });
+
+          // Set languages
+          Object.defineProperty(navigator, 'languages', {
+            get: () => ['en-US', 'en'],
+            configurable: true
+          });
+
+          console.log('[CHROMADON] Anti-detection injected for Google');
+        `).catch(() => {});
+      }
+    })
+
     // Track navigation events
     view.webContents.on('did-navigate', (_event, url) => {
       this.updateTabInfo(id, { url })
@@ -365,7 +417,14 @@ export class BrowserViewManager {
 
     // Navigate to URL
     if (url !== 'about:blank') {
-      view.webContents.loadURL(url)
+      // Set Chrome user agent for Google pages to bypass Electron detection
+      if (url.includes('google.com') || url.includes('youtube.com')) {
+        view.webContents.loadURL(url, {
+          userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        })
+      } else {
+        view.webContents.loadURL(url)
+      }
     }
 
     // Focus this new tab

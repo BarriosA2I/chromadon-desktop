@@ -6,6 +6,34 @@ import * as fs from 'fs'
 import { browserViewManager, TabInfo, Platform, SessionMode, PlatformSession } from './browser-view-manager'
 import { vault, ChromadonProfile, StoredCredential } from './security/vault'
 
+// CRITICAL: Anti-detection measures for Google sign-in
+// Set app to look like Chrome
+app.setName('Google Chrome')
+
+// Override user agent at the app level
+app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+// Disable automation detection
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+app.commandLine.appendSwitch('disable-features', 'IsolateOrigins,site-per-process,UserAgentClientHint')
+app.commandLine.appendSwitch('enable-features', 'NetworkService,NetworkServiceInProcess')
+app.commandLine.appendSwitch('no-first-run')
+app.commandLine.appendSwitch('no-default-browser-check')
+app.commandLine.appendSwitch('disable-infobars')
+app.commandLine.appendSwitch('disable-component-update')
+app.commandLine.appendSwitch('disable-background-networking')
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+app.commandLine.appendSwitch('disable-client-side-phishing-detection')
+app.commandLine.appendSwitch('disable-default-apps')
+app.commandLine.appendSwitch('disable-extensions')
+app.commandLine.appendSwitch('disable-hang-monitor')
+app.commandLine.appendSwitch('disable-popup-blocking')
+app.commandLine.appendSwitch('disable-prompt-on-repost')
+app.commandLine.appendSwitch('disable-sync')
+app.commandLine.appendSwitch('disable-translate')
+app.commandLine.appendSwitch('metrics-recording-only')
+app.commandLine.appendSwitch('safebrowsing-disable-auto-update')
+
 // Marketing task queue types
 export interface MarketingTask {
   id: string
@@ -307,6 +335,51 @@ function startControlServer() {
     }
   })
 
+  // ==================== DIRECT VAULT ENDPOINTS ====================
+
+  // Direct vault unlock (bypasses UI, calls vault directly)
+  server.post('/vault/unlock', async (req: Request, res: Response) => {
+    try {
+      const { password } = req.body
+      if (!password) {
+        res.status(400).json({ success: false, error: 'Password is required' })
+        return
+      }
+
+      const result = await vault.unlock(password)
+      if (result.success && mainWindow) {
+        // Send event to renderer to update UI state
+        mainWindow.webContents.send('vault:unlocked')
+      }
+      res.json(result)
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Direct vault status
+  server.get('/vault/status', async (_req: Request, res: Response) => {
+    try {
+      const status = await vault.getStatus()
+      res.json({ success: true, ...status })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Direct vault lock
+  server.post('/vault/lock', async (_req: Request, res: Response) => {
+    try {
+      vault.lock()
+      if (mainWindow) {
+        mainWindow.webContents.send('vault:locked')
+      }
+      res.json({ success: true })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // ==================== EMBEDDED TAB ENDPOINTS ====================
 
   // List all embedded tabs
@@ -553,6 +626,385 @@ function startControlServer() {
       res.json({ success: true, id, platform, tabs: browserViewManager.getTabs() })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // ==================== GOOGLE AUTH ENDPOINTS ====================
+
+  // Import Google cookies from user's Chrome browser
+  server.post('/auth/import-chrome-cookies', async (_req: Request, res: Response) => {
+    try {
+      console.log('[CHROMADON] Importing Google cookies from Chrome...')
+
+      const path = require('path')
+      const fs = require('fs')
+      const { session } = require('electron')
+
+      // Chrome cookies database path
+      const chromeCookiesPath = path.join(
+        require('os').homedir(),
+        'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Network', 'Cookies'
+      )
+
+      if (!fs.existsSync(chromeCookiesPath)) {
+        res.json({ success: false, error: 'Chrome cookies database not found. Make sure Chrome is installed.' })
+        return
+      }
+
+      // Copy the database to temp location (Chrome locks it while running)
+      const tempCookiesPath = path.join(require('os').tmpdir(), `chrome-cookies-${Date.now()}.db`)
+      fs.copyFileSync(chromeCookiesPath, tempCookiesPath)
+
+      // Read cookies using sql.js (pure JavaScript SQLite)
+      const initSqlJs = require('sql.js')
+      const SQL = await initSqlJs()
+      const fileBuffer = fs.readFileSync(tempCookiesPath)
+      const db = new SQL.Database(fileBuffer)
+
+      // Get Google-related cookies
+      const result = db.exec(`
+        SELECT host_key, name, value, path, expires_utc, is_secure, is_httponly
+        FROM cookies
+        WHERE host_key LIKE '%google%' OR host_key LIKE '%youtube%' OR host_key LIKE '%gstatic%'
+      `)
+
+      const cookies = result.length > 0 ? result[0].values.map((row: any[]) => ({
+        host_key: row[0],
+        name: row[1],
+        value: row[2],
+        path: row[3],
+        expires_utc: row[4],
+        is_secure: row[5],
+        is_httponly: row[6],
+      })) : []
+
+      db.close()
+
+      console.log(`[CHROMADON] Found ${cookies.length} Google-related cookies`)
+
+      // Import cookies into Electron's Google session
+      const googleSession = session.fromPartition('persist:platform-google')
+      let importedCount = 0
+      let skippedCount = 0
+
+      for (const cookie of cookies) {
+        try {
+          // Skip cookies without values (likely encrypted)
+          if (!cookie.value) {
+            skippedCount++
+            continue
+          }
+
+          const domain = cookie.host_key.startsWith('.') ? cookie.host_key : cookie.host_key
+          const url = `https://${domain.replace(/^\./, '')}`
+
+          await googleSession.cookies.set({
+            url,
+            name: cookie.name,
+            value: cookie.value || '',
+            domain: domain,
+            path: cookie.path || '/',
+            secure: Boolean(cookie.is_secure),
+            httpOnly: Boolean(cookie.is_httponly),
+            expirationDate: cookie.expires_utc > 0 ? Math.floor(cookie.expires_utc / 1000000 - 11644473600) : undefined,
+          })
+          importedCount++
+        } catch (e) {
+          // Ignore individual cookie errors
+          skippedCount++
+        }
+      }
+
+      // Clean up temp file
+      fs.unlinkSync(tempCookiesPath)
+
+      console.log(`[CHROMADON] Imported ${importedCount} cookies, skipped ${skippedCount} (encrypted)`)
+
+      res.json({
+        success: true,
+        message: `Imported ${importedCount} cookies from Chrome. ${skippedCount} encrypted cookies were skipped.`,
+        imported: importedCount,
+        skipped: skippedCount,
+        note: 'Note: Chrome encrypts most cookies on Windows. You may need to use the browser-based sign-in.'
+      })
+    } catch (error) {
+      console.error('[CHROMADON] Cookie import error:', error)
+      res.json({ success: false, error: String(error) })
+    }
+  })
+
+  // Open system browser for Google sign-in (manual but reliable)
+  server.post('/auth/google-browser', async (_req: Request, res: Response) => {
+    try {
+      const { shell } = require('electron')
+      await shell.openExternal('https://accounts.google.com')
+      res.json({
+        success: true,
+        message: 'Opened Google sign-in in your system browser. Sign in there, then return to CHROMADON.'
+      })
+    } catch (error) {
+      res.json({ success: false, error: String(error) })
+    }
+  })
+
+  // Launch Chrome with debugging and extract cookies after sign-in
+  server.post('/auth/google-debug-chrome', async (req: Request, res: Response) => {
+    try {
+      console.log('[CHROMADON] Launching Chrome for Google sign-in...')
+
+      const path = require('path')
+      const puppeteer = require('puppeteer-core')
+      const { session } = require('electron')
+
+      // Find Chrome executable
+      const chromePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        path.join(require('os').homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      ]
+
+      let chromePath = ''
+      for (const p of chromePaths) {
+        if (require('fs').existsSync(p)) {
+          chromePath = p
+          break
+        }
+      }
+
+      if (!chromePath) {
+        res.json({ success: false, error: 'Chrome not found' })
+        return
+      }
+
+      console.log('[CHROMADON] Found Chrome at:', chromePath)
+
+      // Create temp user data dir
+      const tempUserDataDir = path.join(require('os').tmpdir(), `chrome-debug-${Date.now()}`)
+      require('fs').mkdirSync(tempUserDataDir, { recursive: true })
+
+      // Launch Chrome directly via puppeteer-core
+      const browser = await puppeteer.launch({
+        executablePath: chromePath,
+        headless: false,
+        userDataDir: tempUserDataDir,
+        args: [
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-blink-features=AutomationControlled',
+        ],
+        ignoreDefaultArgs: ['--enable-automation'],
+      })
+
+      const pages = await browser.pages()
+      const page = pages[0] || await browser.newPage()
+
+      // Navigate to Google sign-in
+      await page.goto('https://accounts.google.com')
+
+      // Wait for user to sign in (check every 2 seconds for 5 minutes)
+      console.log('[CHROMADON] Navigated to Google. Please sign in...')
+
+      let signedIn = false
+      for (let i = 0; i < 150; i++) { // 5 minutes max
+        await new Promise(r => setTimeout(r, 2000))
+
+        const currentUrl = page.url()
+        if (currentUrl.includes('myaccount.google.com') ||
+            (currentUrl.includes('google.com') && !currentUrl.includes('signin') && !currentUrl.includes('accounts.google.com'))) {
+          signedIn = true
+          break
+        }
+      }
+
+      if (!signedIn) {
+        await browser.close()
+        res.json({ success: false, error: 'Sign-in timed out after 5 minutes' })
+        return
+      }
+
+      // Get cookies
+      const cookies = await page.cookies()
+      console.log(`[CHROMADON] Got ${cookies.length} cookies from Chrome`)
+
+      // Import to Electron session
+      const googleSession = session.fromPartition('persist:platform-google')
+      let importedCount = 0
+
+      for (const cookie of cookies) {
+        try {
+          await googleSession.cookies.set({
+            url: `https://${cookie.domain.replace(/^\./, '')}`,
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain,
+            path: cookie.path,
+            secure: cookie.secure,
+            httpOnly: cookie.httpOnly,
+            expirationDate: cookie.expires,
+          })
+          importedCount++
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+
+      await browser.close()
+
+      // Clean up temp directory
+      try {
+        require('fs').rmSync(tempUserDataDir, { recursive: true, force: true })
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+
+      res.json({
+        success: true,
+        message: `Sign-in successful! Imported ${importedCount} cookies.`,
+        imported: importedCount
+      })
+    } catch (error) {
+      console.error('[CHROMADON] Debug Chrome error:', error)
+      res.json({ success: false, error: String(error) })
+    }
+  })
+
+  // Automated Google sign-in using Puppeteer with stealth (may be blocked by Google)
+  server.post('/auth/google', async (req: Request, res: Response) => {
+    const { email, password } = req.body
+
+    if (!email || !password) {
+      res.status(400).json({ success: false, error: 'Email and password required' })
+      return
+    }
+
+    try {
+      console.log('[CHROMADON] Starting Puppeteer Google sign-in...')
+
+      // Dynamic import of puppeteer-extra and stealth plugin
+      const puppeteer = require('puppeteer-extra')
+      const StealthPlugin = require('puppeteer-extra-plugin-stealth')
+      puppeteer.use(StealthPlugin())
+
+      // Create a temporary profile directory to avoid conflicts with running Chrome
+      const tempProfileDir = require('path').join(require('os').tmpdir(), `chrome-puppeteer-${Date.now()}`)
+      const browser = await puppeteer.launch({
+        headless: false,
+        channel: 'chrome', // Use installed Chrome instead of bundled Chromium
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-blink-features=AutomationControlled',
+          `--user-data-dir=${tempProfileDir}`,
+          '--disable-extensions',
+          '--disable-default-apps',
+          '--no-first-run',
+          '--start-maximized',
+        ],
+        ignoreDefaultArgs: ['--enable-automation'],
+      })
+
+      const page = await browser.newPage()
+
+      // Set viewport and user agent
+      await page.setViewport({ width: 1280, height: 720 })
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+      // Navigate to Google sign-in
+      await page.goto('https://accounts.google.com', { waitUntil: 'networkidle2' })
+
+      console.log('[CHROMADON] Typing email...')
+      // Type email with human-like delay
+      await page.waitForSelector('input[type="email"]', { visible: true })
+      await page.type('input[type="email"]', email, { delay: 100 })
+
+      // Small delay before clicking
+      await new Promise(r => setTimeout(r, 1000))
+
+      // Click Next
+      await page.click('#identifierNext')
+
+      // Wait longer for navigation
+      await new Promise(r => setTimeout(r, 5000))
+
+      // Wait for password field with multiple attempts
+      console.log('[CHROMADON] Waiting for password field...')
+      let passwordFound = false
+      for (let i = 0; i < 3; i++) {
+        try {
+          await page.waitForSelector('input[type="password"]', { visible: true, timeout: 5000 })
+          passwordFound = true
+          break
+        } catch {
+          console.log(`[CHROMADON] Password field attempt ${i + 1} failed, checking for other elements...`)
+          // Check if there's a CAPTCHA or verification
+          const pageContent = await page.content()
+          if (pageContent.includes('captcha') || pageContent.includes('verify')) {
+            console.log('[CHROMADON] CAPTCHA or verification detected!')
+          }
+          await new Promise(r => setTimeout(r, 2000))
+        }
+      }
+
+      if (!passwordFound) {
+        // Take screenshot for debugging
+        const screenshotPath = require('path').join(require('electron').app.getPath('userData'), 'google-signin-debug.png')
+        await page.screenshot({ path: screenshotPath })
+        console.log(`[CHROMADON] Debug screenshot saved to: ${screenshotPath}`)
+        throw new Error('Password field not found - Google may be blocking. Check debug screenshot.')
+      }
+
+      console.log('[CHROMADON] Typing password...')
+      // Type password
+      await page.type('input[type="password"]', password, { delay: 50 })
+
+      // Click Next
+      await page.click('#passwordNext')
+
+      // Wait for sign-in to complete
+      console.log('[CHROMADON] Waiting for sign-in to complete...')
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {})
+
+      // Check if we're signed in by looking at the URL
+      const currentUrl = page.url()
+      const isSignedIn = currentUrl.includes('myaccount.google.com') ||
+                         currentUrl.includes('google.com') && !currentUrl.includes('signin')
+
+      // Get cookies to transfer to Electron session
+      const cookies = await page.cookies()
+
+      console.log(`[CHROMADON] Sign-in ${isSignedIn ? 'successful' : 'may have failed'}. Got ${cookies.length} cookies.`)
+
+      // Transfer cookies to Electron's Google session
+      const { session } = require('electron')
+      const googleSession = session.fromPartition('persist:platform-google')
+
+      for (const cookie of cookies) {
+        try {
+          await googleSession.cookies.set({
+            url: `https://${cookie.domain.replace(/^\./, '')}`,
+            name: cookie.name,
+            value: cookie.value,
+            domain: cookie.domain,
+            path: cookie.path,
+            secure: cookie.secure,
+            httpOnly: cookie.httpOnly,
+            expirationDate: cookie.expires,
+          })
+        } catch (e) {
+          // Ignore cookie errors
+        }
+      }
+
+      await browser.close()
+
+      res.json({
+        success: isSignedIn,
+        message: isSignedIn ? 'Signed in successfully' : 'Sign-in may require additional verification',
+        cookiesTransferred: cookies.length
+      })
+    } catch (error) {
+      console.error('[CHROMADON] Puppeteer sign-in error:', error)
+      res.status(500).json({ success: false, error: String(error) })
     }
   })
 
@@ -1326,7 +1778,7 @@ const PLATFORM_LOGIN_URLS: Record<Platform, string> = {
   tiktok: 'https://tiktok.com/login',
 }
 
-// Open OAuth popup window for platform sign-in
+// Open OAuth for platform sign-in
 ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
   if (!mainWindow) {
     return { success: false, error: 'Main window not available' }
@@ -1337,25 +1789,62 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     return { success: false, error: `Unknown platform: ${platform}` }
   }
 
+  // For Google/YouTube, open system browser and import cookies after manual sign-in
+  // Google's detection is too strong for Electron - manual sign-in is required
+  if (platform === 'google' || platform === 'youtube') {
+    console.log(`[CHROMADON] Opening Chrome for ${platform} sign-in (manual required)`)
+
+    // Launch Chrome with remote debugging
+    const chromePath = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
+    const debugPort = 9223
+    const { spawn } = require('child_process')
+
+    const chromeProcess = spawn(chromePath, [
+      `--remote-debugging-port=${debugPort}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--user-data-dir=' + require('path').join(require('os').tmpdir(), 'chromadon-google-temp'),
+      'https://accounts.google.com'
+    ], { detached: true, stdio: 'ignore' })
+
+    chromeProcess.unref()
+
+    // Return immediately - user will sign in manually
+    // After sign-in, call /auth/import-from-chrome-debug to extract cookies
+    return {
+      success: true,
+      platform,
+      message: 'Chrome opened for manual sign-in. After signing in, the cookies will be imported.',
+      debugPort
+    }
+  }
+
   console.log(`[CHROMADON] Opening OAuth popup for ${platform}`)
 
   // Create popup window with platform-specific partition
+  // Use settings that make it look like a real browser
   const oauthWindow = new BrowserWindow({
     width: 500,
     height: 700,
     center: true,
     parent: mainWindow,
-    modal: false,        // Don't use modal - it blocks input on Windows
-    alwaysOnTop: true,   // Keep on top instead
-    show: false,         // Wait for ready-to-show
+    modal: false,
+    alwaysOnTop: true,
+    show: false,
     autoHideMenuBar: true,
     title: `Sign in to ${platform}`,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      partition: `persist:platform-${platform}`, // Share session with BrowserViews!
+      partition: `persist:platform-${platform}`,
       webSecurity: true,
       allowRunningInsecureContent: false,
+      // Make it look more like a real browser
+      sandbox: false, // Allow more native behavior
+      webgl: true,
+      enableWebSQL: true,
+      spellcheck: true,
+      experimentalFeatures: false,
     }
   })
 
@@ -1365,52 +1854,64 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     oauthWindow.focus()
   })
 
-  // Anti-detection: Inject scripts before Google can detect automation
-  oauthWindow.webContents.on('did-start-navigation', () => {
+  // Anti-detection: Inject scripts after page starts loading
+  oauthWindow.webContents.on('dom-ready', () => {
     oauthWindow.webContents.executeJavaScript(`
-      // Remove webdriver flag - Google checks this
-      Object.defineProperty(navigator, 'webdriver', {
-        get: () => undefined
-      });
+      try {
+        // Remove webdriver flag
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
 
-      // Add chrome object - Google expects this in Chrome browsers
-      if (!window.chrome) {
-        window.chrome = {
-          runtime: {},
-          loadTimes: function() {},
-          csi: function() {},
-          app: {}
-        };
-      }
+        // Add chrome object
+        if (!window.chrome) {
+          window.chrome = {
+            app: { isInstalled: false },
+            runtime: { connect: function(){}, sendMessage: function(){} },
+            csi: function() { return {}; },
+            loadTimes: function() { return {}; }
+          };
+        }
 
-      // Fix permissions API query
-      const originalQuery = window.navigator.permissions.query;
-      window.navigator.permissions.query = (parameters) => (
-        parameters.name === 'notifications' ?
-          Promise.resolve({ state: Notification.permission }) :
-          originalQuery(parameters)
-      );
+        // Plugins
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [
+            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+            { name: 'Native Client', filename: 'internal-nacl-plugin' }
+          ]
+        });
 
-      // Add realistic plugins array
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => [
-          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
-          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
-          { name: 'Native Client', filename: 'internal-nacl-plugin' }
-        ]
-      });
+        // Languages
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
 
-      // Ensure languages are set
-      Object.defineProperty(navigator, 'languages', {
-        get: () => ['en-US', 'en']
-      });
+        // Hardware
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 
-      console.log('[CHROMADON] Anti-detection script injected');
+        // WebGL spoofing
+        if (typeof WebGLRenderingContext !== 'undefined') {
+          const getParam = WebGLRenderingContext.prototype.getParameter;
+          WebGLRenderingContext.prototype.getParameter = function(p) {
+            if (p === 37445) return 'Google Inc. (NVIDIA)';
+            if (p === 37446) return 'ANGLE (NVIDIA GeForce GTX 1660 Ti)';
+            return getParam.call(this, p);
+          };
+        }
+
+        // Remove Electron indicators
+        delete window.process;
+        delete window.require;
+        delete window.module;
+
+        console.log('[CHROMADON] Anti-detection injected');
+      } catch(e) { console.error('[CHROMADON] Anti-detection error:', e); }
     `).catch(() => {});
   });
 
   // Load the login page
-  oauthWindow.loadURL(loginUrl)
+  // Use latest Chrome user agent to bypass Google's Electron detection
+  oauthWindow.loadURL(loginUrl, {
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+  })
 
   // Return a promise that resolves when auth completes or window closes
   return new Promise((resolve) => {
