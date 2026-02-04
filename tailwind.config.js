@@ -8,10 +8,13 @@ module.exports = {
     extend: {
       colors: {
         'chroma-black': '#0a0a0f',
+        'chroma-dark': '#0B1220',
         'chroma-panel': '#111116',
         'chroma-teal': '#00CED1',
         'chroma-cyan': '#00FFFF',
         'chroma-purple': '#8B5CF6',
+        'chroma-gold': '#D4AF37',
+        'chroma-gold-light': '#FFD700',
         'chroma-success': '#10B981',
         'chroma-warning': '#F97316',
         'chroma-error': '#EF4444',
@@ -27,7 +30,11 @@ module.exports = {
         'neon-teal': '0 0 5px #00CED1, 0 0 20px rgba(0, 206, 209, 0.3)',
         'neon-purple': '0 0 5px #8B5CF6, 0 0 20px rgba(139, 92, 246, 0.3)',
         'neon-cyan': '0 0 10px rgba(0, 206, 209, 0.4)',
+        'neon-gold': '0 0 5px #D4AF37, 0 0 20px rgba(212, 175, 55, 0.3)',
         'glass': '0 8px 32px rgba(0, 0, 0, 0.3)',
+        'glass-premium': '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+        'inner-glow-teal': 'inset 0 0 30px rgba(0, 206, 209, 0.1)',
+        'glow-lg': '0 0 40px rgba(0, 206, 209, 0.4)',
       },
       animation: {
         'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
@@ -40,6 +47,12 @@ module.exports = {
         'slide-up': 'slideUp 0.3s ease-out',
         'fade-in': 'fadeIn 0.5s ease-out',
         'draw-stroke': 'drawStroke 2s ease-out forwards',
+        'aurora-shift': 'auroraShift 20s ease-in-out infinite',
+        'led-ring-pulse': 'ledRingPulse 2s ease-out infinite',
+        'shine-sweep': 'shineSweep 3s ease-in-out infinite',
+        'float-up': 'floatUp 3s ease-in-out infinite',
+        'breathe': 'breathe 3s ease-in-out infinite',
+        'gradient-shift': 'gradientShift 8s ease infinite',
       },
       keyframes: {
         glow: {
@@ -67,6 +80,30 @@ module.exports = {
         },
         drawStroke: {
           'to': { strokeDashoffset: '0' },
+        },
+        auroraShift: {
+          '0%, 100%': { transform: 'translateX(-5%) translateY(-5%)', opacity: '0.5' },
+          '50%': { transform: 'translateX(5%) translateY(5%)', opacity: '1' },
+        },
+        ledRingPulse: {
+          '0%': { transform: 'scale(1)', opacity: '0.8' },
+          '100%': { transform: 'scale(2.5)', opacity: '0' },
+        },
+        shineSweep: {
+          '0%': { transform: 'translateX(-100%)' },
+          '50%, 100%': { transform: 'translateX(200%)' },
+        },
+        floatUp: {
+          '0%, 100%': { transform: 'translateY(0)', opacity: '0.3' },
+          '50%': { transform: 'translateY(-20px)', opacity: '0.8' },
+        },
+        breathe: {
+          '0%, 100%': { filter: 'drop-shadow(0 0 3px #00CED1)' },
+          '50%': { filter: 'drop-shadow(0 0 10px #00CED1) drop-shadow(0 0 20px #00CED1)' },
+        },
+        gradientShift: {
+          '0%, 100%': { backgroundPosition: '0% 50%' },
+          '50%': { backgroundPosition: '100% 50%' },
         },
       },
       backgroundImage: {

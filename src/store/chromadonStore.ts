@@ -21,10 +21,20 @@ export interface BrowserTab {
   screenshot?: string
 }
 
+// Embedded tab info (from BrowserViewManager)
+export interface EmbeddedTab {
+  id: number
+  url: string
+  title: string
+  isActive: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
 interface ChromadonState {
   // Connection state
   isConnected: boolean
-  connectionMode: 'CDP' | 'FRESH' | null
+  connectionMode: 'CDP' | 'FRESH' | 'EMBEDDED' | null
   chromadonUrl: string
 
   // AI state
@@ -40,11 +50,13 @@ interface ChromadonState {
 
   // Data
   tabs: BrowserTab[]
+  embeddedTabs: EmbeddedTab[]
+  activeEmbeddedTabId: number | null
   actionLogs: ActionLog[]
   memoryStats: { working: number; episodic: number; semantic: number; procedural: number }
 
   // Actions
-  setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH') => void
+  setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
   setAIState: (state: AIState) => void
   setConfidence: (confidence: number) => void
   setCircuitState: (state: CircuitState) => void
@@ -53,6 +65,8 @@ interface ChromadonState {
   setCommand: (command: string) => void
   setIsProcessing: (processing: boolean) => void
   setTabs: (tabs: BrowserTab[]) => void
+  setEmbeddedTabs: (tabs: EmbeddedTab[]) => void
+  setActiveEmbeddedTabId: (id: number | null) => void
   addActionLog: (log: Omit<ActionLog, 'id' | 'timestamp'>) => void
   clearLogs: () => void
   setMemoryStats: (stats: { working: number; episodic: number; semantic: number; procedural: number }) => void
@@ -74,6 +88,8 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   isProcessing: false,
 
   tabs: [],
+  embeddedTabs: [],
+  activeEmbeddedTabId: null,
   actionLogs: [],
   memoryStats: { working: 0, episodic: 0, semantic: 0, procedural: 0 },
 
@@ -87,6 +103,11 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   setCommand: (command) => set({ command }),
   setIsProcessing: (processing) => set({ isProcessing: processing }),
   setTabs: (tabs) => set({ tabs }),
+  setEmbeddedTabs: (tabs) => set((state) => ({
+    embeddedTabs: tabs,
+    activeEmbeddedTabId: tabs.find((t) => t.isActive)?.id ?? state.activeEmbeddedTabId,
+  })),
+  setActiveEmbeddedTabId: (id) => set({ activeEmbeddedTabId: id }),
   addActionLog: (log) => set((state) => ({
     actionLogs: [
       ...state.actionLogs,
