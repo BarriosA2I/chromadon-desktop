@@ -1,5 +1,18 @@
-import { BrowserView, BrowserWindow, session } from 'electron'
+import { BrowserView, BrowserWindow, session, shell } from 'electron'
 import * as path from 'path'
+
+// OAuth provider patterns - allow these as popup windows
+const OAUTH_PATTERNS = [
+  /accounts\.google\.com/,
+  /github\.com\/login\/oauth/,
+  /github\.com\/sessions/,
+  /api\.twitter\.com\/oauth/,
+  /twitter\.com\/i\/oauth/,
+  /facebook\.com.*oauth/,
+  /login\.microsoftonline\.com/,
+  /appleid\.apple\.com/,
+  /discord\.com\/api\/oauth/,
+]
 
 export interface TabInfo {
   id: number
@@ -86,6 +99,35 @@ export class BrowserViewManager {
 
     // Set bounds (initially hidden until focused)
     view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+
+    // Handle OAuth popups and external links
+    view.webContents.setWindowOpenHandler(({ url }) => {
+      const isOAuth = OAUTH_PATTERNS.some(pattern => pattern.test(url))
+
+      if (isOAuth && this.mainWindow) {
+        // Allow OAuth popups to open as modal windows
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 500,
+            height: 700,
+            center: true,
+            parent: this.mainWindow,
+            modal: true,
+            autoHideMenuBar: true,
+            webPreferences: {
+              nodeIntegration: false,
+              contextIsolation: true,
+              partition: `persist:oauth-tab-${id}`,
+            },
+          },
+        }
+      }
+
+      // Default: open in system browser
+      shell.openExternal(url)
+      return { action: 'deny' }
+    })
 
     // Track navigation events
     view.webContents.on('did-navigate', (_event, url) => {

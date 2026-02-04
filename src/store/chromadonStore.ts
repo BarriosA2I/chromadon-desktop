@@ -4,6 +4,44 @@ export type ActionType = 'navigate' | 'click' | 'type' | 'scroll' | 'wait' | 'sc
 export type AIState = 'idle' | 'thinking' | 'executing' | 'error'
 export type CircuitState = 'closed' | 'open' | 'half-open'
 
+// Vault types
+export interface VaultStatus {
+  exists: boolean
+  isLocked: boolean
+  isLockedOut: boolean
+  lockoutRemaining?: number
+  profileCount?: number
+  credentialCount?: number
+  currentProfileId?: string
+}
+
+export interface ChromadonProfile {
+  id: string
+  name: string
+  avatar?: string
+  createdAt: number
+  lastUsedAt: number
+  settings: {
+    autoLockMinutes: number
+    clipboardClearSeconds: number
+  }
+}
+
+export interface StoredCredential {
+  id: string
+  profileId: string
+  domain: string
+  displayName: string
+  type: 'password' | 'oauth' | 'api-key'
+  username?: string
+  password?: string // Will be '********' if exists (sanitized)
+  tags: string[]
+  createdAt: number
+  updatedAt: number
+  lastUsedAt?: number
+  usageCount: number
+}
+
 export interface ActionLog {
   id: string
   timestamp: Date
@@ -55,6 +93,16 @@ interface ChromadonState {
   actionLogs: ActionLog[]
   memoryStats: { working: number; episodic: number; semantic: number; procedural: number }
 
+  // Vault state
+  vaultStatus: VaultStatus
+  profiles: ChromadonProfile[]
+  currentProfile: ChromadonProfile | null
+  credentials: StoredCredential[]
+  showVaultModal: boolean
+  vaultModalMode: 'create' | 'unlock'  // Track mode explicitly to avoid race conditions
+  showCredentialVault: boolean
+  showProfileManager: boolean
+
   // Actions
   setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
   setAIState: (state: AIState) => void
@@ -70,6 +118,15 @@ interface ChromadonState {
   addActionLog: (log: Omit<ActionLog, 'id' | 'timestamp'>) => void
   clearLogs: () => void
   setMemoryStats: (stats: { working: number; episodic: number; semantic: number; procedural: number }) => void
+
+  // Vault actions
+  setVaultStatus: (status: VaultStatus) => void
+  setProfiles: (profiles: ChromadonProfile[]) => void
+  setCurrentProfile: (profile: ChromadonProfile | null) => void
+  setCredentials: (credentials: StoredCredential[]) => void
+  setShowVaultModal: (show: boolean, mode?: 'create' | 'unlock') => void
+  setShowCredentialVault: (show: boolean) => void
+  setShowProfileManager: (show: boolean) => void
 }
 
 export const useChromadonStore = create<ChromadonState>((set) => ({
@@ -92,6 +149,20 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   activeEmbeddedTabId: null,
   actionLogs: [],
   memoryStats: { working: 0, episodic: 0, semantic: 0, procedural: 0 },
+
+  // Vault initial state
+  vaultStatus: {
+    exists: false,
+    isLocked: true,
+    isLockedOut: false,
+  },
+  profiles: [],
+  currentProfile: null,
+  credentials: [],
+  showVaultModal: false,
+  vaultModalMode: 'create',  // Default to create, will be set properly when showing modal
+  showCredentialVault: false,
+  showProfileManager: false,
 
   // Actions
   setConnected: (connected, mode) => set({ isConnected: connected, connectionMode: mode ?? null }),
@@ -120,4 +191,16 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   })),
   clearLogs: () => set({ actionLogs: [] }),
   setMemoryStats: (stats) => set({ memoryStats: stats }),
+
+  // Vault actions
+  setVaultStatus: (status) => set({ vaultStatus: status }),
+  setProfiles: (profiles) => set({ profiles }),
+  setCurrentProfile: (profile) => set({ currentProfile: profile }),
+  setCredentials: (credentials) => set({ credentials }),
+  setShowVaultModal: (show, mode) => set((state) => ({
+    showVaultModal: show,
+    vaultModalMode: mode ?? state.vaultModalMode,
+  })),
+  setShowCredentialVault: (show) => set({ showCredentialVault: show }),
+  setShowProfileManager: (show) => set({ showProfileManager: show }),
 }))

@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, clipboard } from 'electron'
 import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
 import * as fs from 'fs'
 import { browserViewManager, TabInfo } from './browser-view-manager'
+import { vault, ChromadonProfile, StoredCredential } from './security/vault'
 
 let mainWindow: BrowserWindow | null = null
 const CONTROL_PORT = 3002
@@ -56,8 +57,44 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  // Handle external links
+  // Handle external links and OAuth popups
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // OAuth provider patterns - allow these as popup windows
+    const oauthPatterns = [
+      /accounts\.google\.com/,
+      /github\.com\/login\/oauth/,
+      /github\.com\/sessions/,
+      /api\.twitter\.com\/oauth/,
+      /twitter\.com\/i\/oauth/,
+      /facebook\.com.*oauth/,
+      /login\.microsoftonline\.com/,
+      /appleid\.apple\.com/,
+      /discord\.com\/api\/oauth/,
+    ]
+
+    const isOAuth = oauthPatterns.some(pattern => pattern.test(url))
+
+    if (isOAuth) {
+      // Allow OAuth popups to open as modal windows
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 500,
+          height: 700,
+          center: true,
+          parent: mainWindow!,
+          modal: true,
+          autoHideMenuBar: true,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            partition: 'persist:oauth-flow',
+          },
+        },
+      }
+    }
+
+    // Default: open in system browser
     shell.openExternal(url)
     return { action: 'deny' }
   })
@@ -495,6 +532,288 @@ ipcMain.handle('tab:screenshot', async (_event, id: number) => {
     return { success: true, screenshot: buffer.toString('base64') }
   }
   return { success: false, error: 'Tab not found' }
+})
+
+// ==================== SECURE VAULT IPC HANDLERS ====================
+
+// Get vault status
+ipcMain.handle('vault:status', () => {
+  return vault.getStatus()
+})
+
+// Check if vault exists
+ipcMain.handle('vault:exists', () => {
+  return vault.vaultExists()
+})
+
+// Create new vault with master password
+ipcMain.handle('vault:create', async (_event, masterPassword: string) => {
+  return vault.create(masterPassword)
+})
+
+// Unlock vault with master password
+ipcMain.handle('vault:unlock', async (_event, masterPassword: string) => {
+  const result = await vault.unlock(masterPassword)
+  // Notify renderer of vault state change
+  if (result.success && mainWindow) {
+    mainWindow.webContents.send('vault:unlocked')
+  }
+  return result
+})
+
+// Lock vault
+ipcMain.handle('vault:lock', () => {
+  vault.lock()
+  if (mainWindow) {
+    mainWindow.webContents.send('vault:locked')
+  }
+  return { success: true }
+})
+
+// Change master password
+ipcMain.handle('vault:changeMasterPassword', async (_event, { currentPassword, newPassword }: { currentPassword: string; newPassword: string }) => {
+  return vault.changeMasterPassword(currentPassword, newPassword)
+})
+
+// Reset activity timer (call on user interaction)
+ipcMain.handle('vault:activity', () => {
+  vault.resetAutoLockTimer()
+  return { success: true }
+})
+
+// ==================== PROFILE IPC HANDLERS ====================
+
+// Get all profiles
+ipcMain.handle('profile:list', () => {
+  return { success: true, profiles: vault.getProfiles() }
+})
+
+// Get current profile
+ipcMain.handle('profile:current', () => {
+  const profile = vault.getCurrentProfile()
+  return { success: true, profile }
+})
+
+// Create new profile
+ipcMain.handle('profile:create', async (_event, { name, avatar }: { name: string; avatar?: string }) => {
+  return vault.createProfile(name, avatar)
+})
+
+// Update profile
+ipcMain.handle('profile:update', async (_event, { id, updates }: { id: string; updates: Partial<ChromadonProfile> }) => {
+  return vault.updateProfile(id, updates)
+})
+
+// Delete profile
+ipcMain.handle('profile:delete', async (_event, id: string) => {
+  return vault.deleteProfile(id)
+})
+
+// Switch to profile
+ipcMain.handle('profile:switch', async (_event, id: string) => {
+  return vault.switchProfile(id)
+})
+
+// ==================== CREDENTIAL IPC HANDLERS ====================
+
+// Get all credentials for current profile
+ipcMain.handle('credential:list', () => {
+  // Return sanitized credentials (no passwords in plain response)
+  const credentials = vault.getCredentials()
+  const sanitized = credentials.map(c => ({
+    ...c,
+    password: c.password ? '********' : undefined,
+    apiKey: c.apiKey ? '********' : undefined,
+    oauthTokens: c.oauthTokens ? { ...c.oauthTokens, accessToken: '********', refreshToken: '********' } : undefined,
+  }))
+  return { success: true, credentials: sanitized }
+})
+
+// Get credentials by domain
+ipcMain.handle('credential:getByDomain', (_event, domain: string) => {
+  const credentials = vault.getCredentialsByDomain(domain)
+  const sanitized = credentials.map(c => ({
+    ...c,
+    password: c.password ? '********' : undefined,
+    apiKey: c.apiKey ? '********' : undefined,
+  }))
+  return { success: true, credentials: sanitized }
+})
+
+// Add new credential
+ipcMain.handle('credential:add', async (_event, credential: Omit<StoredCredential, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>) => {
+  return vault.addCredential(credential)
+})
+
+// Update credential
+ipcMain.handle('credential:update', async (_event, { id, updates }: { id: string; updates: Partial<StoredCredential> }) => {
+  return vault.updateCredential(id, updates)
+})
+
+// Delete credential
+ipcMain.handle('credential:delete', async (_event, id: string) => {
+  return vault.deleteCredential(id)
+})
+
+// Auto-fill credential into tab
+ipcMain.handle('credential:autofill', async (_event, { tabId, credentialId }: { tabId: number; credentialId: string }) => {
+  const credential = vault.getCredentialById(credentialId)
+  if (!credential) {
+    return { success: false, error: 'Credential not found' }
+  }
+
+  if (!credential.username || !credential.password) {
+    return { success: false, error: 'Credential has no username/password' }
+  }
+
+  // Login form auto-fill script
+  const fillScript = `
+    (function() {
+      // Find password field
+      const passwordField = document.querySelector('input[type="password"]');
+      if (!passwordField) return { success: false, error: 'No password field found' };
+
+      // Find username field (usually before password in DOM or in same form)
+      const form = passwordField.closest('form');
+      const usernameSelectors = [
+        'input[type="email"]',
+        'input[type="text"][name*="user"]',
+        'input[type="text"][name*="email"]',
+        'input[type="text"][name*="login"]',
+        'input[id*="user"]',
+        'input[id*="email"]',
+        'input[id*="login"]',
+        'input[autocomplete="username"]',
+        'input[autocomplete="email"]',
+        'input[type="text"]',
+      ];
+
+      let usernameField = null;
+      for (const selector of usernameSelectors) {
+        const field = form ? form.querySelector(selector) : document.querySelector(selector);
+        if (field && field !== passwordField) {
+          usernameField = field;
+          break;
+        }
+      }
+
+      if (!usernameField) return { success: false, error: 'No username field found' };
+
+      // Fill credentials
+      usernameField.value = ${JSON.stringify(credential.username)};
+      passwordField.value = ${JSON.stringify(credential.password)};
+
+      // Dispatch events to trigger any validation
+      usernameField.dispatchEvent(new Event('input', { bubbles: true }));
+      usernameField.dispatchEvent(new Event('change', { bubbles: true }));
+      passwordField.dispatchEvent(new Event('input', { bubbles: true }));
+      passwordField.dispatchEvent(new Event('change', { bubbles: true }));
+
+      return { success: true };
+    })()
+  `
+
+  try {
+    const result = await browserViewManager.executeScript(tabId, fillScript)
+    if (result?.success) {
+      // Record usage
+      await vault.recordCredentialUsage(credentialId)
+    }
+    return result || { success: false, error: 'Script execution failed' }
+  } catch (error) {
+    return { success: false, error: (error as Error).message }
+  }
+})
+
+// Copy password to clipboard (with auto-clear)
+ipcMain.handle('credential:copyPassword', async (_event, credentialId: string) => {
+  const credential = vault.getCredentialById(credentialId)
+  if (!credential || !credential.password) {
+    return { success: false, error: 'Credential not found or has no password' }
+  }
+
+  clipboard.writeText(credential.password)
+
+  // Get clipboard clear timeout from current profile settings
+  const profile = vault.getCurrentProfile()
+  const clearSeconds = profile?.settings.clipboardClearSeconds || 30
+
+  // Auto-clear clipboard after timeout
+  setTimeout(() => {
+    // Only clear if clipboard still contains the password
+    if (clipboard.readText() === credential.password) {
+      clipboard.clear()
+    }
+  }, clearSeconds * 1000)
+
+  await vault.recordCredentialUsage(credentialId)
+
+  return { success: true, clearAfterSeconds: clearSeconds }
+})
+
+// Copy username to clipboard
+ipcMain.handle('credential:copyUsername', async (_event, credentialId: string) => {
+  const credential = vault.getCredentialById(credentialId)
+  if (!credential || !credential.username) {
+    return { success: false, error: 'Credential not found or has no username' }
+  }
+
+  clipboard.writeText(credential.username)
+  return { success: true }
+})
+
+// Detect login form on current tab
+ipcMain.handle('credential:detectLoginForm', async (_event, tabId: number) => {
+  const detectScript = `
+    (function() {
+      const forms = [];
+      const passwordFields = document.querySelectorAll('input[type="password"]');
+
+      passwordFields.forEach((pwField, idx) => {
+        const form = pwField.closest('form');
+        const formInfo = {
+          formIndex: idx,
+          formId: form?.id || null,
+          formAction: form?.action || null,
+          hasUsername: false,
+          domain: window.location.hostname,
+        };
+
+        // Check for username field
+        const usernameSelectors = [
+          'input[type="email"]',
+          'input[type="text"][name*="user"]',
+          'input[type="text"][name*="email"]',
+          'input[autocomplete="username"]',
+          'input[autocomplete="email"]',
+        ];
+
+        for (const selector of usernameSelectors) {
+          const field = form ? form.querySelector(selector) : document.querySelector(selector);
+          if (field && field !== pwField) {
+            formInfo.hasUsername = true;
+            break;
+          }
+        }
+
+        forms.push(formInfo);
+      });
+
+      return {
+        hasLoginForm: forms.length > 0,
+        forms: forms,
+        url: window.location.href,
+        domain: window.location.hostname,
+      };
+    })()
+  `
+
+  try {
+    const result = await browserViewManager.executeScript(tabId, detectScript)
+    return { success: true, ...result }
+  } catch (error) {
+    return { success: false, error: (error as Error).message }
+  }
 })
 
 // App lifecycle
