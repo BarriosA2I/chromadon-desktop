@@ -109,6 +109,7 @@ const AUTH_TAG_LENGTH = 16
 export class SecureVault {
   private vaultPath: string = ''
   private derivedKey: Buffer | null = null
+  private currentSalt: Buffer | null = null  // Store salt to avoid mismatch between create and saveVault
   private vaultData: VaultData | null = null
   private currentProfileId: string | null = null
   private lockTimeout: NodeJS.Timeout | null = null
@@ -230,9 +231,14 @@ export class SecureVault {
     }
 
     const existingVault = this.readVaultFile()
-    const salt = existingVault
-      ? Buffer.from(existingVault.salt, 'base64')
-      : this.generateSalt()
+    let salt: Buffer
+    if (existingVault) {
+      salt = Buffer.from(existingVault.salt, 'base64')
+    } else if (this.currentSalt) {
+      salt = this.currentSalt
+    } else {
+      throw new Error('No salt available - create() must be called first')
+    }
 
     const dataJson = JSON.stringify(this.vaultData)
     const { iv, authTag, encrypted } = this.encrypt(dataJson, this.derivedKey)
@@ -306,6 +312,7 @@ export class SecureVault {
     }
 
     const salt = this.generateSalt()
+    this.currentSalt = salt  // Store salt so saveVault uses the same one
     this.derivedKey = await this.deriveKey(masterPassword, salt)
 
     // Create default vault data
@@ -359,6 +366,7 @@ export class SecureVault {
     }
 
     const salt = Buffer.from(vault.salt, 'base64')
+    this.currentSalt = salt  // Store salt for any subsequent saves
     const derivedKey = await this.deriveKey(masterPassword, salt)
     const keyCheck = this.generateKeyCheck(derivedKey)
 

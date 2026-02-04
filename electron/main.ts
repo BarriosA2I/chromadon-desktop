@@ -1354,6 +1354,8 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
       nodeIntegration: false,
       contextIsolation: true,
       partition: `persist:platform-${platform}`, // Share session with BrowserViews!
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     }
   })
 
@@ -1362,6 +1364,50 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     oauthWindow.show()
     oauthWindow.focus()
   })
+
+  // Anti-detection: Inject scripts before Google can detect automation
+  oauthWindow.webContents.on('did-start-navigation', () => {
+    oauthWindow.webContents.executeJavaScript(`
+      // Remove webdriver flag - Google checks this
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined
+      });
+
+      // Add chrome object - Google expects this in Chrome browsers
+      if (!window.chrome) {
+        window.chrome = {
+          runtime: {},
+          loadTimes: function() {},
+          csi: function() {},
+          app: {}
+        };
+      }
+
+      // Fix permissions API query
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters)
+      );
+
+      // Add realistic plugins array
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [
+          { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+          { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+          { name: 'Native Client', filename: 'internal-nacl-plugin' }
+        ]
+      });
+
+      // Ensure languages are set
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en']
+      });
+
+      console.log('[CHROMADON] Anti-detection script injected');
+    `).catch(() => {});
+  });
 
   // Load the login page
   oauthWindow.loadURL(loginUrl)
