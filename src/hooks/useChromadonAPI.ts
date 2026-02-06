@@ -1,4 +1,5 @@
-import axios from 'axios'
+import axios, { CancelTokenSource } from 'axios'
+import { useRef } from 'react'
 import { useChromadonStore, ActionType } from '../store/chromadonStore'
 
 const API_BASE = 'http://localhost:3001'
@@ -17,6 +18,12 @@ export function useChromadonAPI() {
     setCommand,
   } = useChromadonStore()
 
+  // Track if we've already warned about Brain API being unavailable
+  const brainApiWarnedRef = useRef(false)
+
+  // Track active requests for cancellation
+  const activeCommandRef = useRef<CancelTokenSource | null>(null)
+
   const connect = async (): Promise<boolean> => {
     try {
       const response = await axios.get(`${API_BASE}/health`, { timeout: 5000 })
@@ -26,20 +33,21 @@ export function useChromadonAPI() {
         setConnected(true, data.mode)
         addActionLog({
           type: 'success',
-          description: `Connected to CHROMADON (${data.mode} mode)`,
+          description: `Connected to CHROMADON Brain (${data.mode} mode)`,
           success: true,
         })
+        brainApiWarnedRef.current = false // Reset warning flag on successful connection
         return true
       }
       return false
     } catch (error) {
-      console.error('Failed to connect to CHROMADON:', error)
-      setConnected(false)
-      addActionLog({
-        type: 'error',
-        description: 'Failed to connect to CHROMADON API',
-        success: false,
-      })
+      // Only warn once about Brain API being unavailable
+      // Don't override connection state - embedded mode still works
+      // Don't add action log - this is expected when Brain isn't running
+      if (!brainApiWarnedRef.current) {
+        console.warn('[CHROMADON] Brain API not available at', API_BASE, '- AI features disabled')
+        brainApiWarnedRef.current = true
+      }
       return false
     }
   }
@@ -63,7 +71,7 @@ export function useChromadonAPI() {
 
   const fetchAIStatus = async (): Promise<void> => {
     try {
-      const response = await axios.get(`${API_BASE}/api/ai/status`)
+      const response = await axios.get(`${API_BASE}/api/ai/status`, { timeout: 3000 })
       if (response.data.success) {
         const data = response.data.data
 
@@ -76,11 +84,20 @@ export function useChromadonAPI() {
         }
       }
     } catch (error) {
-      console.error('Failed to fetch AI status:', error)
+      // Silently ignore - Brain API not running is expected
+      // AI status is optional when running in embedded mode
     }
   }
 
   const executeCommand = async (command: string): Promise<void> => {
+    // Cancel any in-flight command
+    if (activeCommandRef.current) {
+      activeCommandRef.current.cancel('New command supersedes previous')
+    }
+
+    const cancelSource = axios.CancelToken.source()
+    activeCommandRef.current = cancelSource
+
     setIsProcessing(true)
     setAIState('thinking')
 
@@ -94,7 +111,10 @@ export function useChromadonAPI() {
       const response = await axios.post(`${API_BASE}/api/mission/ai`, {
         command,
         minConfidence: 0.5,
-      }, { timeout: 120000 })
+      }, {
+        timeout: 120000,
+        cancelToken: cancelSource.token,
+      })
 
       const data = response.data
 
@@ -116,6 +136,15 @@ export function useChromadonAPI() {
           }
         }
 
+        // Log observation response if present
+        if (data.data.response && data.data.actionsPlanned === 0) {
+          addActionLog({
+            type: 'success',
+            description: `Observation: ${data.data.response.slice(0, 200)}`,
+            success: true,
+          })
+        }
+
         // Final success log
         addActionLog({
           type: 'success',
@@ -130,6 +159,11 @@ export function useChromadonAPI() {
         throw new Error(data.data?.error || 'Command execution failed')
       }
     } catch (error: any) {
+      // Don't log cancellation as an error
+      if (axios.isCancel(error)) {
+        return
+      }
+
       console.error('Command execution failed:', error)
       setAIState('error')
 
@@ -142,9 +176,18 @@ export function useChromadonAPI() {
       // Reset to idle after error display
       setTimeout(() => setAIState('idle'), 3000)
     } finally {
+      activeCommandRef.current = null
       setIsProcessing(false)
       // Refresh tabs after execution
       fetchTabs()
+    }
+  }
+
+  // Cancel any active command (call on unmount)
+  const cancelActiveCommand = () => {
+    if (activeCommandRef.current) {
+      activeCommandRef.current.cancel('Component unmounted')
+      activeCommandRef.current = null
     }
   }
 
@@ -153,6 +196,7 @@ export function useChromadonAPI() {
     fetchTabs,
     fetchAIStatus,
     executeCommand,
+    cancelActiveCommand,
   }
 }
 

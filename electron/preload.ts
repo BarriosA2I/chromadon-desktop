@@ -117,9 +117,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ==================== CLAUDE CODE CONTROL API ====================
   onExternalCommand: (callback: (command: string) => void) => {
-    ipcRenderer.on('claude:executeCommand', (_event, command) => {
+    const handler = (_event: any, command: string) => {
       callback(command)
-    })
+    }
+    ipcRenderer.on('claude:executeCommand', handler)
+    // Return cleanup function to remove listener
+    return () => {
+      ipcRenderer.removeListener('claude:executeCommand', handler)
+    }
   },
   sendStateUpdate: (state: any) => {
     ipcRenderer.send('claude:stateUpdate', state)
@@ -140,9 +145,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Tab update listener
   onTabsUpdated: (callback: (tabs: TabInfo[]) => void) => {
-    ipcRenderer.on('tabs:updated', (_event, tabs) => {
+    const handler = (_event: any, tabs: TabInfo[]) => {
       callback(tabs)
-    })
+    }
+    ipcRenderer.on('tabs:updated', handler)
+    return () => {
+      ipcRenderer.removeListener('tabs:updated', handler)
+    }
   },
 
   // ==================== SECURE VAULT API ====================
@@ -157,10 +166,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Vault event listeners
   onVaultUnlocked: (callback: () => void) => {
-    ipcRenderer.on('vault:unlocked', () => callback())
+    const handler = () => callback()
+    ipcRenderer.on('vault:unlocked', handler)
+    return () => {
+      ipcRenderer.removeListener('vault:unlocked', handler)
+    }
   },
   onVaultLocked: (callback: () => void) => {
-    ipcRenderer.on('vault:locked', () => callback())
+    const handler = () => callback()
+    ipcRenderer.on('vault:locked', handler)
+    return () => {
+      ipcRenderer.removeListener('vault:locked', handler)
+    }
   },
 
   // ==================== PROFILE API ====================
@@ -241,13 +258,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Queue event listeners
   onQueueUpdated: (callback: (queue: MarketingTask[]) => void) => {
-    ipcRenderer.on('queue:updated', (_event, queue) => callback(queue))
+    const handler = (_event: any, queue: MarketingTask[]) => callback(queue)
+    ipcRenderer.on('queue:updated', handler)
+    return () => {
+      ipcRenderer.removeListener('queue:updated', handler)
+    }
   },
   onTaskStarted: (callback: (task: MarketingTask) => void) => {
-    ipcRenderer.on('queue:taskStarted', (_event, task) => callback(task))
+    const handler = (_event: any, task: MarketingTask) => callback(task)
+    ipcRenderer.on('queue:taskStarted', handler)
+    return () => {
+      ipcRenderer.removeListener('queue:taskStarted', handler)
+    }
   },
   onTaskCompleted: (callback: (task: MarketingTask) => void) => {
-    ipcRenderer.on('queue:taskCompleted', (_event, task) => callback(task))
+    const handler = (_event: any, task: MarketingTask) => callback(task)
+    ipcRenderer.on('queue:taskCompleted', handler)
+    return () => {
+      ipcRenderer.removeListener('queue:taskCompleted', handler)
+    }
   },
 })
 
@@ -263,7 +292,7 @@ declare global {
       platform: string
 
       // Claude Code Control API
-      onExternalCommand: (callback: (command: string) => void) => void
+      onExternalCommand: (callback: (command: string) => void) => (() => void)
       sendStateUpdate: (state: any) => void
 
       // Embedded Tab API
@@ -278,7 +307,7 @@ declare global {
       tabGetActive: () => Promise<{ success: boolean; activeTabId: number | null }>
       tabExecute: (id: number, script: string) => Promise<{ success: boolean; result?: any; error?: string }>
       tabScreenshot: (id: number) => Promise<{ success: boolean; screenshot?: string; error?: string }>
-      onTabsUpdated: (callback: (tabs: TabInfo[]) => void) => void
+      onTabsUpdated: (callback: (tabs: TabInfo[]) => void) => (() => void)
 
       // Secure Vault API
       vaultStatus: () => Promise<VaultStatus>
@@ -288,8 +317,8 @@ declare global {
       vaultLock: () => Promise<{ success: boolean }>
       vaultChangeMasterPassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>
       vaultActivity: () => Promise<{ success: boolean }>
-      onVaultUnlocked: (callback: () => void) => void
-      onVaultLocked: (callback: () => void) => void
+      onVaultUnlocked: (callback: () => void) => (() => void)
+      onVaultLocked: (callback: () => void) => (() => void)
 
       // Profile API
       profileList: () => Promise<{ success: boolean; profiles: ChromadonProfile[] }>
@@ -343,9 +372,9 @@ declare global {
       queueComplete: (taskId: string, result?: any, error?: string) => Promise<{ success: boolean; task?: MarketingTask; error?: string }>
       queueRemove: (taskId: string) => Promise<{ success: boolean; error?: string }>
       queueClear: (status?: 'completed' | 'failed' | 'all') => Promise<{ success: boolean; remaining: number }>
-      onQueueUpdated: (callback: (queue: MarketingTask[]) => void) => void
-      onTaskStarted: (callback: (task: MarketingTask) => void) => void
-      onTaskCompleted: (callback: (task: MarketingTask) => void) => void
+      onQueueUpdated: (callback: (queue: MarketingTask[]) => void) => (() => void)
+      onTaskStarted: (callback: (task: MarketingTask) => void) => (() => void)
+      onTaskCompleted: (callback: (task: MarketingTask) => void) => (() => void)
     }
   }
 }

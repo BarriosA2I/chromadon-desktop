@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useChromadonStore, EmbeddedTab, VaultStatus, ChromadonProfile, StoredCredential, Platform } from './store/chromadonStore'
 import { useChromadonAPI } from './hooks/useChromadonAPI'
@@ -61,8 +61,11 @@ function App() {
     checkVault()
 
     // Listen for vault lock/unlock events
+    let cleanupLocked: (() => void) | undefined
+    let cleanupUnlocked: (() => void) | undefined
+
     if (window.electronAPI?.onVaultLocked) {
-      window.electronAPI.onVaultLocked(() => {
+      cleanupLocked = window.electronAPI.onVaultLocked(() => {
         setVaultStatus({ ...vaultStatus, isLocked: true })
         setShowVaultModal(true, 'unlock')
         setProfiles([])
@@ -72,12 +75,17 @@ function App() {
     }
 
     if (window.electronAPI?.onVaultUnlocked) {
-      window.electronAPI.onVaultUnlocked(async () => {
+      cleanupUnlocked = window.electronAPI.onVaultUnlocked(async () => {
         const status = await window.electronAPI.vaultStatus()
         setVaultStatus(status)
         setShowVaultModal(false) // Close the vault modal
         await loadVaultData()
       })
+    }
+
+    return () => {
+      cleanupLocked?.()
+      cleanupUnlocked?.()
     }
   }, [])
 
@@ -139,20 +147,19 @@ function App() {
     return () => clearInterval(pollInterval)
   }, [isConnected])
 
-  // Retry connecting to Brain API when disconnected
+  // Retry connecting to Brain API periodically (silently - logged once in useChromadonAPI)
   useEffect(() => {
-    if (isConnected) return
-
+    // Only retry if Brain API features are wanted
+    // In embedded mode, basic browsing works without Brain API
     const retryInterval = setInterval(async () => {
-      console.log('[CHROMADON] Attempting to reconnect to Brain API...')
       const connected = await connect()
       if (connected) {
-        console.log('[CHROMADON] Successfully reconnected to Brain API')
+        console.log('[CHROMADON] Connected to Brain API - AI features enabled')
       }
-    }, 10000) // Retry every 10 seconds
+    }, 60000) // Check every 60 seconds (silently)
 
     return () => clearInterval(retryInterval)
-  }, [isConnected])
+  }, [])
 
   // Expose reconnect function globally for debugging
   useEffect(() => {
@@ -164,8 +171,9 @@ function App() {
 
   // Listen for embedded tab updates from Electron
   useEffect(() => {
+    let cleanup: (() => void) | undefined
     if (window.electronAPI?.onTabsUpdated) {
-      window.electronAPI.onTabsUpdated((tabs: EmbeddedTab[]) => {
+      cleanup = window.electronAPI.onTabsUpdated((tabs: EmbeddedTab[]) => {
         setEmbeddedTabs(tabs)
       })
     }
@@ -178,21 +186,34 @@ function App() {
         }
       })
     }
+
+    return cleanup
   }, [setEmbeddedTabs])
 
   // Claude Code Control: Listen for external commands
+  // Use ref to avoid re-registering listener on every render
+  const executeCommandRef = useRef(executeCommand)
+  const setCommandRef = useRef(setCommand)
+
   useEffect(() => {
-    if (window.electronAPI?.onExternalCommand) {
-      window.electronAPI.onExternalCommand(async (command: string) => {
-        console.log('[CHROMADON] External command received:', command)
-        setCommand(command)
-        // Small delay to let UI update, then execute
-        setTimeout(async () => {
-          await executeCommand(command)
-        }, 100)
-      })
-    }
+    executeCommandRef.current = executeCommand
+    setCommandRef.current = setCommand
   }, [executeCommand, setCommand])
+
+  useEffect(() => {
+    if (!window.electronAPI?.onExternalCommand) return
+
+    const cleanup = window.electronAPI.onExternalCommand(async (command: string) => {
+      console.log('[CHROMADON] External command received:', command)
+      setCommandRef.current(command)
+      // Small delay to let UI update, then execute
+      setTimeout(async () => {
+        await executeCommandRef.current(command)
+      }, 100)
+    })
+
+    return cleanup
+  }, []) // Empty deps - only register once
 
   // Claude Code Control: Send state updates to main process
   useEffect(() => {
@@ -329,11 +350,13 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
   // Listen for queue updates
   useEffect(() => {
+    let cleanup: (() => void) | undefined
     if (window.electronAPI?.onQueueUpdated) {
-      window.electronAPI.onQueueUpdated((queue) => {
+      cleanup = window.electronAPI.onQueueUpdated((queue) => {
         setMarketingQueue(queue)
       })
     }
+    return cleanup
   }, [setMarketingQueue])
 
   // Get current domain from active tab

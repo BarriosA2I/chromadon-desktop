@@ -67,11 +67,13 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
 
   // Listen for queue updates
   useEffect(() => {
+    let cleanup: (() => void) | undefined
     if (window.electronAPI?.onQueueUpdated) {
-      window.electronAPI.onQueueUpdated((queue) => {
+      cleanup = window.electronAPI.onQueueUpdated((queue) => {
         setMarketingQueue(queue)
       })
     }
+    return cleanup
   }, [setMarketingQueue])
 
   // Filter tasks

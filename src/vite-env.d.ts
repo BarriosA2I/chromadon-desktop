@@ -69,7 +69,7 @@ interface Window {
     platform: string
 
     // Claude Code Control API
-    onExternalCommand: (callback: (command: string) => void) => void
+    onExternalCommand: (callback: (command: string) => void) => (() => void)
     sendStateUpdate: (state: any) => void
 
     // Embedded Tab API
@@ -94,8 +94,8 @@ interface Window {
     vaultLock: () => Promise<{ success: boolean }>
     vaultChangeMasterPassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>
     vaultActivity: () => Promise<{ success: boolean }>
-    onVaultUnlocked: (callback: () => void) => void
-    onVaultLocked: (callback: () => void) => void
+    onVaultUnlocked: (callback: () => void) => (() => void)
+    onVaultLocked: (callback: () => void) => (() => void)
 
     // Profile API
     profileList: () => Promise<{ success: boolean; profiles: ChromadonProfile[] }>
