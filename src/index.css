@@ -408,3 +408,54 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+/* ===== Chat Interface Styles ===== */
+
+.chat-markdown strong {
+  color: #00CED1;
+  font-weight: 600;
+}
+
+.chat-markdown em {
+  color: #8B5CF6;
+  font-style: italic;
+}
+
+.chat-code-block {
+  display: block;
+  background: rgba(0, 206, 209, 0.05);
+  border: 1px solid rgba(0, 206, 209, 0.1);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #e2e8f0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.chat-inline-code {
+  background: rgba(0, 206, 209, 0.08);
+  border: 1px solid rgba(0, 206, 209, 0.12);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  color: #00CED1;
+}
+
+/* Custom scrollbar for chat */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(0, 206, 209, 0.15);
+  border-radius: 2px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 206, 209, 0.3);
+}

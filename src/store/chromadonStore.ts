@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ChatMessage, StreamingPart, ToolCallInfo } from './chatTypes'
 
 export type ActionType = 'navigate' | 'click' | 'type' | 'scroll' | 'wait' | 'screenshot' | 'extract' | 'hover' | 'error' | 'success'
 export type AIState = 'idle' | 'thinking' | 'executing' | 'error'
@@ -153,6 +154,14 @@ interface ChromadonState {
   queueStats: QueueStats
   showMarketingQueue: boolean
 
+  // Chat state
+  chatMessages: ChatMessage[]
+  chatInput: string
+  showThinkingIndicator: boolean
+
+  // Orchestrator state
+  orchestratorSessionId: string | null
+
   // Actions
   setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
   setAIState: (state: AIState) => void
@@ -191,6 +200,20 @@ interface ChromadonState {
   setActiveTaskForPlatform: (platform: Platform, task: MarketingTask | null) => void
   setQueueStats: (stats: QueueStats) => void
   setShowMarketingQueue: (show: boolean) => void
+
+  // Chat actions
+  addChatMessage: (msg: Omit<ChatMessage, 'id' | 'timestamp'>) => void
+  setChatInput: (input: string) => void
+  clearChat: () => void
+  setShowThinkingIndicator: (show: boolean) => void
+
+  // Orchestrator/streaming actions
+  setOrchestratorSessionId: (id: string | null) => void
+  addStreamingMessage: () => string  // returns message ID
+  appendToStreamingMessage: (msgId: string, text: string) => void
+  addToolCallToMessage: (msgId: string, toolCall: ToolCallInfo) => void
+  updateToolCallInMessage: (msgId: string, toolId: string, updates: Partial<ToolCallInfo>) => void
+  finalizeStreamingMessage: (msgId: string) => void
 }
 
 export const useChromadonStore = create<ChromadonState>((set) => ({
@@ -237,6 +260,14 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   activeTasksByPlatform: {} as Record<Platform, MarketingTask | null>,
   queueStats: { total: 0, queued: 0, running: 0, completed: 0, failed: 0 },
   showMarketingQueue: false,
+
+  // Chat initial state
+  chatMessages: [],
+  chatInput: '',
+  showThinkingIndicator: false,
+
+  // Orchestrator initial state
+  orchestratorSessionId: null,
 
   // Actions
   setConnected: (connected, mode) => set({ isConnected: connected, connectionMode: mode ?? null }),
@@ -352,4 +383,85 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   })),
   setQueueStats: (stats) => set({ queueStats: stats }),
   setShowMarketingQueue: (show) => set({ showMarketingQueue: show }),
+
+  // Chat actions
+  addChatMessage: (msg) => set((state) => ({
+    chatMessages: [
+      ...state.chatMessages,
+      {
+        ...msg,
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: new Date(),
+      },
+    ].slice(-200),
+  })),
+  setChatInput: (input) => set({ chatInput: input }),
+  clearChat: () => set({ chatMessages: [], orchestratorSessionId: null }),
+  setShowThinkingIndicator: (show) => set({ showThinkingIndicator: show }),
+
+  // Orchestrator/streaming actions
+  setOrchestratorSessionId: (id) => set({ orchestratorSessionId: id }),
+
+  addStreamingMessage: () => {
+    const msgId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    set((state) => ({
+      chatMessages: [
+        ...state.chatMessages,
+        {
+          id: msgId,
+          role: 'assistant' as const,
+          type: 'streaming' as const,
+          content: '',
+          timestamp: new Date(),
+          streamingParts: [],
+          isStreaming: true,
+        },
+      ].slice(-200),
+    }))
+    return msgId
+  },
+
+  appendToStreamingMessage: (msgId, text) => set((state) => ({
+    chatMessages: state.chatMessages.map((msg) => {
+      if (msg.id !== msgId) return msg
+      const parts = [...(msg.streamingParts || [])]
+      // Append to last text part or create new one
+      const lastPart = parts[parts.length - 1]
+      if (lastPart && lastPart.type === 'text') {
+        parts[parts.length - 1] = { ...lastPart, content: (lastPart.content || '') + text }
+      } else {
+        parts.push({ type: 'text', content: text })
+      }
+      return { ...msg, content: msg.content + text, streamingParts: parts }
+    }),
+  })),
+
+  addToolCallToMessage: (msgId, toolCall) => set((state) => ({
+    chatMessages: state.chatMessages.map((msg) => {
+      if (msg.id !== msgId) return msg
+      const parts = [...(msg.streamingParts || [])]
+      parts.push({ type: 'tool-call', toolCall })
+      return { ...msg, streamingParts: parts }
+    }),
+  })),
+
+  updateToolCallInMessage: (msgId, toolId, updates) => set((state) => ({
+    chatMessages: state.chatMessages.map((msg) => {
+      if (msg.id !== msgId) return msg
+      const parts = (msg.streamingParts || []).map((part) => {
+        if (part.type === 'tool-call' && part.toolCall?.id === toolId) {
+          return { ...part, toolCall: { ...part.toolCall!, ...updates } }
+        }
+        return part
+      })
+      return { ...msg, streamingParts: parts }
+    }),
+  })),
+
+  finalizeStreamingMessage: (msgId) => set((state) => ({
+    chatMessages: state.chatMessages.map((msg) => {
+      if (msg.id !== msgId) return msg
+      return { ...msg, isStreaming: false, type: 'streaming' as const }
+    }),
+  })),
 }))

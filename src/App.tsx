@@ -2,12 +2,11 @@ import { useEffect, useCallback, useState, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useChromadonStore, EmbeddedTab, VaultStatus, ChromadonProfile, StoredCredential, Platform } from './store/chromadonStore'
 import { useChromadonAPI } from './hooks/useChromadonAPI'
+import { useStreamingChat } from './hooks/useStreamingChat'
 import SplashScreen from './components/SplashScreen'
 import TitleBar from './components/TitleBar'
-import CommandInput from './components/CommandInput'
-import AIStatusPanel from './components/AIStatusPanel'
 import TabBar from './components/TabBar'
-import ActionLog from './components/ActionLog'
+import { ChatPanel } from './components/ChatPanel'
 import MasterPasswordModal from './components/MasterPasswordModal'
 import CredentialVault from './components/CredentialVault'
 import ProfileManager from './components/ProfileManager'
@@ -20,7 +19,6 @@ function App() {
     showSplash,
     setShowSplash,
     isConnected,
-    setCommand,
     setEmbeddedTabs,
     setConnected,
     addActionLog,
@@ -33,7 +31,8 @@ function App() {
     vaultModalMode,
     setShowVaultModal,
   } = store
-  const { connect, fetchAIStatus, executeCommand } = useChromadonAPI()
+  const { connect, fetchAIStatus } = useChromadonAPI()
+  const { sendMessage } = useStreamingChat()
 
   // Check vault status on mount
   useEffect(() => {
@@ -191,25 +190,18 @@ function App() {
   }, [setEmbeddedTabs])
 
   // Claude Code Control: Listen for external commands
-  // Use ref to avoid re-registering listener on every render
-  const executeCommandRef = useRef(executeCommand)
-  const setCommandRef = useRef(setCommand)
+  const sendMessageRef = useRef(sendMessage)
 
   useEffect(() => {
-    executeCommandRef.current = executeCommand
-    setCommandRef.current = setCommand
-  }, [executeCommand, setCommand])
+    sendMessageRef.current = sendMessage
+  }, [sendMessage])
 
   useEffect(() => {
     if (!window.electronAPI?.onExternalCommand) return
 
     const cleanup = window.electronAPI.onExternalCommand(async (command: string) => {
       console.log('[CHROMADON] External command received:', command)
-      setCommandRef.current(command)
-      // Small delay to let UI update, then execute
-      setTimeout(async () => {
-        await executeCommandRef.current(command)
-      }, 100)
+      await sendMessageRef.current(command)
     })
 
     return cleanup
@@ -610,14 +602,10 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
               {/* BrowserView is positioned here by Electron - this div is transparent overlay for border only */}
             </div>
           )}
-          {/* Command Input at bottom */}
-          <div className="p-2">
-            <CommandInput />
-          </div>
         </div>
 
-        {/* Right Column - AI Status & Logs */}
-        <div className="w-80 flex flex-col gap-2 p-2">
+        {/* Right Column - AI Assistant Chat */}
+        <div className="w-96 flex flex-col gap-2 p-2">
           {/* Vault Quick Access */}
           <div className="cyber-panel p-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -686,8 +674,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
             </div>
           </div>
 
-          <AIStatusPanel />
-          <ActionLog />
+          <ChatPanel />
         </div>
       </main>
 

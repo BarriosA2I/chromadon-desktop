@@ -188,13 +188,13 @@ function updateViewBounds() {
   // - TabBar (tabs strip): 40px
   // - Navigation bar (URL, back/forward): 50px
   // - Content margin: 8px (m-2 = 0.5rem)
-  // - Right sidebar: 320px + 8px padding
-  // - Bottom CommandInput area: 80px
+  // - Right sidebar: 384px (w-96) + 24px padding
+  // - No bottom CommandInput (chat is in sidebar now)
   const bounds = {
     x: 8, // Left margin (m-2 in React)
     y: 138, // TitleBar(40) + TabStrip(40) + NavBar(50) + margin(8)
-    width: width - 344, // Full width - sidebar(320) - left margin(8) - right padding(16)
-    height: height - 226, // Full height - top(138) - bottom command area(80) - margin(8)
+    width: width - 408, // Full width - sidebar(384) - left margin(8) - right padding(16)
+    height: height - 154, // Full height - top(138) - margin(16)
   }
 
   browserViewManager.setViewBounds(bounds)

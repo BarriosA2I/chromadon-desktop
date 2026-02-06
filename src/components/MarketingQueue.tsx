@@ -41,6 +41,8 @@ const ACTION_LABELS: Record<MarketingTask['action'], string> = {
   custom: 'Custom Action',
 }
 
+const BRAIN_API = 'http://localhost:3001'
+
 export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps) {
   const {
     marketingQueue,
@@ -48,11 +50,13 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
     activeTasksByPlatform,
     setMarketingQueue,
     addMarketingTask,
+    updateMarketingTask,
     removeMarketingTask,
   } = useChromadonStore()
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [filter, setFilter] = useState<'all' | 'queued' | 'running' | 'completed' | 'failed'>('all')
+  const [processingAll, setProcessingAll] = useState(false)
 
   // Load queue on mount
   useEffect(() => {
@@ -97,6 +101,121 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
       if (result.success) {
         // Queue will be updated via listener
       }
+    }
+  }
+
+  // Process a single task via Brain API
+  const handleProcessTask = async (task: MarketingTask) => {
+    if (task.status !== 'queued') return
+
+    updateMarketingTask(task.id, { status: 'running', startedAt: Date.now() })
+
+    try {
+      const res = await fetch(`${BRAIN_API}/api/social/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        updateMarketingTask(task.id, {
+          status: 'completed',
+          completedAt: Date.now(),
+          result: data.summary,
+        })
+      } else {
+        updateMarketingTask(task.id, {
+          status: 'failed',
+          completedAt: Date.now(),
+          error: data.error || 'Task failed',
+        })
+      }
+    } catch (err: any) {
+      updateMarketingTask(task.id, {
+        status: 'failed',
+        completedAt: Date.now(),
+        error: err.message || 'Connection failed',
+      })
+    }
+  }
+
+  // Process all queued tasks via Brain API SSE endpoint
+  const handleProcessAll = async () => {
+    const queuedTasks = marketingQueue.filter((t) => t.status === 'queued')
+    if (queuedTasks.length === 0 || processingAll) return
+
+    setProcessingAll(true)
+
+    // Mark all as running
+    queuedTasks.forEach((t) =>
+      updateMarketingTask(t.id, { status: 'running', startedAt: Date.now() })
+    )
+
+    try {
+      const res = await fetch(`${BRAIN_API}/api/social/process-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tasks: queuedTasks }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`)
+      }
+
+      // Consume SSE stream for progress updates
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split('\n\n')
+        buffer = parts.pop() || ''
+
+        for (const part of parts) {
+          if (!part.trim()) continue
+          const lines = part.split('\n')
+          let eventType = ''
+          let eventData: any = null
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+            else if (line.startsWith('data: ')) {
+              try { eventData = JSON.parse(line.slice(6)) } catch { /* skip */ }
+            }
+          }
+
+          if (!eventType || !eventData) continue
+
+          if (eventType === 'task_complete') {
+            updateMarketingTask(eventData.taskId, {
+              status: eventData.success ? 'completed' : 'failed',
+              completedAt: Date.now(),
+              result: eventData.summary,
+              error: eventData.error,
+            })
+          }
+        }
+      }
+    } catch (err: any) {
+      // Mark remaining running tasks as failed
+      queuedTasks.forEach((t) => {
+        const current = useChromadonStore.getState().marketingQueue.find((q) => q.id === t.id)
+        if (current?.status === 'running') {
+          updateMarketingTask(t.id, {
+            status: 'failed',
+            completedAt: Date.now(),
+            error: err.message || 'Batch processing failed',
+          })
+        }
+      })
+    } finally {
+      setProcessingAll(false)
     }
   }
 
@@ -243,6 +362,29 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
                   >
                     Clear Completed
                   </button>
+                  {queueStats.queued > 0 && (
+                    <motion.button
+                      onClick={handleProcessAll}
+                      disabled={processingAll}
+                      whileHover={{ scale: processingAll ? 1 : 1.05 }}
+                      whileTap={{ scale: processingAll ? 1 : 0.95 }}
+                      className="px-4 py-1 rounded-lg text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                      style={{
+                        background: processingAll
+                          ? 'linear-gradient(135deg, #FBBF24, #F59E0B)'
+                          : 'linear-gradient(135deg, #D4AF37, #FFD700)',
+                        color: '#0A0A0F',
+                      }}
+                    >
+                      {processingAll ? (
+                        <span className="flex items-center gap-1">
+                          Processing <LoadingDots />
+                        </span>
+                      ) : (
+                        `Process All (${queueStats.queued})`
+                      )}
+                    </motion.button>
+                  )}
                   <motion.button
                     onClick={() => setShowAddModal(true)}
                     whileHover={{ scale: 1.05 }}
@@ -334,17 +476,43 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
                           {task.error && (
                             <p className="mt-2 text-xs text-red-400 font-mono">{task.error}</p>
                           )}
+
+                          {/* Result summary for completed tasks */}
+                          {task.status === 'completed' && task.result && (
+                            <div className="mt-2 p-2 rounded-lg bg-green-500/5 border border-green-500/20">
+                              <p className="text-xs text-green-300/80 line-clamp-3">{task.result}</p>
+                            </div>
+                          )}
                         </div>
 
                         {/* Actions */}
                         <div className="flex gap-2">
                           {task.status === 'queued' && (
-                            <button
-                              onClick={() => handleDeleteTask(task.id)}
-                              className="p-2 rounded-lg text-chroma-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
-                            >
-                              <TrashIcon />
-                            </button>
+                            <>
+                              <motion.button
+                                onClick={() => handleProcessTask(task)}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider"
+                                style={{
+                                  background: 'linear-gradient(135deg, #D4AF37, #FFD700)',
+                                  color: '#0A0A0F',
+                                }}
+                              >
+                                Process
+                              </motion.button>
+                              <button
+                                onClick={() => handleDeleteTask(task.id)}
+                                className="p-2 rounded-lg text-chroma-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                              >
+                                <TrashIcon />
+                              </button>
+                            </>
+                          )}
+                          {task.status === 'running' && (
+                            <span className="px-3 py-1 text-xs text-yellow-400 flex items-center gap-1">
+                              Executing <LoadingDots />
+                            </span>
                           )}
                         </div>
                       </div>
