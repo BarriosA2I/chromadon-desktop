@@ -7,49 +7,89 @@
 
 ---
 
-## Architecture
+## CRITICAL: BROWSER AUTOMATION RULES
 
+### NEVER USE THESE (FORBIDDEN)
 ```
-CHROMADON Desktop v1.0
-├── Electron Main Process (electron/main.ts ~2500 lines)
-│   ├── BrowserView Manager (session partitions)
-│   ├── Express Control Server (:3002)
-│   ├── 49 IPC Handlers (context-isolated)
-│   ├── AES-256-GCM Encrypted Vault (PBKDF2 600K iterations)
-│   └── Marketing Queue System
-│
-├── React Renderer (src/)
-│   ├── App.tsx - Main UI with vault lock/unlock
-│   ├── Zustand Store (chromadonStore.ts, 40+ state fields)
-│   ├── useChromadonAPI Hook (Brain API integration)
-│   ├── ErrorBoundary (cyberpunk-styled crash recovery)
-│   └── MarketingQueue Component
-│
-├── Preload Bridge (electron/preload.ts)
-│   ├── 58 exposed methods via contextBridge
-│   ├── ipcRenderer.invoke() for request/response
-│   └── Cleanup functions on all event listeners
-│
-└── Brain API Connection (:3001)
-    └── All AI commands proxied through useChromadonAPI
+- chromadon MCP tools (take_screenshot, click, fill, navigate, etc.)
+- CDP Chrome (--remote-debugging-port=9222)
+- External Chrome browser
+- Any browser outside CHROMADON Desktop app
+- Playwright/Puppeteer connecting to external browsers
 ```
 
-### Platform Sessions
+**WHY:** The `chromadon` MCP tools connect to an EXTERNAL Chrome browser via CDP protocol on port 9222. This is NOT the CHROMADON Desktop app. Using these tools means you're controlling a completely separate browser that has nothing to do with our app.
 
-| Platform | Partition | Status |
-|----------|-----------|--------|
-| Google | persist:platform-google | Authenticated |
-| Twitter | persist:platform-twitter | Authenticated |
-| LinkedIn | persist:platform-linkedin | Authenticated |
+### ALWAYS USE THESE (REQUIRED)
+```
+- Desktop Control Server API (http://127.0.0.1:3002)
+- Brain API (http://127.0.0.1:3001) with mode: "DESKTOP"
+- test-sse.mjs script for chat testing
+- test-social.mjs script for social media testing
+```
 
-### Control Server (:3002) Endpoints
+**WHY:** The CHROMADON Desktop app IS the browser. It has built-in BrowserViews (Electron's embedded browser tabs) that the Brain API controls directly in DESKTOP mode.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Window ready state |
-| GET | `/state` | CDP + circuit breaker + vault status |
-| GET | `/sessions` | Authenticated platform sessions |
-| GET | `/queue` | Marketing queue state |
+| WRONG (chromadon MCP) | RIGHT (Desktop API) |
+|-------------------------|----------------------|
+| `chromadon - take_screenshot` | `curl http://127.0.0.1:3002/screenshot` |
+| `chromadon - click` | `node test-sse.mjs "Click the button"` |
+| `chromadon - navigate` | `node test-sse.mjs "Go to google.com"` |
+| Uses external Chrome on port 9222 | Uses Desktop BrowserViews on port 3002 |
+
+---
+
+## HOW TO TEST BROWSER FUNCTIONALITY
+
+### Test 1: Verify Brain API is in DESKTOP mode
+```powershell
+curl http://127.0.0.1:3001/health
+# MUST show: "mode": "DESKTOP"
+# If shows "CDP", restart services
+```
+
+### Test 2: Test AI Chat (controls Desktop BrowserViews)
+```powershell
+cd C:\Users\gary\chromadon-brain
+node test-sse.mjs "What page am I on right now?"
+```
+
+### Test 3: Test Navigation in Desktop App
+```powershell
+cd C:\Users\gary\chromadon-brain
+node test-sse.mjs "Open a new tab and go to google.com"
+```
+
+### Test 4: Test Social Media Overlord
+```powershell
+cd C:\Users\gary\chromadon-brain
+node test-social.mjs single
+```
+
+### Test 5: Visual Verification via Desktop Control Server
+```powershell
+# Get Desktop app state including tabs
+curl http://127.0.0.1:3002/state
+
+# Get session info
+curl http://127.0.0.1:3002/sessions
+```
+
+---
+
+## DESKTOP CONTROL SERVER API (PORT 3002)
+
+### Available Endpoints:
+```
+GET  /health          - Check if Desktop app is running
+GET  /state           - Get current state (tabs, active tab, etc.)
+GET  /sessions        - Get platform sessions (LinkedIn, Twitter, etc.)
+GET  /queue           - Marketing queue state
+POST /tabs/create     - Create new BrowserView tab
+POST /tabs/navigate   - Navigate a tab to URL
+POST /tabs/close      - Close a tab
+GET  /screenshot      - Take screenshot of Desktop window
+```
 
 ---
 
@@ -88,7 +128,65 @@ curl -X POST http://localhost:3002/restart
 2. Kill ONLY that PID: `taskkill /F /PID <pid>`
 3. Then start the app
 
-The user may have multiple Node processes running for different projects. Killing them all destroys hours of work.
+---
+
+## STARTUP SEQUENCE
+
+1. **Start Brain API first:**
+   ```powershell
+   cd C:\Users\gary\chromadon-brain; npm run start:api
+   ```
+
+2. **Start Desktop App second:**
+   ```powershell
+   cd C:\Users\gary\chromadon-desktop; npm run dev
+   ```
+
+3. **Verify DESKTOP mode:**
+   ```powershell
+   curl http://127.0.0.1:3001/health
+   # MUST show "mode": "DESKTOP"
+   ```
+
+---
+
+## Architecture
+
+```
+CHROMADON Desktop v1.0
+├── Electron Main Process (electron/main.ts ~2500 lines)
+│   ├── BrowserView Manager (session partitions)
+│   ├── Express Control Server (:3002)
+│   ├── 49 IPC Handlers (context-isolated)
+│   ├── AES-256-GCM Encrypted Vault (PBKDF2 600K iterations)
+│   └── Marketing Queue System
+│
+├── React Renderer (src/)
+│   ├── App.tsx - Main UI with vault lock/unlock
+│   ├── Zustand Store (chromadonStore.ts, 40+ state fields)
+│   ├── useChromadonAPI Hook (Brain API integration)
+│   ├── useStreamingChat Hook (SSE streaming for Orchestrator)
+│   ├── ErrorBoundary (cyberpunk-styled crash recovery)
+│   └── MarketingQueue Component
+│
+├── Preload Bridge (electron/preload.ts)
+│   ├── 58 exposed methods via contextBridge
+│   ├── ipcRenderer.invoke() for request/response
+│   └── Cleanup functions on all event listeners
+│
+└── Brain API Connection (:3001)
+    ├── All AI commands proxied through useChromadonAPI
+    ├── Agentic Orchestrator (SSE streaming chat)
+    └── Social Media Overlord (task processing)
+```
+
+### Platform Sessions
+
+| Platform | Partition | Status |
+|----------|-----------|--------|
+| Google | persist:platform-google | Authenticated |
+| Twitter | persist:platform-twitter | Authenticated |
+| LinkedIn | persist:platform-linkedin | Authenticated |
 
 ---
 
@@ -107,6 +205,7 @@ The user may have multiple Node processes running for different projects. Killin
 | 7 | AbortController for in-flight API requests | `src/hooks/useChromadonAPI.ts` |
 | 8 | brainApiWarned moved to useRef (stale closure fix) | `src/hooks/useChromadonAPI.ts` |
 | 9 | Observation responses displayed in action log | `src/hooks/useChromadonAPI.ts` |
+| 10 | useStreamingChat stale closure fix (isConnected) | `src/hooks/useStreamingChat.ts` |
 
 ### Security (7/10)
 
@@ -121,39 +220,6 @@ The user may have multiple Node processes running for different projects. Killin
 - Anti-detection UA spoofing (`app.setName('Google Chrome')`)
 - Control server on :3002 has no auth (localhost-only mitigates)
 
-### Reliability (7/10, up from 5/10)
-
-- All 5 preload listeners fixed (no more memory leaks)
-- App.tsx + MarketingQueue.tsx listener cleanup
-- AbortController cancels in-flight requests on unmount
-- ErrorBoundary catches renderer crashes gracefully
-
-### Known Issues
-
-- No process supervisor for auto-restart
-- `rendererState` in main.ts grows indefinitely (no pruning)
-- Zustand store: 40+ fields in single flat store (re-render performance)
-- No Content Security Policy headers
-
-### Integration Tests: 19/19 PASS
-
-See `PRODUCTION-READINESS-REPORT.md` for the full audit report.
-
----
-
-## Development
-
-```bash
-# Start desktop app (requires Brain API on :3001)
-npm run dev
-
-# Build for production
-npm run build
-
-# Package
-npm run package
-```
-
 ### Key Files
 
 | File | Purpose |
@@ -163,9 +229,10 @@ npm run package
 | `src/App.tsx` | Main React component |
 | `src/store/chromadonStore.ts` | Zustand state (40+ fields) |
 | `src/hooks/useChromadonAPI.ts` | Brain API integration hook |
+| `src/hooks/useStreamingChat.ts` | SSE streaming for Orchestrator chat |
 | `src/components/ErrorBoundary.tsx` | Crash recovery UI |
+| `src/components/ChatPanel.tsx` | AI Chat panel UI |
 | `src/components/MarketingQueue.tsx` | Marketing automation queue |
-| `src/vite-env.d.ts` | Type declarations for preload API |
 
 ---
 
