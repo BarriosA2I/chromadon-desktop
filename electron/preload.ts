@@ -241,6 +241,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   tabCreatePlatform: (platform: Platform, url?: string) =>
     ipcRenderer.invoke('tab:createPlatform', { platform, url }),
 
+  // Hide/show BrowserViews for modal overlays
+  viewsSetVisible: (visible: boolean) => ipcRenderer.invoke('views:setVisible', visible),
+
   // ==================== MARKETING QUEUE API ====================
   queueStatus: () => ipcRenderer.invoke('queue:status'),
   queueAdd: (task: {
@@ -364,6 +367,9 @@ declare global {
       sessionUpdate: (platform: Platform, updates: Partial<PlatformSession>) => Promise<{ success: boolean; session: PlatformSession | null }>
       oauthSignIn: (platform: Platform) => Promise<{ success: boolean; platform: Platform; userClosed?: boolean; error?: string }>
       tabCreatePlatform: (platform: Platform, url?: string) => Promise<{ success: boolean; id: number; platform: Platform; tabs: TabInfo[] }>
+
+      // View visibility (for modal overlays)
+      viewsSetVisible: (visible: boolean) => Promise<{ success: boolean }>
 
       // Marketing Queue API
       queueStatus: () => Promise<{ success: boolean; queue: MarketingTask[]; activeTasks: Record<string, MarketingTask>; stats: QueueStats }>

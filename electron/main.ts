@@ -503,6 +503,13 @@ function startControlServer() {
     }
   })
 
+  // Hide/show BrowserViews (for modal overlays or external control)
+  server.post('/views/visible', (req: Request, res: Response) => {
+    const { visible } = req.body
+    browserViewManager.setViewsVisible(visible !== false)
+    res.json({ success: true, visible: visible !== false })
+  })
+
   // Debug endpoint: set bounds manually
   server.post('/debug/bounds', (req: Request, res: Response) => {
     const { x, y, width, height } = req.body
@@ -1892,6 +1899,12 @@ ipcMain.handle('session:verify', async (_event, platform: Platform) => {
 ipcMain.handle('session:update', (_event, { platform, updates }: { platform: Platform; updates: Partial<PlatformSession> }) => {
   browserViewManager.updatePlatformSession(platform, updates)
   return { success: true, session: browserViewManager.getPlatformSession(platform) }
+})
+
+// Hide/show BrowserViews for modal overlays
+ipcMain.handle('views:setVisible', (_event, visible: boolean) => {
+  browserViewManager.setViewsVisible(visible)
+  return { success: true }
 })
 
 // Create platform-specific tab

@@ -245,6 +245,24 @@ export class BrowserViewManager {
   }
 
   /**
+   * Hide or show the active BrowserView. Used when UI modals need to overlay the browser area.
+   * BrowserViews are native OS-level overlays that render above all web content,
+   * so they must be hidden for React modals to be visible.
+   */
+  setViewsVisible(visible: boolean) {
+    if (this.activeViewId === null) return
+    const view = this.views.get(this.activeViewId)
+    if (!view || view.webContents.isDestroyed()) return
+    if (visible) {
+      view.setBounds(this.viewBounds)
+      console.log(`[BrowserViewManager] Views shown (modal closed)`)
+    } else {
+      view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+      console.log(`[BrowserViewManager] Views hidden (modal opened)`)
+    }
+  }
+
+  /**
    * Update the bounds where BrowserViews should render
    */
   setViewBounds(bounds: ViewBounds) {
@@ -259,49 +277,15 @@ export class BrowserViewManager {
   }
 
   /**
-   * Create a new browser tab
-   * @param url - URL to navigate to
-   * @param options - Session mode and platform options
+   * Attach all necessary event handlers to a BrowserView.
+   * Extracted from createView() for reuse during partition swaps.
    */
-  createView(url: string = 'about:blank', options: CreateViewOptions = {}): number {
-    if (!this.mainWindow) {
-      throw new Error('Main window not set')
-    }
-
-    const id = this.nextId++
-    const { sessionMode = 'isolated', platform } = options
-
-    // Get partition based on session mode
-    const partition = this.getPartition(options, id)
-    const ses = session.fromPartition(partition)
-
-    console.log(`[BrowserViewManager] Creating tab ${id} with partition: ${partition}, mode: ${sessionMode}, platform: ${platform || 'none'}`)
-
-    const view = new BrowserView({
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        partition: partition,
-        // Enable features needed for social media sites
-        webSecurity: true,
-        allowRunningInsecureContent: false,
-      },
-    })
-
-    // Spoof user agent for Google to allow sign-in (Google blocks Electron's default UA)
-    const chromeUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    view.webContents.setUserAgent(chromeUserAgent)
-
-    // Set bounds (initially hidden until focused)
-    view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
-
+  private attachViewHandlers(view: BrowserView, id: number, partition: string): void {
     // Handle OAuth popups and external links
     view.webContents.setWindowOpenHandler(({ url }) => {
       const isOAuth = OAUTH_PATTERNS.some(pattern => pattern.test(url))
 
       if (isOAuth && this.mainWindow) {
-        // Allow OAuth popups to open as modal windows
-        // Use same partition as parent tab to share auth state
         return {
           action: 'allow',
           overrideBrowserWindowOptions: {
@@ -314,29 +298,24 @@ export class BrowserViewManager {
             webPreferences: {
               nodeIntegration: false,
               contextIsolation: true,
-              partition: partition, // Share session with parent tab
+              partition: partition,
             },
           },
         }
       }
 
-      // Default: open in system browser
       shell.openExternal(url)
       return { action: 'deny' }
     })
 
     // Anti-detection for Google - inject scripts before navigation completes
     view.webContents.on('did-start-navigation', (_event, url) => {
-      // Inject anti-detection for Google pages
       if (url.includes('google.com') || url.includes('youtube.com')) {
         view.webContents.executeJavaScript(`
-          // Remove webdriver flag
           Object.defineProperty(navigator, 'webdriver', {
             get: () => undefined,
             configurable: true
           });
-
-          // Add chrome object
           if (!window.chrome) {
             window.chrome = {
               runtime: {},
@@ -345,8 +324,6 @@ export class BrowserViewManager {
               app: {}
             };
           }
-
-          // Fix permissions API
           const originalQuery = window.navigator.permissions?.query;
           if (originalQuery) {
             window.navigator.permissions.query = (parameters) => (
@@ -355,8 +332,6 @@ export class BrowserViewManager {
                 originalQuery(parameters)
             );
           }
-
-          // Add plugins
           Object.defineProperty(navigator, 'plugins', {
             get: () => [
               { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
@@ -365,13 +340,10 @@ export class BrowserViewManager {
             ],
             configurable: true
           });
-
-          // Set languages
           Object.defineProperty(navigator, 'languages', {
             get: () => ['en-US', 'en'],
             configurable: true
           });
-
           console.log('[CHROMADON] Anti-detection injected for Google');
         `).catch(() => {});
       }
@@ -402,6 +374,140 @@ export class BrowserViewManager {
       }
       this.notifyTabUpdate()
     })
+  }
+
+  /**
+   * Replace a value in a Map while preserving insertion order.
+   * JavaScript Maps iterate in insertion order; deleting and re-setting
+   * a key moves it to the end. This rebuilds the Map to keep order.
+   */
+  private rebuildMapEntry<K, V>(map: Map<K, V>, targetKey: K, newValue: V): void {
+    const entries = Array.from(map.entries())
+    map.clear()
+    for (const [key, value] of entries) {
+      map.set(key, key === targetKey ? newValue : value)
+    }
+  }
+
+  /**
+   * Swap the partition of an existing tab by destroying and recreating its BrowserView.
+   * The tab ID is preserved so all external references (Brain API, Zustand, queue) remain valid.
+   * Returns the new BrowserView.
+   */
+  private swapPartition(id: number, newPartition: string, platform: Platform): BrowserView {
+    if (!this.mainWindow) {
+      throw new Error('Main window not set')
+    }
+
+    const oldView = this.views.get(id)
+    if (!oldView) {
+      throw new Error(`Tab ${id} not found for partition swap`)
+    }
+
+    const wasActive = this.activeViewId === id
+
+    // 1. Remove old BrowserView from window and destroy it
+    try {
+      if (!oldView.webContents.isDestroyed()) {
+        this.mainWindow.removeBrowserView(oldView)
+        ;(oldView.webContents as any).destroy?.()
+      }
+    } catch (_) { /* already destroyed */ }
+
+    // 2. Create new BrowserView with correct partition
+    const newView = new BrowserView({
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        partition: newPartition,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+      },
+    })
+
+    // 3. Apply Chrome user agent spoofing
+    const chromeUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    newView.webContents.setUserAgent(chromeUserAgent)
+
+    // 4. Set bounds (hidden initially)
+    newView.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+
+    // 5. Attach all event handlers with new partition
+    this.attachViewHandlers(newView, id, newPartition)
+
+    // 6. Replace in views Map preserving insertion order
+    this.rebuildMapEntry(this.views, id, newView)
+
+    // 7. Update tabInfo metadata
+    const info = this.tabInfo.get(id)
+    if (info) {
+      info.sessionMode = 'platform-shared'
+      info.platform = platform
+    }
+
+    // 8. Add to window
+    this.mainWindow.addBrowserView(newView)
+
+    // 9. Restore active state
+    if (wasActive) {
+      newView.setBounds(this.viewBounds)
+      this.mainWindow.setTopBrowserView(newView)
+    }
+
+    console.log(`[BrowserViewManager] Swapped partition for tab ${id}: ${newPartition} (platform: ${platform})`)
+    return newView
+  }
+
+  /**
+   * Create a new browser tab
+   * @param url - URL to navigate to
+   * @param options - Session mode and platform options
+   */
+  createView(url: string = 'about:blank', options: CreateViewOptions = {}): number {
+    if (!this.mainWindow) {
+      throw new Error('Main window not set')
+    }
+
+    // Auto-detect platform if no explicit session mode was specified
+    if (!options.sessionMode && !options.platform && url !== 'about:blank') {
+      const detectedPlatform = this.detectPlatform(url)
+      if (detectedPlatform) {
+        options = {
+          ...options,
+          sessionMode: 'platform-shared',
+          platform: detectedPlatform,
+        }
+        console.log(`[BrowserViewManager] Auto-detected platform '${detectedPlatform}' for URL: ${url}`)
+      }
+    }
+
+    const id = this.nextId++
+    const { sessionMode = 'isolated', platform } = options
+
+    // Get partition based on session mode
+    const partition = this.getPartition(options, id)
+
+    console.log(`[BrowserViewManager] Creating tab ${id} with partition: ${partition}, mode: ${sessionMode}, platform: ${platform || 'none'}`)
+
+    const view = new BrowserView({
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        partition: partition,
+        webSecurity: true,
+        allowRunningInsecureContent: false,
+      },
+    })
+
+    // Spoof user agent for Google to allow sign-in (Google blocks Electron's default UA)
+    const chromeUserAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    view.webContents.setUserAgent(chromeUserAgent)
+
+    // Set bounds (initially hidden until focused)
+    view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+
+    // Attach event handlers (OAuth, anti-detection, navigation tracking)
+    this.attachViewHandlers(view, id, partition)
 
     // Store view and info
     this.views.set(id, view)
@@ -421,7 +527,6 @@ export class BrowserViewManager {
 
     // Navigate to URL
     if (url !== 'about:blank') {
-      // Set Chrome user agent for Google pages to bypass Electron detection
       if (url.includes('google.com') || url.includes('youtube.com')) {
         view.webContents.loadURL(url, {
           userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -458,8 +563,18 @@ export class BrowserViewManager {
       return false
     }
 
+    // Guard against already-destroyed views (race condition on window close)
+    if (view.webContents.isDestroyed()) {
+      this.views.delete(id)
+      this.tabInfo.delete(id)
+      if (this.activeViewId === id) this.activeViewId = null
+      return true
+    }
+
     // Remove from window
-    this.mainWindow.removeBrowserView(view)
+    try {
+      this.mainWindow.removeBrowserView(view)
+    } catch (_) { /* view may already be detached */ }
 
     // Destroy the view
     ;(view.webContents as any).destroy?.()
@@ -483,11 +598,11 @@ export class BrowserViewManager {
   }
 
   /**
-   * Navigate a tab to a URL
+   * Navigate a tab to a URL (partition-aware: swaps session if navigating to a platform URL)
    */
   navigateView(id: number, url: string): boolean {
     const view = this.views.get(id)
-    if (!view) {
+    if (!view || view.webContents.isDestroyed()) {
       return false
     }
 
@@ -496,6 +611,43 @@ export class BrowserViewManager {
       url = 'https://' + url
     }
 
+    // Check if this URL requires a platform partition
+    const targetPlatform = this.detectPlatform(url)
+    const currentInfo = this.tabInfo.get(id)
+
+    if (targetPlatform) {
+      // Check if tab is already on the correct platform partition
+      const needsSwap = currentInfo?.sessionMode !== 'platform-shared'
+                      || currentInfo?.platform !== targetPlatform
+
+      if (needsSwap) {
+        const requiredPartition = `persist:platform-${targetPlatform}`
+        console.log(`[BrowserViewManager] Partition swap needed for tab ${id}: navigating to ${targetPlatform} URL but tab has ${currentInfo?.sessionMode || 'isolated'}/${currentInfo?.platform || 'none'} session`)
+
+        try {
+          const newView = this.swapPartition(id, requiredPartition, targetPlatform)
+
+          // Navigate the new view
+          if (url.includes('google.com') || url.includes('youtube.com')) {
+            newView.webContents.loadURL(url, {
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            })
+          } else {
+            newView.webContents.loadURL(url)
+          }
+
+          this.updateTabInfo(id, { url })
+          this.notifyTabUpdate()
+          console.log(`[BrowserViewManager] Tab ${id} swapped to partition ${requiredPartition} and navigating to: ${url}`)
+          return true
+        } catch (err) {
+          console.error(`[BrowserViewManager] Partition swap failed for tab ${id}:`, err)
+          return false
+        }
+      }
+    }
+
+    // Normal navigation (no partition swap needed)
     view.webContents.loadURL(url)
     this.updateTabInfo(id, { url })
     console.log(`[BrowserViewManager] Navigating tab ${id} to: ${url}`)
@@ -652,9 +804,17 @@ export class BrowserViewManager {
    * Clean up all views
    */
   destroy() {
-    for (const id of this.views.keys()) {
-      this.removeView(id)
+    for (const [id, view] of this.views.entries()) {
+      try {
+        if (view && !view.webContents.isDestroyed()) {
+          this.mainWindow?.removeBrowserView(view)
+          ;(view.webContents as any).destroy?.()
+        }
+      } catch (_) { /* already destroyed */ }
+      this.tabInfo.delete(id)
     }
+    this.views.clear()
+    this.activeViewId = null
   }
 }
 
