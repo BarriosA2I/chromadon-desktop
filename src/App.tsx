@@ -12,6 +12,7 @@ import CredentialVault from './components/CredentialVault'
 import ProfileManager from './components/ProfileManager'
 import SessionSetup from './components/SessionSetup'
 import MarketingQueue from './components/MarketingQueue'
+import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard'
 
 function App() {
   const store = useChromadonStore()
@@ -323,6 +324,8 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setShowSessionSetup,
     showMarketingQueue,
     setShowMarketingQueue,
+    showAnalyticsDashboard,
+    setShowAnalyticsDashboard,
     setPlatformSessions,
     setMarketingQueue,
   } = useChromadonStore()
@@ -342,9 +345,9 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
   // Hide BrowserViews when any modal is open (BrowserViews are native OS overlays above web content)
   useEffect(() => {
-    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault
+    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard
     window.electronAPI?.viewsSetVisible?.(!anyModalOpen)
-  }, [showSessionSetup, showMarketingQueue, showCredentialVault])
+  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard])
 
   // Listen for queue updates
   useEffect(() => {
@@ -677,6 +680,14 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
               >
                 <QueueIcon />
               </button>
+              {/* Analytics Dashboard */}
+              <button
+                onClick={() => setShowAnalyticsDashboard(true)}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
+                title="Analytics Dashboard"
+              >
+                <AnalyticsIcon />
+              </button>
             </div>
           </div>
 
@@ -710,6 +721,9 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
         isOpen={showMarketingQueue}
         onClose={() => setShowMarketingQueue(false)}
       />
+
+      {/* Analytics Dashboard Modal */}
+      <AnalyticsDashboard />
     </>
   )
 }
@@ -759,6 +773,16 @@ function QueueIcon() {
       <line x1="7" y1="8" x2="17" y2="8" />
       <line x1="7" y1="12" x2="17" y2="12" />
       <line x1="7" y1="16" x2="13" y2="16" />
+    </svg>
+  )
+}
+
+function AnalyticsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="12" width="4" height="9" rx="1" />
+      <rect x="10" y="7" width="4" height="14" rx="1" />
+      <rect x="17" y="3" width="4" height="18" rx="1" />
     </svg>
   )
 }

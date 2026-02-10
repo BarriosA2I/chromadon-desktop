@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ChatMessage, StreamingPart, ToolCallInfo } from './chatTypes'
+import type { AnalyticsState, AnalyticsPeriod, AnalyticsTab, AnalyticsPlatform } from './analyticsTypes'
 
 export type ActionType = 'navigate' | 'click' | 'type' | 'scroll' | 'wait' | 'screenshot' | 'extract' | 'hover' | 'error' | 'success'
 export type AIState = 'idle' | 'thinking' | 'executing' | 'error'
@@ -162,6 +163,15 @@ interface ChromadonState {
   // Orchestrator state
   orchestratorSessionId: string | null
 
+  // Analytics state
+  analyticsData: AnalyticsState
+  analyticsLoading: boolean
+  analyticsError: string | null
+  selectedPeriod: AnalyticsPeriod
+  selectedPlatforms: AnalyticsPlatform[]
+  activeAnalyticsTab: AnalyticsTab
+  showAnalyticsDashboard: boolean
+
   // Actions
   setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
   setAIState: (state: AIState) => void
@@ -206,6 +216,15 @@ interface ChromadonState {
   setChatInput: (input: string) => void
   clearChat: () => void
   setShowThinkingIndicator: (show: boolean) => void
+
+  // Analytics actions
+  setAnalyticsData: (data: Partial<AnalyticsState>) => void
+  setAnalyticsLoading: (loading: boolean) => void
+  setAnalyticsError: (error: string | null) => void
+  setSelectedPeriod: (period: AnalyticsPeriod) => void
+  setSelectedPlatforms: (platforms: AnalyticsPlatform[]) => void
+  setActiveAnalyticsTab: (tab: AnalyticsTab) => void
+  setShowAnalyticsDashboard: (show: boolean) => void
 
   // Orchestrator/streaming actions
   setOrchestratorSessionId: (id: string | null) => void
@@ -268,6 +287,22 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
 
   // Orchestrator initial state
   orchestratorSessionId: null,
+
+  // Analytics initial state
+  analyticsData: {
+    overview: null,
+    platforms: {},
+    content: null,
+    audience: {},
+    competitors: null,
+    schedule: [],
+  },
+  analyticsLoading: false,
+  analyticsError: null,
+  selectedPeriod: '30d',
+  selectedPlatforms: [],
+  activeAnalyticsTab: 'overview',
+  showAnalyticsDashboard: false,
 
   // Actions
   setConnected: (connected, mode) => set({ isConnected: connected, connectionMode: mode ?? null }),
@@ -398,6 +433,17 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   setChatInput: (input) => set({ chatInput: input }),
   clearChat: () => set({ chatMessages: [], orchestratorSessionId: null }),
   setShowThinkingIndicator: (show) => set({ showThinkingIndicator: show }),
+
+  // Analytics actions
+  setAnalyticsData: (data) => set((state) => ({
+    analyticsData: { ...state.analyticsData, ...data },
+  })),
+  setAnalyticsLoading: (loading) => set({ analyticsLoading: loading }),
+  setAnalyticsError: (error) => set({ analyticsError: error }),
+  setSelectedPeriod: (period) => set({ selectedPeriod: period }),
+  setSelectedPlatforms: (platforms) => set({ selectedPlatforms: platforms }),
+  setActiveAnalyticsTab: (tab) => set({ activeAnalyticsTab: tab }),
+  setShowAnalyticsDashboard: (show) => set({ showAnalyticsDashboard: show }),
 
   // Orchestrator/streaming actions
   setOrchestratorSessionId: (id) => set({ orchestratorSessionId: id }),
