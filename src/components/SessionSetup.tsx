@@ -142,10 +142,8 @@ export default function SessionSetup({
   }
 
   // Get session status for platform
-  // YouTube shares Google's session - show Google auth status for YouTube
   const getSessionStatus = (platform: Platform): PlatformSession | null => {
-    const lookupPlatform = platform === 'youtube' ? 'google' : platform
-    return platformSessions[lookupPlatform] || null
+    return platformSessions[platform] || null
   }
 
   // Count authenticated platforms
