@@ -619,10 +619,24 @@ function startControlServer() {
         (function() {
           var target = ${JSON.stringify(target)};
 
+          // Real click helper: fires full mouse event sequence (works with React/Twitter)
+          function realClick(el) {
+            el.scrollIntoView({block:'center'});
+            var rect = el.getBoundingClientRect();
+            var x = rect.left + rect.width / 2;
+            var y = rect.top + rect.height / 2;
+            var opts = {bubbles: true, cancelable: true, view: window, clientX: x, clientY: y};
+            el.dispatchEvent(new MouseEvent('pointerdown', opts));
+            el.dispatchEvent(new MouseEvent('mousedown', opts));
+            el.dispatchEvent(new MouseEvent('pointerup', opts));
+            el.dispatchEvent(new MouseEvent('mouseup', opts));
+            el.dispatchEvent(new MouseEvent('click', opts));
+          }
+
           // Strategy 1: Direct CSS selector
           try {
             var el = document.querySelector(target);
-            if (el) { el.scrollIntoView({block:'center'}); el.click(); return { found: true, strategy: 'css', detail: el.tagName + ':' + (el.textContent || '').trim().slice(0, 50) }; }
+            if (el) { realClick(el); return { found: true, strategy: 'css', detail: el.tagName + ':' + (el.textContent || '').trim().slice(0, 50) }; }
           } catch(e) { /* selector might not be valid CSS, continue */ }
 
           // Strategy 2: role="button" with matching text
@@ -631,7 +645,7 @@ function startControlServer() {
             var btnText = (roleBtns[i].textContent || '').trim();
             var btnInner = (roleBtns[i].innerText || '').trim();
             if (btnText === target || btnInner === target) {
-              roleBtns[i].scrollIntoView({block:'center'}); roleBtns[i].click();
+              realClick(roleBtns[i]);
               return { found: true, strategy: 'role_text', detail: btnText.slice(0, 50) };
             }
           }
@@ -640,7 +654,7 @@ function startControlServer() {
           var ariaEls = document.querySelectorAll('[aria-label]');
           for (var j = 0; j < ariaEls.length; j++) {
             if (ariaEls[j].getAttribute('aria-label').toLowerCase() === target.toLowerCase()) {
-              ariaEls[j].scrollIntoView({block:'center'}); ariaEls[j].click();
+              realClick(ariaEls[j]);
               return { found: true, strategy: 'aria', detail: ariaEls[j].getAttribute('aria-label') };
             }
           }
@@ -653,14 +667,14 @@ function startControlServer() {
           };
           if (testIdMap[target]) {
             el = document.querySelector(testIdMap[target]);
-            if (el) { el.scrollIntoView({block:'center'}); el.click(); return { found: true, strategy: 'testid', detail: target }; }
+            if (el) { realClick(el); return { found: true, strategy: 'testid', detail: target }; }
           }
 
           // Strategy 5: Button/submit with matching text
           var allBtns = document.querySelectorAll('button, [type="submit"]');
           for (var k = 0; k < allBtns.length; k++) {
             if ((allBtns[k].textContent || '').trim() === target) {
-              allBtns[k].scrollIntoView({block:'center'}); allBtns[k].click();
+              realClick(allBtns[k]);
               return { found: true, strategy: 'button_text', detail: allBtns[k].tagName + ':' + target };
             }
           }
@@ -676,7 +690,7 @@ function startControlServer() {
                 clickTarget = clickTarget.parentElement;
               }
               if (clickTarget && clickTarget !== document.body) {
-                clickTarget.scrollIntoView({block:'center'}); clickTarget.click();
+                realClick(clickTarget);
                 return { found: true, strategy: 'text_walk', detail: clickTarget.tagName + ':' + target };
               }
             }
@@ -687,7 +701,7 @@ function startControlServer() {
           var partialCandidates = document.querySelectorAll('button, [role="button"], a, input[type="submit"], [tabindex]');
           for (var m = 0; m < partialCandidates.length; m++) {
             if (partialCandidates[m].textContent && partialCandidates[m].textContent.trim().toLowerCase().includes(searchLower)) {
-              partialCandidates[m].scrollIntoView({block:'center'}); partialCandidates[m].click();
+              realClick(partialCandidates[m]);
               return { found: true, strategy: 'partial_text', detail: partialCandidates[m].textContent.trim().slice(0, 50) };
             }
           }
