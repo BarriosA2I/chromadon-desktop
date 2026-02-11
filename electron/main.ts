@@ -2127,8 +2127,8 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     return { success: false, error: `Unknown platform: ${platform}` }
   }
 
-  // For Google, use puppeteer to open Chrome visibly and import cookies after sign-in
-  // YouTube uses the standard Electron BrowserWindow flow (navigates to youtube.com which handles Google auth)
+  // For Google (and YouTube which shares Google auth), use puppeteer to open Chrome visibly
+  // and import cookies after sign-in
   if (platform === 'google') {
     console.log(`[CHROMADON] Using Chrome for ${platform} sign-in`)
 
@@ -2172,13 +2172,7 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
         await new Promise(r => setTimeout(r, 2000))
         try {
           const url = page.url()
-          if (platform === 'youtube') {
-            // YouTube: detect when user lands back on youtube.com after Google auth
-            if (url.includes('youtube.com') && !url.includes('accounts.google.com') && !url.includes('signin')) {
-              signedIn = true
-              break
-            }
-          } else if (url.includes('myaccount.google.com') ||
+          if (url.includes('myaccount.google.com') ||
               (url.includes('google.com') && !url.includes('signin') && !url.includes('accounts.google.com'))) {
             signedIn = true
             break
@@ -2225,9 +2219,6 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
   console.log(`[CHROMADON] Opening OAuth popup for ${platform}`)
 
-  // Track YouTube OAuth windows so Google auth interception is skipped
-  const isYouTubeOAuth = platform === 'youtube'
-
   // Create popup window with platform-specific partition
   // Use settings that make it look like a real browser
   const oauthWindow = new BrowserWindow({
@@ -2254,14 +2245,6 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
       experimentalFeatures: false,
     }
   })
-
-  // Register YouTube OAuth windows so Google auth interception is skipped
-  if (isYouTubeOAuth) {
-    youtubeOAuthContentsIds.add(oauthWindow.webContents.id)
-    oauthWindow.on('closed', () => {
-      youtubeOAuthContentsIds.delete(oauthWindow.webContents.id)
-    })
-  }
 
   // Show when ready (ensures proper rendering before display)
   oauthWindow.once('ready-to-show', () => {
@@ -2319,17 +2302,8 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
         // Intercept window.open calls - for Google, signal to open in real Chrome
         const originalOpen = window.open;
-        const currentPlatform = '${platform}';
         window.open = function(url, target, features) {
           console.log('[CHROMADON] Intercepted window.open:', url);
-          // For YouTube, let Google auth happen in this window (no Chrome popup)
-          if (currentPlatform === 'youtube') {
-            if (url) {
-              window.location.href = url;
-              return null;
-            }
-            return originalOpen.call(this, url, target, features);
-          }
           if (url && (url.includes('accounts.google.com') || url.includes('google.com/o/oauth'))) {
             console.log('[CHROMADON] Google detected - signaling to open in Chrome');
             // Signal to Electron to open in real Chrome
@@ -2537,9 +2511,6 @@ app.on('activate', () => {
   }
 })
 
-// Track YouTube OAuth windows so we don't intercept their Google auth redirects
-const youtubeOAuthContentsIds = new Set<number>()
-
 // Security: Handle new windows and navigation for OAuth flows
 // SKIP BrowserView webContents - they handle their own navigation in browser-view-manager.ts
 app.on('web-contents-created', (_, contents) => {
@@ -2568,8 +2539,7 @@ app.on('web-contents-created', (_, contents) => {
 
     // For Google sign-in URLs, use Chrome via puppeteer instead of Electron
     // Google blocks Electron with "This browser or app may not be secure"
-    // BUT skip this for YouTube OAuth windows - let Google auth happen inline
-    if (!youtubeOAuthContentsIds.has(contents.id) && (url.includes('accounts.google.com') || url.includes('google.com/o/oauth'))) {
+    if (url.includes('accounts.google.com') || url.includes('google.com/o/oauth')) {
       console.log(`[CHROMADON] Google URL detected - launching Chrome instead`)
 
       // Launch Chrome for Google sign-in asynchronously
@@ -2625,7 +2595,7 @@ app.on('web-contents-created', (_, contents) => {
 
           if (signedIn) {
             const cookies = await page.cookies()
-            const googleSession = session.fromPartition(`persist:platform-${platform}`)
+            const googleSession = session.fromPartition('persist:platform-google')
             let imported = 0
             for (const cookie of cookies) {
               try {
@@ -2642,7 +2612,7 @@ app.on('web-contents-created', (_, contents) => {
                 imported++
               } catch (e) {}
             }
-            console.log(`[CHROMADON] Imported ${imported} ${platform} cookies`)
+            console.log(`[CHROMADON] Imported ${imported} Google cookies from OAuth redirect`)
           }
 
           await browser.close()
@@ -2669,9 +2639,8 @@ app.on('web-contents-created', (_, contents) => {
 
   // Allow navigation to OAuth domains, but redirect Google to Chrome
   contents.on('will-navigate', (event, url) => {
-    // If navigating to Google sign-in, block and open Chrome instead
-    // BUT allow it for YouTube OAuth windows (needs Google auth inline in the same window)
-    if (!youtubeOAuthContentsIds.has(contents.id) && (url.includes('accounts.google.com/o/oauth') || url.includes('accounts.google.com/signin'))) {
+    // Allow Google auth navigation inline for OAuth popups
+    if (url.includes('accounts.google.com/o/oauth') || url.includes('accounts.google.com/signin')) {
       // Allow Google auth navigation inline - don't open external browser
       console.log(`[CHROMADON] Google auth navigation allowed inline: ${url}`)
       return

@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow, session, shell } from 'electron'
+import { BrowserView, BrowserWindow, session } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import { app } from 'electron'
@@ -39,14 +39,22 @@ export interface PlatformSession {
   accountAvatar?: string
 }
 
-// URL patterns to detect platform
+// Google family domains - ALL share same Google authentication/session
+const GOOGLE_FAMILY_DOMAINS = [
+  'google.com', 'youtube.com', 'gmail.com',
+  'accounts.google.com', 'mail.google.com',
+  'studio.youtube.com', 'myaccount.google.com',
+  'drive.google.com', 'ads.google.com',
+]
+
+// URL patterns to detect platform (Google family handled separately in detectPlatform)
 const PLATFORM_URL_PATTERNS: Record<Platform, RegExp[]> = {
   google: [/google\.com/, /gmail\.com/],
   twitter: [/twitter\.com/, /x\.com/],
   linkedin: [/linkedin\.com/],
   facebook: [/facebook\.com/, /fb\.com/],
   instagram: [/instagram\.com/],
-  youtube: [/youtube\.com/],
+  youtube: [],  // YouTube routed to 'google' partition via detectPlatform()
   tiktok: [/tiktok\.com/],
 }
 
@@ -146,8 +154,20 @@ export class BrowserViewManager {
 
   /**
    * Detect platform from URL
+   * Google family domains (youtube.com, gmail.com, drive.google.com, etc.)
+   * all route to 'google' so they share the same authenticated partition.
    */
   detectPlatform(url: string): Platform | null {
+    // Google family check first - all share same session
+    try {
+      const hostname = new URL(url).hostname
+      if (GOOGLE_FAMILY_DOMAINS.some(d => hostname.includes(d))) {
+        return 'google'
+      }
+    } catch {
+      // URL parsing failed, fall through to regex matching
+    }
+
     for (const [platform, patterns] of Object.entries(PLATFORM_URL_PATTERNS)) {
       if (patterns.some(pattern => pattern.test(url))) {
         return platform as Platform
@@ -308,6 +328,15 @@ export class BrowserViewManager {
       console.log(`[BrowserViewManager] Loading URL in same view: ${url}`)
       view.webContents.loadURL(url)
       return { action: 'deny' }
+    })
+
+    // Detect Google auth redirects (session expired) - log for AI awareness
+    view.webContents.on('will-navigate', (_event, url) => {
+      if (url.includes('accounts.google.com/signin') ||
+          url.includes('accounts.google.com/ServiceLogin') ||
+          url.includes('accounts.google.com/v3/signin')) {
+        console.log('[BrowserViewManager] Google auth redirect detected - session may need refresh')
+      }
     })
 
     // Anti-detection for Google - inject scripts before navigation completes
