@@ -1,32 +1,8 @@
-# Dependencies
 node_modules/
-
-# Build outputs
 dist/
 dist-electron/
 release/
-
-# Bundled Brain (built at package time)
-resources/brain/
-
-# Environment
+*.exe
+*.blockmap
 .env
-.env.local
-.env.*.local
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-
-# Testing
-coverage/
+.env.*
