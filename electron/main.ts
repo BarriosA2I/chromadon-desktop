@@ -2184,9 +2184,9 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
       }
 
       if (signedIn) {
-        // Import cookies
+        // Import cookies to the correct platform partition
         const cookies = await page.cookies()
-        const googleSession = session.fromPartition('persist:platform-google')
+        const googleSession = session.fromPartition(`persist:platform-${platform}`)
         let imported = 0
         for (const cookie of cookies) {
           try {
@@ -2386,7 +2386,7 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
         if (signedIn) {
           const cookies = await page.cookies()
-          const googleSession = session.fromPartition('persist:platform-google')
+          const googleSession = session.fromPartition(`persist:platform-${platform}`)
           let imported = 0
           for (const cookie of cookies) {
             try {
@@ -2403,7 +2403,7 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
               imported++
             } catch (e) {}
           }
-          console.log(`[CHROMADON] Imported ${imported} Google cookies`)
+          console.log(`[CHROMADON] Imported ${imported} ${platform} cookies`)
 
           // Notify renderer
           oauthWindow.webContents.executeJavaScript(`
@@ -2588,7 +2588,7 @@ app.on('web-contents-created', (_, contents) => {
 
           if (signedIn) {
             const cookies = await page.cookies()
-            const googleSession = session.fromPartition('persist:platform-google')
+            const googleSession = session.fromPartition(`persist:platform-${platform}`)
             let imported = 0
             for (const cookie of cookies) {
               try {
@@ -2605,7 +2605,7 @@ app.on('web-contents-created', (_, contents) => {
                 imported++
               } catch (e) {}
             }
-            console.log(`[CHROMADON] Imported ${imported} Google cookies`)
+            console.log(`[CHROMADON] Imported ${imported} ${platform} cookies`)
           }
 
           await browser.close()
