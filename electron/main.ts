@@ -641,6 +641,81 @@ function startControlServer() {
     }
   })
 
+  // Upload file to a file input on the page using CDP DOM.setFileInputFiles
+  server.post('/tabs/upload', async (req: Request, res: Response) => {
+    try {
+      const { id, selector, filePath } = req.body
+      if (id === undefined || !filePath) {
+        res.status(400).json({ success: false, error: 'id and filePath are required' })
+        return
+      }
+
+      // Validate file exists
+      if (!fs.existsSync(filePath)) {
+        res.status(400).json({ success: false, error: `File not found: ${filePath}` })
+        return
+      }
+
+      const view = browserViewManager.getView(id)
+      if (!view) {
+        res.status(404).json({ success: false, error: `Tab ${id} not found` })
+        return
+      }
+
+      // If a selector is provided that's not a file input, click it first to reveal the file input
+      if (selector && !selector.includes('type="file"') && !selector.includes("type='file'")) {
+        await view.webContents.executeJavaScript(`
+          (function() {
+            var el = document.querySelector('${selector.replace(/'/g, "\\'")}');
+            if (el) { el.click(); return 'clicked'; }
+            return 'not_found';
+          })()
+        `)
+        // Wait for file input to appear
+        await new Promise(r => setTimeout(r, 500))
+      }
+
+      // Attach CDP debugger to the webContents
+      try {
+        view.webContents.debugger.attach('1.3')
+      } catch (e) {
+        // Already attached, that's fine
+      }
+
+      // Find the file input element
+      const fileInputSelector = selector && (selector.includes('type="file"') || selector.includes("type='file'"))
+        ? selector
+        : 'input[type="file"]'
+
+      const { root } = await view.webContents.debugger.sendCommand('DOM.getDocument', {})
+      const { nodeId } = await view.webContents.debugger.sendCommand('DOM.querySelector', {
+        nodeId: root.nodeId,
+        selector: fileInputSelector,
+      })
+
+      if (!nodeId) {
+        view.webContents.debugger.detach()
+        res.json({ success: false, error: `No file input found with selector: ${fileInputSelector}` })
+        return
+      }
+
+      // Set the file on the input
+      await view.webContents.debugger.sendCommand('DOM.setFileInputFiles', {
+        nodeId,
+        files: [filePath],
+      })
+
+      view.webContents.debugger.detach()
+
+      const fileName = path.basename(filePath)
+      console.log(`[CHROMADON] Uploaded file: ${fileName} to tab ${id}`)
+      res.json({ success: true, result: `Uploaded ${fileName} to file input` })
+    } catch (error) {
+      try { browserViewManager.getView(req.body.id)?.webContents.debugger.detach() } catch (e) {}
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // Hide/show BrowserViews (for modal overlays or external control)
   server.post('/views/visible', (req: Request, res: Response) => {
     const { visible } = req.body
