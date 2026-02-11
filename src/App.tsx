@@ -616,7 +616,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
         {/* Right Column - AI Assistant Chat */}
         <div className="w-96 flex flex-col gap-2 p-2">
           {/* Vault Quick Access */}
-          <div className="cyber-panel p-3 flex items-center justify-between">
+          <div className="cyber-panel p-3 flex items-center justify-between relative z-10">
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${vaultStatus.isLocked ? 'bg-chroma-error' : 'bg-chroma-success'}`} />
               <span className="text-sm font-mono text-chroma-muted">
