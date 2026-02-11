@@ -332,12 +332,17 @@ export class BrowserViewManager {
       return { action: 'deny' }
     })
 
-    // Detect Google auth redirects (session expired) - log for AI awareness
-    view.webContents.on('will-navigate', (_event, url) => {
+    // Block Google auth redirects in BrowserViews - Google rejects Electron sign-in
+    // User must sign in via Session Setup (uses real Chrome via puppeteer)
+    const googleSignInBlockPage = 'data:text/html,' + encodeURIComponent(`<html><head><style>body{background:#0A0A0F;color:#00CED1;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.container{text-align:center;max-width:500px}h1{font-size:24px;margin-bottom:16px}p{color:#888;font-size:14px;line-height:1.6}.action{color:#D4AF37;font-weight:bold}</style></head><body><div class="container"><h1>Google Sign-In Required</h1><p>Google blocks sign-in from embedded browsers.</p><p>Open <span class="action">Session Setup</span> (user icon in sidebar) and sign into <span class="action">Google</span> or <span class="action">YouTube</span> first. This uses real Chrome which Google trusts.</p><p style="margin-top:24px;color:#555">After signing in, navigate back to YouTube and you'll be authenticated.</p></div></body></html>`)
+
+    view.webContents.on('will-navigate', (event, url) => {
       if (url.includes('accounts.google.com/signin') ||
           url.includes('accounts.google.com/ServiceLogin') ||
           url.includes('accounts.google.com/v3/signin')) {
-        console.log('[BrowserViewManager] Google auth redirect detected - session may need refresh')
+        console.log('[BrowserViewManager] Blocking Google auth redirect - user must sign in via Session Setup')
+        event.preventDefault()
+        view.webContents.loadURL(googleSignInBlockPage)
       }
     })
 
@@ -382,9 +387,15 @@ export class BrowserViewManager {
       }
     })
 
-    // Track navigation events
+    // Track navigation events + catch Google sign-in rejection page
     view.webContents.on('did-navigate', (_event, url) => {
       this.updateTabInfo(id, { url })
+      // If we landed on Google's rejection page, show friendly message
+      if (url.includes('accounts.google.com/v3/signin/rejected') ||
+          url.includes('accounts.google.com/signin/rejected')) {
+        console.log('[BrowserViewManager] Caught Google sign-in rejection - showing Session Setup message')
+        view.webContents.loadURL(googleSignInBlockPage)
+      }
     })
 
     view.webContents.on('did-navigate-in-page', (_event, url) => {
