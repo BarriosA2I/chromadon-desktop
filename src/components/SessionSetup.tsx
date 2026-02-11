@@ -61,7 +61,7 @@ const PLATFORMS: {
     name: 'YouTube',
     icon: 'YT',
     color: '#FF0000',
-    url: 'https://accounts.google.com',
+    url: 'https://www.youtube.com',
     description: 'Videos, Analytics, Upload',
   },
   {
