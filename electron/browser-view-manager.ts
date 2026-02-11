@@ -304,7 +304,9 @@ export class BrowserViewManager {
         }
       }
 
-      shell.openExternal(url)
+      // Navigate inside the BrowserView instead of opening external browser
+      console.log(`[BrowserViewManager] Loading URL in same view: ${url}`)
+      view.webContents.loadURL(url)
       return { action: 'deny' }
     })
 

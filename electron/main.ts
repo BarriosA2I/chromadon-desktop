@@ -2541,7 +2541,13 @@ app.on('activate', () => {
 const youtubeOAuthContentsIds = new Set<number>()
 
 // Security: Handle new windows and navigation for OAuth flows
+// SKIP BrowserView webContents - they handle their own navigation in browser-view-manager.ts
 app.on('web-contents-created', (_, contents) => {
+  // BrowserViews are the embedded browser tabs - never intercept their navigation
+  if (contents.getType() === 'browserView') {
+    return
+  }
+
   const allowedDomains = [
     'accounts.google.com',
     'google.com',
@@ -2666,11 +2672,8 @@ app.on('web-contents-created', (_, contents) => {
     // If navigating to Google sign-in, block and open Chrome instead
     // BUT allow it for YouTube OAuth windows (needs Google auth inline in the same window)
     if (!youtubeOAuthContentsIds.has(contents.id) && (url.includes('accounts.google.com/o/oauth') || url.includes('accounts.google.com/signin'))) {
-      console.log(`[CHROMADON] Intercepting Google navigation - launching Chrome`)
-      event.preventDefault()
-
-      // Open in system browser as fallback
-      require('electron').shell.openExternal(url)
+      // Allow Google auth navigation inline - don't open external browser
+      console.log(`[CHROMADON] Google auth navigation allowed inline: ${url}`)
       return
     }
 
