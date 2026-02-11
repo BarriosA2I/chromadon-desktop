@@ -1801,6 +1801,7 @@ function startControlServer() {
       // Capture the page as a NativeImage
       const image = await view.webContents.capturePage()
       const buffer = image.toJPEG(70) // JPEG at 70% quality
+      const base64 = buffer.toString('base64')
 
       // Save via StorageManager
       const screenshot = await storageManager.saveScreenshot({
@@ -1811,7 +1812,8 @@ function startControlServer() {
         url: url || view.webContents.getURL(),
       })
 
-      res.json({ success: true, screenshot })
+      // Return both file info AND base64 for AI verification
+      res.json({ success: true, screenshot, base64 })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
     }
