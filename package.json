@@ -65,11 +65,21 @@
       "dist/**/*",
       "dist-electron/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "resources/brain",
+        "to": "brain",
+        "filter": [
+          "**/*",
+          "!node_modules/.cache/**",
+          "!node_modules/.package-lock.json"
+        ]
+      }
+    ],
     "win": {
       "target": [
         "nsis"
       ],
-      "icon": "public/icon.ico",
       "signAndEditExecutable": false
     },
     "mac": {
@@ -86,6 +96,7 @@
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true
     }
   }

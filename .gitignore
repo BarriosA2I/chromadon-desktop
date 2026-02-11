@@ -6,6 +6,9 @@ dist/
 dist-electron/
 release/
 
+# Bundled Brain (built at package time)
+resources/brain/
+
 # Environment
 .env
 .env.local
