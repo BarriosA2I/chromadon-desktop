@@ -57,6 +57,14 @@ const PLATFORMS: {
     description: 'Posts, Stories, Reels',
   },
   {
+    id: 'youtube',
+    name: 'YouTube',
+    icon: 'YT',
+    color: '#FF0000',
+    url: 'https://www.youtube.com',
+    description: 'Videos, Analytics, Upload',
+  },
+  {
     id: 'tiktok',
     name: 'TikTok',
     icon: 'TT',
@@ -85,12 +93,14 @@ export default function SessionSetup({
   }, [isOpen, setPlatformSessions])
 
   // Verify a platform's auth status
+  // YouTube shares Google's session
   const verifyPlatform = async (platform: Platform) => {
     if (!window.electronAPI?.sessionVerify) return
 
+    const authPlatform = platform === 'youtube' ? 'google' : platform
     setVerifyingPlatform(platform)
     try {
-      const result = await window.electronAPI.sessionVerify(platform)
+      const result = await window.electronAPI.sessionVerify(authPlatform)
       if (result.success) {
         // Session will be updated via the IPC response
         await window.electronAPI.sessionList().then((res) => {
@@ -106,16 +116,18 @@ export default function SessionSetup({
   }
 
   // Open OAuth popup for sign-in
+  // YouTube shares Google's auth - clicking YouTube sign-in triggers Google OAuth
   const handleOpenPlatform = async (platform: Platform) => {
     if (!window.electronAPI?.oauthSignIn) {
       console.error('OAuth sign-in API not available')
       return
     }
 
+    const authPlatform = platform === 'youtube' ? 'google' : platform
     setVerifyingPlatform(platform)
     try {
-      console.log(`[SessionSetup] Opening OAuth popup for ${platform}`)
-      const result = await window.electronAPI.oauthSignIn(platform)
+      console.log(`[SessionSetup] Opening OAuth popup for ${authPlatform}`)
+      const result = await window.electronAPI.oauthSignIn(authPlatform)
 
       if (result.success) {
         console.log(`[SessionSetup] OAuth success for ${platform}`)
@@ -134,8 +146,10 @@ export default function SessionSetup({
   }
 
   // Get session status for platform
+  // YouTube shares Google's session - show Google auth status for YouTube
   const getSessionStatus = (platform: Platform): PlatformSession | null => {
-    return platformSessions[platform] || null
+    const lookupPlatform = platform === 'youtube' ? 'google' : platform
+    return platformSessions[lookupPlatform] || null
   }
 
   // Count authenticated platforms
