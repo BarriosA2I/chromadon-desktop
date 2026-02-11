@@ -2112,7 +2112,7 @@ const PLATFORM_LOGIN_URLS: Record<Platform, string> = {
   linkedin: 'https://linkedin.com/login',
   facebook: 'https://facebook.com/login',
   instagram: 'https://instagram.com/accounts/login',
-  youtube: 'https://www.youtube.com', // Redirects through Google auth, lands back on YouTube
+  youtube: 'https://accounts.google.com', // Same as Google - YouTube uses Google auth
   tiktok: 'https://tiktok.com/login',
 }
 
@@ -2164,23 +2164,17 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
       const pages = await browser.pages()
       const page = pages[0] || await browser.newPage()
-      // YouTube goes to youtube.com (which redirects to Google auth if needed)
-      // Google goes to accounts.google.com
+      // Both Google and YouTube go to accounts.google.com
       await page.goto(loginUrl)
 
       // Wait for sign-in (check every 2 seconds for 5 minutes)
+      // Same detection for both: redirect to myaccount.google.com means signed in
       let signedIn = false
       for (let i = 0; i < 150; i++) {
         await new Promise(r => setTimeout(r, 2000))
         try {
           const url = page.url()
-          if (platform === 'youtube') {
-            // YouTube: signed in when back on youtube.com after Google auth
-            if (url.includes('youtube.com') && !url.includes('accounts.google.com') && !url.includes('signin')) {
-              signedIn = true
-              break
-            }
-          } else if (url.includes('myaccount.google.com') ||
+          if (url.includes('myaccount.google.com') ||
               (url.includes('google.com') && !url.includes('signin') && !url.includes('accounts.google.com'))) {
             signedIn = true
             break
