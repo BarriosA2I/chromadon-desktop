@@ -2187,8 +2187,15 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
       }
 
       if (signedIn) {
-        // Always import cookies to Google partition (YouTube shares it)
-        const cookies = await page.cookies()
+        // Navigate to YouTube to pick up .youtube.com cookies (Google auth only gives .google.com cookies)
+        console.log('[CHROMADON] Navigating to YouTube to capture cookies...')
+        await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {})
+        await new Promise(r => setTimeout(r, 2000))
+
+        // Use CDP to get ALL browser cookies (all domains, not just current page)
+        const client = await page.target().createCDPSession()
+        const { cookies } = await client.send('Network.getAllCookies')
+
         const googleSession = session.fromPartition('persist:platform-google')
         let imported = 0
         for (const cookie of cookies) {
@@ -2206,7 +2213,7 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
             imported++
           } catch (e) {}
         }
-        console.log(`[CHROMADON] Imported ${imported} cookies for ${platform} → persist:platform-google`)
+        console.log(`[CHROMADON] Imported ${imported} cookies (all domains) for ${platform} → persist:platform-google`)
 
         // Update both google and youtube auth status
         browserViewManager.updatePlatformSession('google', { isAuthenticated: true })
