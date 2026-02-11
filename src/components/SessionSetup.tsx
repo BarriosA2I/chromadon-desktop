@@ -22,7 +22,7 @@ const PLATFORMS: {
     icon: 'G',
     color: '#4285F4',
     url: 'https://accounts.google.com',
-    description: 'Gmail, YouTube, Google Ads',
+    description: 'Gmail, Drive, Google Ads',
   },
   {
     id: 'twitter',
@@ -55,6 +55,14 @@ const PLATFORMS: {
     color: '#E4405F',
     url: 'https://instagram.com/accounts/login',
     description: 'Posts, Stories, Reels',
+  },
+  {
+    id: 'youtube',
+    name: 'YouTube',
+    icon: 'YT',
+    color: '#FF0000',
+    url: 'https://accounts.google.com',
+    description: 'Videos, Analytics, Upload',
   },
   {
     id: 'tiktok',
