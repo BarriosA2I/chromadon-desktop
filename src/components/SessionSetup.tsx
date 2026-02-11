@@ -93,14 +93,12 @@ export default function SessionSetup({
   }, [isOpen, setPlatformSessions])
 
   // Verify a platform's auth status
-  // YouTube shares Google's session
   const verifyPlatform = async (platform: Platform) => {
     if (!window.electronAPI?.sessionVerify) return
 
-    const authPlatform = platform === 'youtube' ? 'google' : platform
     setVerifyingPlatform(platform)
     try {
-      const result = await window.electronAPI.sessionVerify(authPlatform)
+      const result = await window.electronAPI.sessionVerify(platform)
       if (result.success) {
         // Session will be updated via the IPC response
         await window.electronAPI.sessionList().then((res) => {
@@ -116,18 +114,16 @@ export default function SessionSetup({
   }
 
   // Open OAuth popup for sign-in
-  // YouTube shares Google's auth - clicking YouTube sign-in triggers Google OAuth
   const handleOpenPlatform = async (platform: Platform) => {
     if (!window.electronAPI?.oauthSignIn) {
       console.error('OAuth sign-in API not available')
       return
     }
 
-    const authPlatform = platform === 'youtube' ? 'google' : platform
     setVerifyingPlatform(platform)
     try {
-      console.log(`[SessionSetup] Opening OAuth popup for ${authPlatform}`)
-      const result = await window.electronAPI.oauthSignIn(authPlatform)
+      console.log(`[SessionSetup] Opening OAuth popup for ${platform}`)
+      const result = await window.electronAPI.oauthSignIn(platform)
 
       if (result.success) {
         console.log(`[SessionSetup] OAuth success for ${platform}`)

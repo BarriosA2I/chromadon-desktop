@@ -2127,9 +2127,9 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     return { success: false, error: `Unknown platform: ${platform}` }
   }
 
-  // For Google (and YouTube which shares Google auth), use puppeteer to open Chrome visibly
-  // and import cookies after sign-in
-  if (platform === 'google') {
+  // For Google and YouTube, use puppeteer to open real Chrome visibly
+  // and import cookies after sign-in. YouTube shares Google's partition.
+  if (platform === 'google' || platform === 'youtube') {
     console.log(`[CHROMADON] Using Chrome for ${platform} sign-in`)
 
     const puppeteer = require('puppeteer-core')
@@ -2164,6 +2164,8 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
       const pages = await browser.pages()
       const page = pages[0] || await browser.newPage()
+      // YouTube goes to youtube.com (which redirects to Google auth if needed)
+      // Google goes to accounts.google.com
       await page.goto(loginUrl)
 
       // Wait for sign-in (check every 2 seconds for 5 minutes)
@@ -2172,7 +2174,13 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
         await new Promise(r => setTimeout(r, 2000))
         try {
           const url = page.url()
-          if (url.includes('myaccount.google.com') ||
+          if (platform === 'youtube') {
+            // YouTube: signed in when back on youtube.com after Google auth
+            if (url.includes('youtube.com') && !url.includes('accounts.google.com') && !url.includes('signin')) {
+              signedIn = true
+              break
+            }
+          } else if (url.includes('myaccount.google.com') ||
               (url.includes('google.com') && !url.includes('signin') && !url.includes('accounts.google.com'))) {
             signedIn = true
             break
@@ -2185,9 +2193,9 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
       }
 
       if (signedIn) {
-        // Import cookies to the correct platform partition
+        // Always import cookies to Google partition (YouTube shares it)
         const cookies = await page.cookies()
-        const googleSession = session.fromPartition(`persist:platform-${platform}`)
+        const googleSession = session.fromPartition('persist:platform-google')
         let imported = 0
         for (const cookie of cookies) {
           try {
@@ -2204,7 +2212,14 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
             imported++
           } catch (e) {}
         }
-        console.log(`[CHROMADON] Imported ${imported} cookies for ${platform}`)
+        console.log(`[CHROMADON] Imported ${imported} cookies for ${platform} → persist:platform-google`)
+
+        // Update both google and youtube auth status
+        browserViewManager.updatePlatformSession('google', { isAuthenticated: true })
+        if (platform === 'youtube') {
+          browserViewManager.updatePlatformSession('youtube', { isAuthenticated: true })
+        }
+
         await browser.close()
         return { success: true, platform, cookies: imported }
       }

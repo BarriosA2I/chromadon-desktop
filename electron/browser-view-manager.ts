@@ -208,9 +208,11 @@ export class BrowserViewManager {
 
   /**
    * Check if a platform is authenticated (check cookies/session)
+   * YouTube uses Google's partition since they share authentication
    */
   async verifyPlatformAuth(platform: Platform): Promise<boolean> {
-    const partition = `persist:platform-${platform}`
+    const authPlatform = platform === 'youtube' ? 'google' : platform
+    const partition = `persist:platform-${authPlatform}`
     const ses = session.fromPartition(partition)
 
     // Check for auth cookies based on platform
