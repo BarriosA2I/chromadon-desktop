@@ -2215,11 +2215,9 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
         }
         console.log(`[CHROMADON] Imported ${imported} cookies (all domains) for ${platform} → persist:platform-google`)
 
-        // Update both google and youtube auth status
+        // Google and YouTube share a session - always mark both as authenticated
         browserViewManager.updatePlatformSession('google', { isAuthenticated: true })
-        if (platform === 'youtube') {
-          browserViewManager.updatePlatformSession('youtube', { isAuthenticated: true })
-        }
+        browserViewManager.updatePlatformSession('youtube', { isAuthenticated: true })
 
         await browser.close()
         return { success: true, platform, cookies: imported }
@@ -2511,6 +2509,20 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
 // App lifecycle
 app.whenReady().then(() => {
+  // Spoof user-agent on Google session partition so Google/YouTube
+  // don't detect Electron as "not secure browser"
+  const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+  const googleSession = session.fromPartition('persist:platform-google')
+  googleSession.setUserAgent(CHROME_UA)
+  googleSession.webRequest.onBeforeSendHeaders(
+    { urls: ['*://*.google.com/*', '*://*.youtube.com/*', '*://*.gstatic.com/*', '*://*.googleapis.com/*'] },
+    (details, callback) => {
+      details.requestHeaders['User-Agent'] = CHROME_UA
+      callback({ requestHeaders: details.requestHeaders })
+    }
+  )
+  console.log('[CHROMADON] Google session UA spoofed to Chrome')
+
   createWindow()
   startControlServer()
 })

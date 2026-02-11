@@ -62,7 +62,7 @@ const PLATFORMS: {
     icon: 'YT',
     color: '#FF0000',
     url: 'https://www.youtube.com',
-    description: 'Videos, Analytics, Upload',
+    description: 'Uses Google session — Videos, Analytics',
   },
   {
     id: 'tiktok',
@@ -120,20 +120,37 @@ export default function SessionSetup({
       return
     }
 
+    // YouTube shares Google's session - if Google is signed in, YouTube is too
+    if (platform === 'youtube' && platformSessions['google']?.isAuthenticated) {
+      console.log('[SessionSetup] Google is signed in, auto-marking YouTube as authenticated')
+      // Tell backend to mark YouTube as authenticated
+      if (window.electronAPI?.sessionUpdate) {
+        await window.electronAPI.sessionUpdate('youtube', { isAuthenticated: true })
+      }
+      const sessions = await window.electronAPI.sessionList()
+      if (sessions.success && sessions.sessions) {
+        setPlatformSessions(sessions.sessions)
+      }
+      return
+    }
+
+    // If YouTube is clicked but Google is NOT signed in, sign into Google instead
+    const effectivePlatform = platform === 'youtube' ? 'google' : platform
+
     setVerifyingPlatform(platform)
     try {
-      console.log(`[SessionSetup] Opening OAuth popup for ${platform}`)
-      const result = await window.electronAPI.oauthSignIn(platform)
+      console.log(`[SessionSetup] Opening OAuth popup for ${effectivePlatform} (requested: ${platform})`)
+      const result = await window.electronAPI.oauthSignIn(effectivePlatform)
 
       if (result.success) {
-        console.log(`[SessionSetup] OAuth success for ${platform}`)
+        console.log(`[SessionSetup] OAuth success for ${effectivePlatform}`)
         // Refresh session list to show authenticated status
         const sessions = await window.electronAPI.sessionList()
         if (sessions.success && sessions.sessions) {
           setPlatformSessions(sessions.sessions)
         }
       } else if (result.userClosed) {
-        console.log(`[SessionSetup] User closed OAuth popup for ${platform}`)
+        console.log(`[SessionSetup] User closed OAuth popup for ${effectivePlatform}`)
       }
     } catch (err) {
       console.error('Failed to open OAuth popup:', err)
@@ -142,7 +159,16 @@ export default function SessionSetup({
   }
 
   // Get session status for platform
+  // YouTube inherits Google's auth (shared partition)
   const getSessionStatus = (platform: Platform): PlatformSession | null => {
+    if (platform === 'youtube') {
+      const ytSession = platformSessions['youtube']
+      const googleSession = platformSessions['google']
+      if (googleSession?.isAuthenticated) {
+        return { ...googleSession, platform: 'youtube' } as PlatformSession
+      }
+      return ytSession || null
+    }
     return platformSessions[platform] || null
   }
 
