@@ -207,6 +207,27 @@ export function useStreamingChat() {
     setIsProcessing,
   ])
 
+  const stopExecution = useCallback(async () => {
+    // 1. Abort the client-side fetch stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    // 2. Tell the Brain to abort server-side execution (cancels Anthropic API call + tool loop)
+    try {
+      await fetch(`${API_BASE}/api/orchestrator/stop-all`, { method: 'POST' })
+    } catch {
+      // Even if request fails, UI state is already updated
+    }
+    // 3. Finalize any in-progress streaming message
+    if (streamingMsgIdRef.current) {
+      appendToStreamingMessage(streamingMsgIdRef.current, '\n\nStopped by user.')
+      finalizeStreamingMessage(streamingMsgIdRef.current)
+      streamingMsgIdRef.current = null
+    }
+    setIsProcessing(false)
+  }, [appendToStreamingMessage, finalizeStreamingMessage, setIsProcessing])
+
   const cancelRequest = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
@@ -228,5 +249,12 @@ export function useStreamingChat() {
     }
   }, [sendMessage, cancelRequest])
 
-  return { sendMessage, cancelRequest }
+  // Listen for stop events from ChatPanel
+  useEffect(() => {
+    const handler = () => { stopExecution() }
+    window.addEventListener('chromadon-chat-stop', handler)
+    return () => window.removeEventListener('chromadon-chat-stop', handler)
+  }, [stopExecution])
+
+  return { sendMessage, cancelRequest, stopExecution }
 }

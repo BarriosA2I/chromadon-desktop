@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 import { useChromadonStore } from '../store/chromadonStore'
 import { ChatMessages } from './chat/ChatMessages'
 
@@ -43,6 +43,22 @@ export function ChatPanel() {
     }
   }, [chatInput, isProcessing, isConnected, setChatInput])
 
+  // Stop execution handler
+  const handleStop = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('chromadon-chat-stop'))
+  }, [])
+
+  // Escape key to stop execution
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isProcessing) {
+        handleStop()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isProcessing, handleStop])
+
   return (
     <div className="cyber-panel flex-1 flex flex-col min-h-0 overflow-hidden">
       {/* Header */}
@@ -86,24 +102,31 @@ export function ChatPanel() {
             className="flex-1 bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-gray-200 font-mono placeholder-chroma-muted/40 resize-none focus:outline-none focus:border-chroma-teal/30 focus:bg-white/[0.05] transition-colors disabled:opacity-40"
             style={{ minHeight: '36px', maxHeight: '96px' }}
           />
-          <button
-            type="submit"
-            disabled={!chatInput.trim() || isProcessing || !isConnected}
-            className="flex-shrink-0 h-9 px-3 rounded-lg font-display text-[10px] uppercase tracking-wider transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed bg-gradient-to-r from-chroma-teal/20 to-chroma-purple/20 border border-chroma-teal/25 text-chroma-teal hover:from-chroma-teal/30 hover:to-chroma-purple/30 hover:border-chroma-teal/40 hover:shadow-neon-teal"
-          >
-            {isProcessing ? (
+          {isProcessing ? (
+            <button
+              type="button"
+              onClick={handleStop}
+              className="flex-shrink-0 h-9 px-3 rounded-lg font-display text-[10px] uppercase tracking-wider transition-all duration-200 bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 hover:border-red-500/60 hover:shadow-[0_0_12px_rgba(239,68,68,0.3)] animate-pulse"
+              title="Stop execution (Esc)"
+            >
               <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-chroma-purple animate-pulse" />
-                <span>Working</span>
+                <span className="w-2 h-2 bg-red-400 rounded-sm" />
+                <span>Stop</span>
               </span>
-            ) : (
-              'Send'
-            )}
-          </button>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!chatInput.trim() || !isConnected}
+              className="flex-shrink-0 h-9 px-3 rounded-lg font-display text-[10px] uppercase tracking-wider transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed bg-gradient-to-r from-chroma-teal/20 to-chroma-purple/20 border border-chroma-teal/25 text-chroma-teal hover:from-chroma-teal/30 hover:to-chroma-purple/30 hover:border-chroma-teal/40 hover:shadow-neon-teal"
+            >
+              Send
+            </button>
+          )}
         </div>
         <div className="flex items-center justify-between mt-1.5 px-1">
           <span className="text-[9px] text-chroma-muted/30 font-mono">
-            Enter to send &middot; Shift+Enter for newline
+            {isProcessing ? 'Esc to stop' : 'Enter to send \u00B7 Shift+Enter for newline'}
           </span>
         </div>
       </form>
