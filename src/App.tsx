@@ -345,9 +345,9 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
   // Hide BrowserViews when any modal is open (BrowserViews are native OS overlays above web content)
   useEffect(() => {
-    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard
+    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard || showProfileManager
     window.electronAPI?.viewsSetVisible?.(!anyModalOpen)
-  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard])
+  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showProfileManager])
 
   // Listen for queue updates
   useEffect(() => {

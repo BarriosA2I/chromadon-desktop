@@ -5,6 +5,10 @@ import type { Request, Response } from 'express'
 import * as fs from 'fs'
 import { browserViewManager, TabInfo, Platform, SessionMode, PlatformSession } from './browser-view-manager'
 import { vault, ChromadonProfile, StoredCredential } from './security/vault'
+import { StorageManager } from './storage-manager'
+
+// Screenshot storage manager (initialized in startControlServer)
+const storageManager = new StorageManager()
 
 // CRITICAL: Anti-detection measures for Google sign-in
 // Set app to look like Chrome
@@ -205,6 +209,11 @@ function updateViewBounds() {
 function startControlServer() {
   const server = express()
   server.use(express.json())
+
+  // Initialize screenshot storage (non-blocking)
+  storageManager.initialize().catch(err => {
+    console.log(`[StorageManager] Init warning: ${err.message}`)
+  })
 
   // CORS for local development
   server.use((_req: Request, res: Response, next: Function) => {
@@ -576,7 +585,7 @@ function startControlServer() {
     }
   })
 
-  // Click element with text-matching fallback
+  // Click element with 6-strategy fallback (social media optimized)
   server.post('/tabs/click', async (req: Request, res: Response) => {
     try {
       const { id, selector, text } = req.body
@@ -591,51 +600,97 @@ function startControlServer() {
         return
       }
 
-      const escapedSelector = selector ? selector.replace(/'/g, "\\'") : ''
-      const escapedText = text ? text.replace(/'/g, "\\'") : ''
+      // The target is the selector or text to match
+      const target = selector || text
 
       const result = await view.webContents.executeJavaScript(`
         (function() {
-          // Strategy 1: Direct selector
-          ${selector ? `
-          var el = document.querySelector('${escapedSelector}');
-          if (el) { el.scrollIntoView({block:'center'}); el.click(); return 'clicked:' + el.tagName + ':' + (el.textContent || '').trim().slice(0, 50); }
-          ` : ''}
+          var target = ${JSON.stringify(target)};
 
-          // Strategy 2: Match by text content
-          ${(text || selector) ? `
-          var searchText = '${escapedText || escapedSelector}'.toLowerCase();
-          var candidates = document.querySelectorAll('button, [role="button"], a, input[type="submit"], input[type="button"], div[tabindex], span[tabindex]');
-          for (var i = 0; i < candidates.length; i++) {
-            if (candidates[i].textContent && candidates[i].textContent.trim().toLowerCase().includes(searchText)) {
-              candidates[i].scrollIntoView({block:'center'}); candidates[i].click();
-              return 'clicked_by_text:' + candidates[i].tagName + ':' + candidates[i].textContent.trim().slice(0, 50);
+          // Strategy 1: Direct CSS selector
+          try {
+            var el = document.querySelector(target);
+            if (el) { el.scrollIntoView({block:'center'}); el.click(); return { found: true, strategy: 'css', detail: el.tagName + ':' + (el.textContent || '').trim().slice(0, 50) }; }
+          } catch(e) { /* selector might not be valid CSS, continue */ }
+
+          // Strategy 2: role="button" with matching text
+          var roleBtns = document.querySelectorAll('[role="button"]');
+          for (var i = 0; i < roleBtns.length; i++) {
+            var btnText = (roleBtns[i].textContent || '').trim();
+            var btnInner = (roleBtns[i].innerText || '').trim();
+            if (btnText === target || btnInner === target) {
+              roleBtns[i].scrollIntoView({block:'center'}); roleBtns[i].click();
+              return { found: true, strategy: 'role_text', detail: btnText.slice(0, 50) };
             }
           }
-          ` : ''}
 
-          // Strategy 3: aria-label match
-          ${(text || selector) ? `
+          // Strategy 3: aria-label match (case-insensitive)
           var ariaEls = document.querySelectorAll('[aria-label]');
           for (var j = 0; j < ariaEls.length; j++) {
-            if (ariaEls[j].getAttribute('aria-label').toLowerCase().includes(searchText)) {
+            if (ariaEls[j].getAttribute('aria-label').toLowerCase() === target.toLowerCase()) {
               ariaEls[j].scrollIntoView({block:'center'}); ariaEls[j].click();
-              return 'clicked_by_aria:' + ariaEls[j].tagName + ':' + ariaEls[j].getAttribute('aria-label');
+              return { found: true, strategy: 'aria', detail: ariaEls[j].getAttribute('aria-label') };
             }
           }
-          ` : ''}
 
-          return 'not_found';
+          // Strategy 4: data-testid (Twitter/X uses these)
+          var testIdMap = {
+            'Post': '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',
+            'Reply': '[data-testid="tweetReplyButton"]',
+            'Tweet': '[data-testid="tweetButton"]'
+          };
+          if (testIdMap[target]) {
+            el = document.querySelector(testIdMap[target]);
+            if (el) { el.scrollIntoView({block:'center'}); el.click(); return { found: true, strategy: 'testid', detail: target }; }
+          }
+
+          // Strategy 5: Button/submit with matching text
+          var allBtns = document.querySelectorAll('button, [type="submit"]');
+          for (var k = 0; k < allBtns.length; k++) {
+            if ((allBtns[k].textContent || '').trim() === target) {
+              allBtns[k].scrollIntoView({block:'center'}); allBtns[k].click();
+              return { found: true, strategy: 'button_text', detail: allBtns[k].tagName + ':' + target };
+            }
+          }
+
+          // Strategy 6: Deepest text node walk — find exact text, walk up to clickable ancestor
+          var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          while (walker.nextNode()) {
+            if ((walker.currentNode.textContent || '').trim() === target) {
+              var clickTarget = walker.currentNode.parentElement;
+              while (clickTarget && !clickTarget.onclick &&
+                     clickTarget.getAttribute && clickTarget.getAttribute('role') !== 'button' &&
+                     clickTarget.tagName !== 'BUTTON' && clickTarget.tagName !== 'A') {
+                clickTarget = clickTarget.parentElement;
+              }
+              if (clickTarget && clickTarget !== document.body) {
+                clickTarget.scrollIntoView({block:'center'}); clickTarget.click();
+                return { found: true, strategy: 'text_walk', detail: clickTarget.tagName + ':' + target };
+              }
+            }
+          }
+
+          // Strategy 7: Partial text match on buttons/role=button (fallback)
+          var searchLower = target.toLowerCase();
+          var partialCandidates = document.querySelectorAll('button, [role="button"], a, input[type="submit"], [tabindex]');
+          for (var m = 0; m < partialCandidates.length; m++) {
+            if (partialCandidates[m].textContent && partialCandidates[m].textContent.trim().toLowerCase().includes(searchLower)) {
+              partialCandidates[m].scrollIntoView({block:'center'}); partialCandidates[m].click();
+              return { found: true, strategy: 'partial_text', detail: partialCandidates[m].textContent.trim().slice(0, 50) };
+            }
+          }
+
+          return { found: false, strategy: 'none' };
         })()
       `)
 
-      if (result === 'not_found') {
-        res.json({ success: false, error: `Element not found: ${selector || text}` })
+      if (!result.found) {
+        res.status(404).json({ success: false, error: `Element not found: ${target}`, strategies_tried: 7 })
         return
       }
 
-      console.log(`[CHROMADON] Click result: ${result}`)
-      res.json({ success: true, result })
+      console.log(`[CHROMADON] Click: "${target}" → ${result.strategy} (${result.detail})`)
+      res.json({ success: true, result: `clicked_${result.strategy}:${result.detail}`, strategy: result.strategy })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
     }
@@ -1719,6 +1774,69 @@ function startControlServer() {
     }
   })
 
+  // ==================== SCREENSHOT STORAGE ENDPOINTS ====================
+
+  // Save screenshot from a BrowserView tab
+  server.post('/storage/screenshot', async (req: Request, res: Response) => {
+    try {
+      const { tabId, sessionId, action, platform, url } = req.body
+      if (!sessionId || !action) {
+        res.status(400).json({ success: false, error: 'sessionId and action are required' })
+        return
+      }
+
+      // Determine which view to screenshot
+      const id = tabId ?? browserViewManager.getActiveTabId()
+      if (id === null || id === undefined) {
+        res.status(400).json({ success: false, error: 'No active tab to screenshot' })
+        return
+      }
+
+      const view = browserViewManager.getView(id)
+      if (!view || view.webContents.isDestroyed()) {
+        res.status(404).json({ success: false, error: `Tab ${id} not found or destroyed` })
+        return
+      }
+
+      // Capture the page as a NativeImage
+      const image = await view.webContents.capturePage()
+      const buffer = image.toJPEG(70) // JPEG at 70% quality
+
+      // Save via StorageManager
+      const screenshot = await storageManager.saveScreenshot({
+        buffer,
+        sessionId,
+        action,
+        platform,
+        url: url || view.webContents.getURL(),
+      })
+
+      res.json({ success: true, screenshot })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Get storage statistics
+  server.get('/storage/stats', async (_req: Request, res: Response) => {
+    try {
+      const stats = await storageManager.getStats()
+      res.json({ success: true, ...stats })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Manual cleanup trigger
+  server.post('/storage/cleanup', async (_req: Request, res: Response) => {
+    try {
+      const result = await storageManager.cleanup()
+      res.json({ success: true, ...result })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   server.listen(CONTROL_PORT, '127.0.0.1', () => {
     console.log(`[CHROMADON Desktop] Control server running on http://127.0.0.1:${CONTROL_PORT}`)
     console.log(`[CHROMADON Desktop] Endpoints:`)
@@ -1740,6 +1858,9 @@ function startControlServer() {
     console.log(`  GET  /queue               - Get marketing queue status`)
     console.log(`  POST /queue/add           - Add task to queue`)
     console.log(`  POST /queue/process/:plat - Process next task`)
+    console.log(`  POST /storage/screenshot  - Save screenshot to disk`)
+    console.log(`  GET  /storage/stats       - Screenshot storage stats`)
+    console.log(`  POST /storage/cleanup     - Cleanup old screenshots`)
   })
 }
 
