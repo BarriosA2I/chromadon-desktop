@@ -43,9 +43,18 @@ export default function CredentialVault({
   onCopyPassword,
 }: CredentialVaultProps) {
   const [searchQuery, setSearchQuery] = useState('')
-  const [showAddModal, setShowAddModal] = useState(false)
+  const [view, setView] = useState<'list' | 'add' | 'edit'>('list')
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null)
   const [copiedField, setCopiedField] = useState<{ id: string; field: 'username' | 'password' } | null>(null)
+
+  // Reset view when vault closes
+  useEffect(() => {
+    if (!isOpen) {
+      setView('list')
+      setEditingCredential(null)
+      setSearchQuery('')
+    }
+  }, [isOpen])
 
   // Filter credentials by search query
   const filteredCredentials = credentials.filter(c => {
@@ -132,11 +141,26 @@ export default function CredentialVault({
               <div className="relative px-6 py-4 border-b border-chroma-teal/20">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
+                    {view !== 'list' && (
+                      <motion.button
+                        onClick={() => { setView('list'); setEditingCredential(null) }}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                      >
+                        <BackIcon />
+                      </motion.button>
+                    )}
                     <VaultIcon />
                     <div>
-                      <h2 className="heading-cyber text-lg">CREDENTIAL VAULT</h2>
+                      <h2 className="heading-cyber text-lg">
+                        {view === 'list' ? 'CREDENTIAL VAULT' : view === 'add' ? 'ADD CREDENTIAL' : 'EDIT CREDENTIAL'}
+                      </h2>
                       <p className="text-xs text-chroma-muted font-mono">
-                        {credentials.length} credential{credentials.length !== 1 ? 's' : ''} stored
+                        {view === 'list'
+                          ? `${credentials.length} credential${credentials.length !== 1 ? 's' : ''} stored`
+                          : view === 'add' ? 'Enter credential details' : 'Update credential details'
+                        }
                       </p>
                     </div>
                   </div>
@@ -150,20 +174,23 @@ export default function CredentialVault({
                   </motion.button>
                 </div>
 
-                {/* Search Bar */}
-                <div className="mt-4 relative">
-                  <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-chroma-muted" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search credentials..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-chroma-black/50 border border-chroma-teal/20 rounded-xl text-sm text-white placeholder-chroma-muted/50 focus:outline-none focus:border-chroma-teal/50 transition-colors"
-                  />
-                </div>
+                {/* Search Bar — only on list view */}
+                {view === 'list' && (
+                  <div className="mt-4 relative">
+                    <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-chroma-muted" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search credentials..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-chroma-black/50 border border-chroma-teal/20 rounded-xl text-sm text-white placeholder-chroma-muted/50 focus:outline-none focus:border-chroma-teal/50 transition-colors"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Credentials List */}
+              {/* Credentials List — only on list view */}
+              {view === 'list' && (<>
               <div className="relative flex-1 overflow-y-auto px-6 py-4 space-y-3">
                 {sortedCredentials.length === 0 ? (
                   <div className="text-center py-12">
@@ -172,7 +199,7 @@ export default function CredentialVault({
                       {searchQuery ? 'No credentials match your search' : 'No credentials stored yet'}
                     </p>
                     <motion.button
-                      onClick={() => setShowAddModal(true)}
+                      onClick={() => setView('add')}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       className="mt-4 px-4 py-2 text-sm font-ui text-chroma-teal border border-chroma-teal/30 rounded-lg hover:bg-chroma-teal/10 transition-colors"
@@ -280,7 +307,7 @@ export default function CredentialVault({
 
                           {/* Edit */}
                           <motion.button
-                            onClick={() => setEditingCredential(credential)}
+                            onClick={() => { setEditingCredential(credential); setView('edit') }}
                             whileHover={{ scale: 1.1 }}
                             whileTap={{ scale: 0.9 }}
                             className="p-2 rounded-lg text-chroma-muted hover:text-white hover:bg-white/10 transition-colors"
@@ -326,7 +353,7 @@ export default function CredentialVault({
               {/* Footer */}
               <div className="relative px-6 py-4 border-t border-chroma-teal/20">
                 <motion.button
-                  onClick={() => setShowAddModal(true)}
+                  onClick={() => setView('add')}
                   whileHover={{ scale: 1.02, boxShadow: '0 0 30px rgba(0, 206, 209, 0.3)' }}
                   whileTap={{ scale: 0.98 }}
                   className="w-full py-3 rounded-xl font-display font-bold uppercase tracking-[0.15em] text-sm bg-gradient-to-r from-chroma-teal to-chroma-cyan text-chroma-black"
@@ -334,33 +361,32 @@ export default function CredentialVault({
                   + Add Credential
                 </motion.button>
               </div>
+              </>)}
+
+              {/* Add/Edit Form — inline, replaces list within same modal */}
+              {(view === 'add' || view === 'edit') && (
+                <CredentialForm
+                  credential={editingCredential}
+                  profileId={currentProfileId!}
+                  onSubmit={async (data) => {
+                    if (editingCredential) {
+                      const result = await onEdit(editingCredential.id, data)
+                      if (result.success) { setEditingCredential(null); setView('list') }
+                      return result
+                    } else {
+                      const result = await onAdd(data as any)
+                      if (result.success) setView('list')
+                      return result
+                    }
+                  }}
+                  onClose={() => {
+                    setView('list')
+                    setEditingCredential(null)
+                  }}
+                />
+              )}
             </div>
           </motion.div>
-
-          {/* Add/Edit Modal */}
-          <AnimatePresence>
-            {(showAddModal || editingCredential) && (
-              <CredentialForm
-                credential={editingCredential}
-                profileId={currentProfileId!}
-                onSubmit={async (data) => {
-                  if (editingCredential) {
-                    const result = await onEdit(editingCredential.id, data)
-                    if (result.success) setEditingCredential(null)
-                    return result
-                  } else {
-                    const result = await onAdd(data as any)
-                    if (result.success) setShowAddModal(false)
-                    return result
-                  }
-                }}
-                onClose={() => {
-                  setShowAddModal(false)
-                  setEditingCredential(null)
-                }}
-              />
-            )}
-          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
@@ -415,24 +441,7 @@ function CredentialForm({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-60 flex items-center justify-center"
-    >
-      <div className="absolute inset-0 bg-chroma-black/50" onClick={onClose} />
-
-      <motion.div
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
-        className="relative z-10 w-full max-w-md mx-4 cyber-panel rounded-xl p-6"
-      >
-        <h3 className="heading-cyber text-lg mb-6">
-          {credential ? 'EDIT CREDENTIAL' : 'ADD CREDENTIAL'}
-        </h3>
-
+    <div className="relative flex-1 overflow-y-auto px-6 py-4">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-ui uppercase tracking-wider text-chroma-muted mb-1">
@@ -533,12 +542,20 @@ function CredentialForm({
             </motion.button>
           </div>
         </form>
-      </motion.div>
-    </motion.div>
+    </div>
   )
 }
 
 // Icons
+function BackIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M19 12H5" />
+      <polyline points="12 19 5 12 12 5" />
+    </svg>
+  )
+}
+
 function VaultIcon() {
   return (
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="url(#vaultGrad)" strokeWidth="2">
