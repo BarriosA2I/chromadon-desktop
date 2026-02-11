@@ -41,7 +41,7 @@ export interface PlatformSession {
 
 // URL patterns to detect platform
 const PLATFORM_URL_PATTERNS: Record<Platform, RegExp[]> = {
-  google: [/google\.com/, /youtube\.com/, /gmail\.com/],
+  google: [/google\.com/, /gmail\.com/],
   twitter: [/twitter\.com/, /x\.com/],
   linkedin: [/linkedin\.com/],
   facebook: [/facebook\.com/, /fb\.com/],
