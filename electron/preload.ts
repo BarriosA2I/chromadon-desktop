@@ -281,6 +281,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('queue:taskCompleted', handler)
     }
   },
+
+  // Settings API
+  settingsGetApiKeyStatus: () => ipcRenderer.invoke('settings:getApiKeyStatus'),
+  settingsSetApiKey: (apiKey: string) => ipcRenderer.invoke('settings:setApiKey', apiKey),
+  settingsValidateApiKey: (apiKey: string) => ipcRenderer.invoke('settings:validateApiKey', apiKey),
+  settingsRemoveApiKey: () => ipcRenderer.invoke('settings:removeApiKey'),
+  settingsGetBrainStatus: () => ipcRenderer.invoke('settings:getBrainStatus'),
 })
 
 // Type definitions for the exposed API
@@ -381,6 +388,13 @@ declare global {
       onQueueUpdated: (callback: (queue: MarketingTask[]) => void) => (() => void)
       onTaskStarted: (callback: (task: MarketingTask) => void) => (() => void)
       onTaskCompleted: (callback: (task: MarketingTask) => void) => (() => void)
+
+      // Settings API
+      settingsGetApiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
+      settingsSetApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
+      settingsValidateApiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; error?: string }>
+      settingsRemoveApiKey: () => Promise<{ success: boolean; error?: string }>
+      settingsGetBrainStatus: () => Promise<{ isRunning: boolean; pid: number | null }>
     }
   }
 }

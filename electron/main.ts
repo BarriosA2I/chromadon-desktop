@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, clipboard, session } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, clipboard, session, safeStorage } from 'electron'
 import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
@@ -11,10 +11,50 @@ import { StorageManager } from './storage-manager'
 // Screenshot storage manager (initialized in startControlServer)
 const storageManager = new StorageManager()
 
+// ==================== API KEY MANAGER ====================
+const API_KEY_FILE = 'anthropic-api-key.enc'
+
+function getApiKeyPath(): string {
+  return path.join(app.getPath('userData'), API_KEY_FILE)
+}
+
+function storeApiKey(key: string): void {
+  const keyPath = getApiKeyPath()
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(key)
+    fs.writeFileSync(keyPath, encrypted)
+  } else {
+    // Fallback: base64 (not truly secure, but better than plaintext)
+    fs.writeFileSync(keyPath, Buffer.from(key).toString('base64'), 'utf8')
+  }
+}
+
+function loadApiKey(): string | null {
+  const keyPath = getApiKeyPath()
+  if (!fs.existsSync(keyPath)) return null
+  try {
+    const data = fs.readFileSync(keyPath)
+    if (safeStorage.isEncryptionAvailable()) {
+      return safeStorage.decryptString(data)
+    } else {
+      return Buffer.from(data.toString('utf8'), 'base64').toString('utf8')
+    }
+  } catch {
+    return null
+  }
+}
+
+function deleteApiKey(): void {
+  const keyPath = getApiKeyPath()
+  if (fs.existsSync(keyPath)) {
+    fs.unlinkSync(keyPath)
+  }
+}
+
 // Bundled Brain server child process
 let brainProcess: ChildProcess | null = null
 
-function startBrainServer(): void {
+function startBrainServer(apiKey?: string): void {
   const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
   const log = (msg: string) => {
     const line = `[${new Date().toISOString()}] ${msg}\n`
@@ -42,7 +82,9 @@ function startBrainServer(): void {
     return
   }
 
-  log('Starting bundled Brain server...')
+  // Resolve API key: parameter > stored > env (blank)
+  const resolvedKey = apiKey || loadApiKey() || ''
+  log(`Starting bundled Brain server... (API key ${resolvedKey ? 'provided' : 'NOT set'})`)
 
   try {
     brainProcess = fork(brainEntry, [], {
@@ -54,6 +96,7 @@ function startBrainServer(): void {
         CHROMADON_DESKTOP_URL: 'http://127.0.0.1:3002',
         PREFER_DESKTOP: 'true',
         NODE_ENV: 'production',
+        ...(resolvedKey ? { ANTHROPIC_API_KEY: resolvedKey } : {}),
       },
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     })
@@ -85,6 +128,29 @@ function startBrainServer(): void {
       setTimeout(startBrainServer, 3000)
     }
   })
+}
+
+function restartBrainServer(apiKey?: string): void {
+  console.log('[Desktop] Restarting Brain server with updated API key...')
+  if (brainProcess) {
+    brainProcess.removeAllListeners('exit')
+    brainProcess.on('exit', () => {
+      brainProcess = null
+      startBrainServer(apiKey)
+    })
+    brainProcess.kill('SIGTERM')
+    // Force kill after 5 seconds if it doesn't exit gracefully
+    const forceKillTimer = setTimeout(() => {
+      if (brainProcess) {
+        brainProcess.kill('SIGKILL')
+        brainProcess = null
+        startBrainServer(apiKey)
+      }
+    }, 5000)
+    brainProcess.on('exit', () => clearTimeout(forceKillTimer))
+  } else {
+    startBrainServer(apiKey)
+  }
 }
 
 // CRITICAL: Anti-detection measures for Google sign-in
@@ -2542,6 +2608,75 @@ ipcMain.handle('credential:detectLoginForm', async (_event, tabId: number) => {
   }
 })
 
+// ==================== SETTINGS / API KEY IPC HANDLERS ====================
+
+ipcMain.handle('settings:getApiKeyStatus', () => {
+  const key = loadApiKey()
+  return {
+    hasKey: !!key,
+    keyPreview: key ? `sk-ant-...${key.slice(-4)}` : null,
+  }
+})
+
+ipcMain.handle('settings:setApiKey', async (_event, apiKey: string) => {
+  try {
+    if (!apiKey.startsWith('sk-ant-')) {
+      return { success: false, error: 'Invalid API key format. Must start with sk-ant-' }
+    }
+    storeApiKey(apiKey)
+    restartBrainServer(apiKey)
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('settings:validateApiKey', async (_event, apiKey: string) => {
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+    })
+
+    if (response.ok || response.status === 429) {
+      return { success: true, valid: true }
+    }
+    if (response.status === 401) {
+      return { success: true, valid: false, error: 'Invalid API key' }
+    }
+    const errorData = await response.json().catch(() => ({})) as any
+    return { success: true, valid: false, error: errorData.error?.message || `HTTP ${response.status}` }
+  } catch (err: any) {
+    return { success: false, error: `Network error: ${err.message}` }
+  }
+})
+
+ipcMain.handle('settings:removeApiKey', () => {
+  try {
+    deleteApiKey()
+    restartBrainServer()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('settings:getBrainStatus', () => {
+  return {
+    isRunning: brainProcess !== null,
+    pid: brainProcess?.pid || null,
+  }
+})
+
 // ==================== OAUTH POPUP WINDOW ====================
 
 // Platform login URLs
@@ -2964,7 +3099,8 @@ app.whenReady().then(() => {
 
   createWindow()
   startControlServer()
-  startBrainServer()
+  const storedKey = loadApiKey()
+  startBrainServer(storedKey || undefined)
 })
 
 app.on('before-quit', () => {

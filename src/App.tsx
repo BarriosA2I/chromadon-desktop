@@ -13,6 +13,7 @@ import ProfileManager from './components/ProfileManager'
 import SessionSetup from './components/SessionSetup'
 import MarketingQueue from './components/MarketingQueue'
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard'
+import SettingsModal from './components/SettingsModal'
 
 function App() {
   const store = useChromadonStore()
@@ -326,6 +327,10 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setShowMarketingQueue,
     showAnalyticsDashboard,
     setShowAnalyticsDashboard,
+    showSettings,
+    setShowSettings,
+    apiKeyStatus,
+    setApiKeyStatus,
     setPlatformSessions,
     setMarketingQueue,
   } = useChromadonStore()
@@ -345,9 +350,24 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
   // Hide BrowserViews when any modal is open (BrowserViews are native OS overlays above web content)
   useEffect(() => {
-    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard || showProfileManager
+    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard || showProfileManager || showSettings
     window.electronAPI?.viewsSetVisible?.(!anyModalOpen)
-  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showProfileManager])
+  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showProfileManager, showSettings])
+
+  // Check API key status on mount — auto-open settings if no key set
+  useEffect(() => {
+    const checkApiKey = async () => {
+      if (window.electronAPI?.settingsGetApiKeyStatus) {
+        const status = await window.electronAPI.settingsGetApiKeyStatus()
+        setApiKeyStatus(status)
+        if (!status.hasKey) {
+          setShowSettings(true)
+        }
+      }
+    }
+    const timer = setTimeout(checkApiKey, 3000)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Listen for queue updates
   useEffect(() => {
@@ -688,6 +708,14 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
               >
                 <AnalyticsIcon />
               </button>
+              {/* Settings */}
+              <button
+                onClick={() => setShowSettings(true)}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                title="Settings"
+              >
+                <GearIcon />
+              </button>
             </div>
           </div>
 
@@ -724,6 +752,14 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
       {/* Analytics Dashboard Modal */}
       <AnalyticsDashboard />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        apiKeyStatus={apiKeyStatus}
+        onApiKeyStatusChange={setApiKeyStatus}
+      />
     </>
   )
 }
@@ -783,6 +819,15 @@ function AnalyticsIcon() {
       <rect x="3" y="12" width="4" height="9" rx="1" />
       <rect x="10" y="7" width="4" height="14" rx="1" />
       <rect x="17" y="3" width="4" height="18" rx="1" />
+    </svg>
+  )
+}
+
+function GearIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   )
 }

@@ -172,6 +172,10 @@ interface ChromadonState {
   activeAnalyticsTab: AnalyticsTab
   showAnalyticsDashboard: boolean
 
+  // Settings state
+  showSettings: boolean
+  apiKeyStatus: { hasKey: boolean; keyPreview: string | null }
+
   // Actions
   setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
   setAIState: (state: AIState) => void
@@ -225,6 +229,10 @@ interface ChromadonState {
   setSelectedPlatforms: (platforms: AnalyticsPlatform[]) => void
   setActiveAnalyticsTab: (tab: AnalyticsTab) => void
   setShowAnalyticsDashboard: (show: boolean) => void
+
+  // Settings actions
+  setShowSettings: (show: boolean) => void
+  setApiKeyStatus: (status: { hasKey: boolean; keyPreview: string | null }) => void
 
   // Orchestrator/streaming actions
   setOrchestratorSessionId: (id: string | null) => void
@@ -303,6 +311,10 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   selectedPlatforms: [],
   activeAnalyticsTab: 'overview',
   showAnalyticsDashboard: false,
+
+  // Settings initial state
+  showSettings: false,
+  apiKeyStatus: { hasKey: false, keyPreview: null },
 
   // Actions
   setConnected: (connected, mode) => set({ isConnected: connected, connectionMode: mode ?? null }),
@@ -444,6 +456,10 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   setSelectedPlatforms: (platforms) => set({ selectedPlatforms: platforms }),
   setActiveAnalyticsTab: (tab) => set({ activeAnalyticsTab: tab }),
   setShowAnalyticsDashboard: (show) => set({ showAnalyticsDashboard: show }),
+
+  // Settings actions
+  setShowSettings: (show) => set({ showSettings: show }),
+  setApiKeyStatus: (status) => set({ apiKeyStatus: status }),
 
   // Orchestrator/streaming actions
   setOrchestratorSessionId: (id) => set({ orchestratorSessionId: id }),
