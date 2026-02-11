@@ -15,48 +15,73 @@ const storageManager = new StorageManager()
 let brainProcess: ChildProcess | null = null
 
 function startBrainServer(): void {
+  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
+  const log = (msg: string) => {
+    const line = `[${new Date().toISOString()}] ${msg}\n`
+    fs.appendFileSync(logFile, line)
+    console.log('[Brain]', msg)
+  }
+
+  log(`isPackaged=${app.isPackaged} resourcesPath=${process.resourcesPath}`)
+
   // In dev mode, Brain runs separately — skip
   if (!app.isPackaged) {
-    console.log('[Desktop] Dev mode — Brain runs independently on :3001')
+    log('Dev mode — Brain runs independently on :3001')
     return
   }
 
   const brainDir = path.join(process.resourcesPath, 'brain')
-  const brainEntry = path.join(brainDir, 'api', 'server.js')
+  const brainEntry = path.join(brainDir, 'dist', 'api', 'server.js')
+
+  log(`brainDir=${brainDir}`)
+  log(`brainEntry=${brainEntry}`)
+  log(`exists=${fs.existsSync(brainEntry)}`)
 
   if (!fs.existsSync(brainEntry)) {
-    console.error('[Desktop] Brain server not found at:', brainEntry)
+    log('Brain server not found at: ' + brainEntry)
     return
   }
 
-  console.log('[Desktop] Starting bundled Brain server...')
+  log('Starting bundled Brain server...')
 
-  brainProcess = fork(brainEntry, [], {
-    cwd: brainDir,
-    env: {
-      ...process.env,
-      CHROMADON_PORT: '3001',
-      CHROMADON_DESKTOP_URL: 'http://127.0.0.1:3002',
-      PREFER_DESKTOP: 'true',
-      NODE_ENV: 'production',
-    },
-    stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-  })
+  try {
+    brainProcess = fork(brainEntry, [], {
+      cwd: brainDir,
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        CHROMADON_PORT: '3001',
+        CHROMADON_DESKTOP_URL: 'http://127.0.0.1:3002',
+        PREFER_DESKTOP: 'true',
+        NODE_ENV: 'production',
+      },
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+    })
+
+    log(`fork() succeeded, pid=${brainProcess.pid}`)
+  } catch (err: any) {
+    log(`fork() FAILED: ${err.message}`)
+    return
+  }
 
   brainProcess.stdout?.on('data', (data: Buffer) => {
-    console.log('[Brain]', data.toString().trim())
+    log(data.toString().trim())
   })
 
   brainProcess.stderr?.on('data', (data: Buffer) => {
-    console.error('[Brain ERR]', data.toString().trim())
+    log(`STDERR: ${data.toString().trim()}`)
+  })
+
+  brainProcess.on('error', (err) => {
+    log(`Process error: ${err.message}`)
   })
 
   brainProcess.on('exit', (code, signal) => {
-    console.log(`[Brain] Exited: code=${code} signal=${signal}`)
+    log(`Exited: code=${code} signal=${signal}`)
     brainProcess = null
     // Auto-restart on crash (not on clean shutdown)
     if (code !== 0 && code !== null) {
-      console.log('[Brain] Restarting in 3s...')
+      log('Restarting in 3s...')
       setTimeout(startBrainServer, 3000)
     }
   })
