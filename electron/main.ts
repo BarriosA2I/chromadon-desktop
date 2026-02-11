@@ -561,17 +561,29 @@ function startControlServer() {
 
       // Step 3: Clear existing text if requested
       if (clearFirst !== false) {
-        await view.webContents.executeJavaScript(`
+        const isStandardInput = await view.webContents.executeJavaScript(`
           (function() {
             var el = document.activeElement;
-            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-              el.value = '';
-              el.dispatchEvent(new Event('input', {bubbles: true}));
-            } else if (el && el.isContentEditable) {
-              el.innerHTML = '';
-            }
+            return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
           })()
         `)
+
+        if (isStandardInput) {
+          // Standard inputs: set value + dispatch event
+          await view.webContents.executeJavaScript(`
+            (function() {
+              var el = document.activeElement;
+              el.value = '';
+              el.dispatchEvent(new Event('input', {bubbles: true}));
+            })()
+          `)
+        } else {
+          // Contenteditable (Twitter, LinkedIn, etc.): use native Select All + Delete
+          // Generates real InputEvents that React/Draft.js/ProseMirror respond to
+          view.webContents.selectAll()
+          await new Promise(r => setTimeout(r, 50))
+          view.webContents.delete()
+        }
         await new Promise(r => setTimeout(r, 100))
       }
 
