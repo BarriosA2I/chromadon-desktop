@@ -503,6 +503,144 @@ function startControlServer() {
     }
   })
 
+  // Type text into focused element using Electron's insertText API
+  // Works with contenteditable (LinkedIn, Twitter), inputs, textareas, Shadow DOM, etc.
+  server.post('/tabs/type', async (req: Request, res: Response) => {
+    try {
+      const { id, selector, text, clearFirst } = req.body
+      if (id === undefined || !text) {
+        res.status(400).json({ success: false, error: 'id and text are required' })
+        return
+      }
+
+      const view = browserViewManager.getView(id)
+      if (!view) {
+        res.status(404).json({ success: false, error: `Tab ${id} not found` })
+        return
+      }
+
+      // Step 1: Focus the target element
+      const focusResult = await view.webContents.executeJavaScript(`
+        (function() {
+          var el = ${selector ? `document.querySelector('${selector.replace(/'/g, "\\'")}')` : 'null'};
+          if (el) {
+            el.scrollIntoView({block: 'center'});
+            el.focus();
+            el.click();
+            return 'focused:' + el.tagName;
+          }
+          // Fallback: find contenteditable elements
+          var editables = document.querySelectorAll('[contenteditable="true"]');
+          if (editables.length > 0) {
+            var target = editables[editables.length - 1];
+            target.scrollIntoView({block: 'center'});
+            target.focus();
+            target.click();
+            return 'focused:contenteditable';
+          }
+          return 'not_found';
+        })()
+      `)
+
+      if (focusResult === 'not_found') {
+        res.json({ success: false, error: `Element not found: ${selector}` })
+        return
+      }
+
+      // Step 2: Wait for focus to settle
+      await new Promise(r => setTimeout(r, 200))
+
+      // Step 3: Clear existing text if requested
+      if (clearFirst !== false) {
+        await view.webContents.executeJavaScript(`
+          (function() {
+            var el = document.activeElement;
+            if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+              el.value = '';
+              el.dispatchEvent(new Event('input', {bubbles: true}));
+            } else if (el && el.isContentEditable) {
+              el.innerHTML = '';
+            }
+          })()
+        `)
+        await new Promise(r => setTimeout(r, 100))
+      }
+
+      // Step 4: Use Electron's insertText - works like a real keyboard
+      await view.webContents.insertText(text)
+
+      console.log(`[CHROMADON] Typed ${text.length} chars via insertText into ${focusResult}`)
+      res.json({ success: true, result: `Typed ${text.length} chars into ${focusResult}` })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Click element with text-matching fallback
+  server.post('/tabs/click', async (req: Request, res: Response) => {
+    try {
+      const { id, selector, text } = req.body
+      if (id === undefined || (!selector && !text)) {
+        res.status(400).json({ success: false, error: 'id and (selector or text) are required' })
+        return
+      }
+
+      const view = browserViewManager.getView(id)
+      if (!view) {
+        res.status(404).json({ success: false, error: `Tab ${id} not found` })
+        return
+      }
+
+      const escapedSelector = selector ? selector.replace(/'/g, "\\'") : ''
+      const escapedText = text ? text.replace(/'/g, "\\'") : ''
+
+      const result = await view.webContents.executeJavaScript(`
+        (function() {
+          // Strategy 1: Direct selector
+          ${selector ? `
+          var el = document.querySelector('${escapedSelector}');
+          if (el) { el.scrollIntoView({block:'center'}); el.click(); return 'clicked:' + el.tagName + ':' + (el.textContent || '').trim().slice(0, 50); }
+          ` : ''}
+
+          // Strategy 2: Match by text content
+          ${(text || selector) ? `
+          var searchText = '${escapedText || escapedSelector}'.toLowerCase();
+          var candidates = document.querySelectorAll('button, [role="button"], a, input[type="submit"], input[type="button"], div[tabindex], span[tabindex]');
+          for (var i = 0; i < candidates.length; i++) {
+            if (candidates[i].textContent && candidates[i].textContent.trim().toLowerCase().includes(searchText)) {
+              candidates[i].scrollIntoView({block:'center'}); candidates[i].click();
+              return 'clicked_by_text:' + candidates[i].tagName + ':' + candidates[i].textContent.trim().slice(0, 50);
+            }
+          }
+          ` : ''}
+
+          // Strategy 3: aria-label match
+          ${(text || selector) ? `
+          var ariaEls = document.querySelectorAll('[aria-label]');
+          for (var j = 0; j < ariaEls.length; j++) {
+            if (ariaEls[j].getAttribute('aria-label').toLowerCase().includes(searchText)) {
+              ariaEls[j].scrollIntoView({block:'center'}); ariaEls[j].click();
+              return 'clicked_by_aria:' + ariaEls[j].tagName + ':' + ariaEls[j].getAttribute('aria-label');
+            }
+          }
+          ` : ''}
+
+          return 'not_found';
+        })()
+      `)
+
+      if (result === 'not_found') {
+        res.json({ success: false, error: `Element not found: ${selector || text}` })
+        return
+      }
+
+      console.log(`[CHROMADON] Click result: ${result}`)
+      res.json({ success: true, result })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // Hide/show BrowserViews (for modal overlays or external control)
   server.post('/views/visible', (req: Request, res: Response) => {
     const { visible } = req.body
