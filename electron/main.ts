@@ -137,6 +137,8 @@ let brainProcess: ChildProcess | null = null
 // In-memory API key cache — survives Brain crashes (only child process dies, not Electron)
 let cachedApiKey: string | null = null
 let brainRestarting = false
+let brainRestartCount = 0
+const BRAIN_MAX_RESTARTS = 5
 
 function startBrainServer(apiKey?: string): void {
   const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
@@ -187,6 +189,7 @@ function startBrainServer(apiKey?: string): void {
 
     log(`fork() succeeded, pid=${brainProcess.pid}`)
     brainRestarting = false
+    brainRestartCount = 0
   } catch (err: any) {
     log(`fork() FAILED: ${err.message}`)
     brainRestarting = false
@@ -208,10 +211,16 @@ function startBrainServer(apiKey?: string): void {
   brainProcess.on('exit', (code, signal) => {
     log(`Exited: code=${code} signal=${signal}`)
     brainProcess = null
-    // Auto-restart on crash (not on clean shutdown)
+    // Auto-restart on crash (not on clean shutdown), with limit to prevent infinite loops
     if (code !== 0 && code !== null) {
-      log(`Restarting in 3s... (cached API key: ${cachedApiKey ? 'YES' : 'NO'})`)
-      setTimeout(() => startBrainServer(cachedApiKey || undefined), 3000)
+      brainRestartCount++
+      if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
+        log(`Restarting in 3s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})... (cached API key: ${cachedApiKey ? 'YES' : 'NO'})`)
+        setTimeout(() => startBrainServer(cachedApiKey || undefined), 3000)
+      } else {
+        log(`Brain crashed ${brainRestartCount} times — giving up. Check brain-debug.log for errors.`)
+        mainWindow?.webContents.send('brain-status', { running: false, error: 'Brain server crashed repeatedly. Check logs.' })
+      }
     }
   })
 }
@@ -2921,11 +2930,21 @@ ipcMain.handle('settings:removeApiKey', () => {
   }
 })
 
-ipcMain.handle('settings:getBrainStatus', () => {
-  return {
-    isRunning: brainProcess !== null,
-    pid: brainProcess?.pid || null,
+ipcMain.handle('settings:getBrainStatus', async () => {
+  // In packaged mode, check the managed child process
+  if (brainProcess) {
+    return { isRunning: true, pid: brainProcess.pid || null }
   }
+  // In dev mode (or if brainProcess is null), probe the health endpoint directly
+  try {
+    const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(2000) })
+    if (res.ok) {
+      return { isRunning: true, pid: null }
+    }
+  } catch {
+    // Brain not reachable
+  }
+  return { isRunning: false, pid: null }
 })
 
 // Auto-updater: quit and install

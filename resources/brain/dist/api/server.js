@@ -42,7 +42,6 @@ dotenv.config({ path: '.env.local', override: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const path = __importStar(require("path"));
-const playwright_1 = require("playwright");
 // Neural RAG Brain v3.0 imports
 const core_1 = require("../core");
 // Agentic Orchestrator imports
@@ -247,7 +246,8 @@ async function desktopScreenshot(tabId) {
 async function connectViaCDP() {
     try {
         console.log(`[CHROMADON] Attempting CDP connection to ${CDP_ENDPOINT}...`);
-        globalBrowser = await playwright_1.chromium.connectOverCDP(CDP_ENDPOINT);
+        const { chromium } = await import('playwright');
+        globalBrowser = await chromium.connectOverCDP(CDP_ENDPOINT);
         connectionMode = 'CDP';
         // Get existing contexts and pages
         const contexts = globalBrowser.contexts();
@@ -286,7 +286,8 @@ async function connectViaCDP() {
  */
 async function launchFreshBrowser() {
     console.log(`[CHROMADON] Launching fresh Chromium browser...`);
-    globalBrowser = await playwright_1.chromium.launch({
+    const { chromium } = await import('playwright');
+    globalBrowser = await chromium.launch({
         headless: false,
         slowMo: 300,
         args: [
