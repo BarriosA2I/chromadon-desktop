@@ -1,6 +1,6 @@
 {
   "name": "chromadon-desktop",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "CHROMADON AI Browser Automation Control Panel",
   "main": "dist-electron/main.js",
   "author": "Barrios A2I <gary@barriosa2i.com>",
@@ -78,7 +78,21 @@
         "filter": [
           "**/*",
           "!node_modules/.cache/**",
-          "!node_modules/.package-lock.json"
+          "!node_modules/.package-lock.json",
+          "!node_modules/@opentelemetry/!(api)/**",
+          "!node_modules/@opentelemetry/!(api)",
+          "!node_modules/playwright/**",
+          "!node_modules/playwright",
+          "!node_modules/playwright-core/**",
+          "!node_modules/playwright-core",
+          "!node_modules/openai/**",
+          "!node_modules/openai",
+          "!node_modules/@grpc/**",
+          "!node_modules/@grpc",
+          "!node_modules/@types/**",
+          "!node_modules/@types",
+          "!node_modules/protobufjs/**",
+          "!node_modules/protobufjs"
         ]
       }
     ],
