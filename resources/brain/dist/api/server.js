@@ -345,6 +345,16 @@ function setupPageListeners(page, pageIndex) {
             if (selectedPageIndex >= globalPages.length) {
                 selectedPageIndex = Math.max(0, globalPages.length - 1);
             }
+            // Clean up pageRegistry entries that pointed to this or higher indices
+            for (const [domain, pageIdx] of pageRegistry.entries()) {
+                if (pageIdx === idx) {
+                    pageRegistry.delete(domain);
+                }
+                else if (pageIdx > idx) {
+                    // Shift down indices above the removed page
+                    pageRegistry.set(domain, pageIdx - 1);
+                }
+            }
         }
     });
 }
