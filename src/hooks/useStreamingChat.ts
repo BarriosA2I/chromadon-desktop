@@ -81,14 +81,6 @@ export function useStreamingChat() {
     abortControllerRef.current = abort
 
     try {
-      // Check if API key is configured before waiting for brain
-      if (window.electronAPI?.settingsGetApiKeyStatus) {
-        const keyStatus = await window.electronAPI.settingsGetApiKeyStatus()
-        if (!keyStatus.hasKey) {
-          throw new Error('No API key configured. Open Settings (gear icon) to add your Anthropic API key.')
-        }
-      }
-
       // Wait for brain to be ready (up to 10 seconds)
       let brainReady = false
       for (let i = 0; i < 10; i++) {
