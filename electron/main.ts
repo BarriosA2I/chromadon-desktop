@@ -12,7 +12,8 @@ import { StorageManager } from './storage-manager'
 const storageManager = new StorageManager()
 
 // ==================== API KEY MANAGER ====================
-const API_KEY_FILE = 'anthropic-api-key.enc'
+// Uses a JSON envelope so we always know the storage format on read-back.
+const API_KEY_FILE = 'chromadon-api-key.json'
 
 function getApiKeyPath(): string {
   return path.join(app.getPath('userData'), API_KEY_FILE)
@@ -20,26 +21,90 @@ function getApiKeyPath(): string {
 
 function storeApiKey(key: string): void {
   const keyPath = getApiKeyPath()
-  if (safeStorage.isEncryptionAvailable()) {
-    const encrypted = safeStorage.encryptString(key)
-    fs.writeFileSync(keyPath, encrypted)
-  } else {
-    // Fallback: base64 (not truly secure, but better than plaintext)
-    fs.writeFileSync(keyPath, Buffer.from(key).toString('base64'), 'utf8')
+  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
+  const log = (msg: string) => {
+    const line = `[${new Date().toISOString()}] [ApiKey] ${msg}\n`
+    fs.appendFileSync(logFile, line)
+    console.log('[ApiKey]', msg)
+  }
+
+  try {
+    const useEncryption = safeStorage.isEncryptionAvailable()
+    log(`storeApiKey: encryption=${useEncryption}, path=${keyPath}`)
+
+    if (useEncryption) {
+      const encrypted = safeStorage.encryptString(key)
+      const envelope = JSON.stringify({
+        format: 'dpapi',
+        data: encrypted.toString('base64'),
+        storedAt: Date.now(),
+      })
+      fs.writeFileSync(keyPath, envelope, 'utf8')
+    } else {
+      const envelope = JSON.stringify({
+        format: 'base64',
+        data: Buffer.from(key).toString('base64'),
+        storedAt: Date.now(),
+      })
+      fs.writeFileSync(keyPath, envelope, 'utf8')
+    }
+
+    // Verify the write by reading back
+    const verify = loadApiKey()
+    if (verify && verify.startsWith('sk-ant-')) {
+      log(`storeApiKey: verified OK (${verify.slice(0, 10)}...${verify.slice(-4)})`)
+    } else {
+      log(`storeApiKey: WARNING - read-back verification failed!`)
+    }
+  } catch (err: any) {
+    log(`storeApiKey: ERROR - ${err.message}`)
+    throw err
   }
 }
 
 function loadApiKey(): string | null {
   const keyPath = getApiKeyPath()
   if (!fs.existsSync(keyPath)) return null
+
+  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
+  const log = (msg: string) => {
+    const line = `[${new Date().toISOString()}] [ApiKey] ${msg}\n`
+    fs.appendFileSync(logFile, line)
+    console.log('[ApiKey]', msg)
+  }
+
   try {
+    const raw = fs.readFileSync(keyPath, 'utf8')
+
+    // New JSON envelope format
+    if (raw.startsWith('{')) {
+      const envelope = JSON.parse(raw)
+      log(`loadApiKey: format=${envelope.format}, storedAt=${envelope.storedAt}`)
+
+      if (envelope.format === 'dpapi') {
+        const encrypted = Buffer.from(envelope.data, 'base64')
+        const key = safeStorage.decryptString(encrypted)
+        log(`loadApiKey: decrypted OK (${key.slice(0, 10)}...${key.slice(-4)})`)
+        return key
+      } else if (envelope.format === 'base64') {
+        const key = Buffer.from(envelope.data, 'base64').toString('utf8')
+        log(`loadApiKey: decoded OK (${key.slice(0, 10)}...${key.slice(-4)})`)
+        return key
+      }
+    }
+
+    // Legacy: try old encrypted binary format (from previous version)
+    log('loadApiKey: attempting legacy format...')
     const data = fs.readFileSync(keyPath)
     if (safeStorage.isEncryptionAvailable()) {
-      return safeStorage.decryptString(data)
-    } else {
-      return Buffer.from(data.toString('utf8'), 'base64').toString('utf8')
+      const key = safeStorage.decryptString(data)
+      log(`loadApiKey: legacy decrypt OK (${key.slice(0, 10)}...${key.slice(-4)})`)
+      return key
     }
-  } catch {
+
+    return null
+  } catch (err: any) {
+    log(`loadApiKey: ERROR - ${err.message}`)
     return null
   }
 }
@@ -48,6 +113,13 @@ function deleteApiKey(): void {
   const keyPath = getApiKeyPath()
   if (fs.existsSync(keyPath)) {
     fs.unlinkSync(keyPath)
+    console.log('[ApiKey] Deleted:', keyPath)
+  }
+  // Also clean up old format file
+  const oldPath = path.join(app.getPath('userData'), 'anthropic-api-key.enc')
+  if (fs.existsSync(oldPath)) {
+    fs.unlinkSync(oldPath)
+    console.log('[ApiKey] Deleted legacy:', oldPath)
   }
 }
 
@@ -3099,7 +3171,10 @@ app.whenReady().then(() => {
 
   createWindow()
   startControlServer()
+
+  // Load stored API key and start brain
   const storedKey = loadApiKey()
+  console.log(`[CHROMADON] Startup: API key ${storedKey ? 'found' : 'NOT found'}, userData=${app.getPath('userData')}`)
   startBrainServer(storedKey || undefined)
 })
 
