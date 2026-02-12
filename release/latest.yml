@@ -1,0 +1,8 @@
+version: 1.2.14
+files:
+  - url: CHROMADON-Setup-1.2.14.exe
+    sha512: LIcE1fCLKXOS1Z+sv5dcDZS+hGeG2UK2VgMJQNF7CvVSIeq/LfEIe2QGrPLZ7vjS1gMrS5eqE6tVxCBnwEWF9g==
+    size: 116710442
+path: CHROMADON-Setup-1.2.14.exe
+sha512: LIcE1fCLKXOS1Z+sv5dcDZS+hGeG2UK2VgMJQNF7CvVSIeq/LfEIe2QGrPLZ7vjS1gMrS5eqE6tVxCBnwEWF9g==
+releaseDate: '2026-02-12T07:04:00.000Z'
