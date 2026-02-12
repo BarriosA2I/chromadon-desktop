@@ -356,19 +356,9 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     window.electronAPI?.viewsSetVisible?.(!anyModalOpen)
   }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showProfileManager, showSettings])
 
-  // Check API key status on mount — auto-open settings only if Brain has no key
+  // Check API key status on mount — auto-open settings if no key set
   useEffect(() => {
     const checkApiKey = async () => {
-      // Check if Brain's orchestrator is running (has key from .env or user config)
-      try {
-        const healthRes = await fetch('http://localhost:3001/health', { signal: AbortSignal.timeout(2000) })
-        const health = await healthRes.json()
-        if (health.orchestrator) {
-          return // Brain has a working key — no need to prompt
-        }
-      } catch { /* Brain not ready */ }
-
-      // Brain orchestrator not running — check if user has a key configured
       if (window.electronAPI?.settingsGetApiKeyStatus) {
         const status = await window.electronAPI.settingsGetApiKeyStatus()
         setApiKeyStatus(status)
@@ -377,7 +367,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
         }
       }
     }
-    const timer = setTimeout(checkApiKey, 8000)
+    const timer = setTimeout(checkApiKey, 3000)
     return () => clearTimeout(timer)
   }, [])
 
