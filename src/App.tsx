@@ -14,6 +14,7 @@ import SessionSetup from './components/SessionSetup'
 import MarketingQueue from './components/MarketingQueue'
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard'
 import SettingsModal from './components/SettingsModal'
+import UpdateNotifier from './components/UpdateNotifier'
 
 function App() {
   const store = useChromadonStore()
@@ -283,6 +284,7 @@ function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-chroma-black">
+      <UpdateNotifier />
       <AnimatePresence mode="wait">
         {showSplash ? (
           <SplashScreen key="splash" />

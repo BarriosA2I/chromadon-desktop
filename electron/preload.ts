@@ -288,6 +288,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsValidateApiKey: (apiKey: string) => ipcRenderer.invoke('settings:validateApiKey', apiKey),
   settingsRemoveApiKey: () => ipcRenderer.invoke('settings:removeApiKey'),
   settingsGetBrainStatus: () => ipcRenderer.invoke('settings:getBrainStatus'),
+
+  // ==================== AUTO-UPDATER API ====================
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => {
+    const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info)
+    ipcRenderer.on('updater:update-available', handler)
+    return () => { ipcRenderer.removeListener('updater:update-available', handler) }
+  },
+  onUpdateDownloadProgress: (callback: (progress: { percent: number }) => void) => {
+    const handler = (_event: any, progress: { percent: number }) => callback(progress)
+    ipcRenderer.on('updater:download-progress', handler)
+    return () => { ipcRenderer.removeListener('updater:download-progress', handler) }
+  },
+  onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void) => {
+    const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info)
+    ipcRenderer.on('updater:update-downloaded', handler)
+    return () => { ipcRenderer.removeListener('updater:update-downloaded', handler) }
+  },
+  updaterQuitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
 })
 
 // Type definitions for the exposed API
@@ -395,6 +413,12 @@ declare global {
       settingsValidateApiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; error?: string }>
       settingsRemoveApiKey: () => Promise<{ success: boolean; error?: string }>
       settingsGetBrainStatus: () => Promise<{ isRunning: boolean; pid: number | null }>
+
+      // Auto-updater API
+      onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
+      onUpdateDownloadProgress: (callback: (progress: { percent: number }) => void) => (() => void)
+      onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
+      updaterQuitAndInstall: () => Promise<void>
     }
   }
 }

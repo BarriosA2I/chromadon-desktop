@@ -16,13 +16,15 @@
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "package:win": "npm run build && electron-builder --win",
     "package:mac": "npm run build && electron-builder --mac",
-    "package:linux": "npm run build && electron-builder --linux"
+    "package:linux": "npm run build && electron-builder --linux",
+    "release:win": "tsc && vite build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@react-three/drei": "^9.92.0",
     "@react-three/fiber": "^8.15.0",
     "argon2": "^0.44.0",
     "axios": "^1.6.0",
+    "electron-updater": "^6.7.3",
     "express": "^5.2.1",
     "framer-motion": "^10.16.0",
     "puppeteer": "^24.36.1",
@@ -57,7 +59,11 @@
   "build": {
     "appId": "com.barriosa2i.chromadon",
     "productName": "CHROMADON",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "BarriosA2I",
+      "repo": "chromadon-desktop"
+    },
     "directories": {
       "output": "release"
     },

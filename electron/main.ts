@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, clipboard, session, safeStorage } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
@@ -276,6 +277,56 @@ let activeTasksByPlatform: Map<Platform, MarketingTask> = new Map()
 
 let mainWindow: BrowserWindow | null = null
 const CONTROL_PORT = 3002
+
+// ==================== AUTO-UPDATER ====================
+function initAutoUpdater() {
+  if (!app.isPackaged) {
+    console.log('[AutoUpdate] Skipping - dev mode')
+    return
+  }
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdate] Checking for update...')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    console.log(`[AutoUpdate] Update available: v${info.version}`)
+    mainWindow?.webContents.send('updater:update-available', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+    })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[AutoUpdate] Already on latest version')
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`[AutoUpdate] Download: ${Math.round(progress.percent)}%`)
+    mainWindow?.webContents.send('updater:download-progress', {
+      percent: Math.round(progress.percent),
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[AutoUpdate] Downloaded v${info.version} - ready to install`)
+    mainWindow?.webContents.send('updater:update-downloaded', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+    })
+  })
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdate] Error:', err.message)
+  })
+
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error('[AutoUpdate] Check failed:', err.message)
+  })
+}
 
 // Store for renderer state (updated via IPC)
 let rendererState: any = {
@@ -2749,6 +2800,11 @@ ipcMain.handle('settings:getBrainStatus', () => {
   }
 })
 
+// Auto-updater: quit and install
+ipcMain.handle('updater:quitAndInstall', () => {
+  autoUpdater.quitAndInstall()
+})
+
 // ==================== OAUTH POPUP WINDOW ====================
 
 // Platform login URLs
@@ -3171,6 +3227,7 @@ app.whenReady().then(() => {
 
   createWindow()
   startControlServer()
+  initAutoUpdater()
 
   // Load stored API key and start brain
   const storedKey = loadApiKey()
