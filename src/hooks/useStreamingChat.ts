@@ -81,7 +81,28 @@ export function useStreamingChat() {
     abortControllerRef.current = abort
 
     try {
-      const response = await fetch(`${API_BASE}/api/orchestrator/chat`, {
+      // Wait for brain to be ready (up to 10 seconds)
+      let brainReady = false
+      for (let i = 0; i < 10; i++) {
+        if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+        try {
+          const healthRes = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1000) })
+          if (healthRes.ok) {
+            const healthData = await healthRes.json()
+            if (healthData.orchestrator) {
+              brainReady = true
+              break
+            }
+          }
+        } catch { /* brain not ready yet */ }
+        await new Promise(r => setTimeout(r, 1000))
+      }
+
+      if (!brainReady) {
+        throw new Error('AI assistant is starting up. Please wait a moment and try again.')
+      }
+
+      const chatPayload = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -89,7 +110,18 @@ export function useStreamingChat() {
           sessionId: currentSessionId,
         }),
         signal: abort.signal,
-      })
+      }
+
+      // Fetch with one retry on connection failure
+      let response: Response
+      try {
+        response = await fetch(`${API_BASE}/api/orchestrator/chat`, chatPayload)
+      } catch (fetchErr: any) {
+        if (fetchErr.name === 'AbortError') throw fetchErr
+        // Retry once after 2 seconds
+        await new Promise(r => setTimeout(r, 2000))
+        response = await fetch(`${API_BASE}/api/orchestrator/chat`, chatPayload)
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
