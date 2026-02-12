@@ -94,7 +94,7 @@ export default function StreamingMessage({ message }: { message: ChatMessage }) 
         {parts.map((part, idx) => {
           if (part.type === 'text' && part.content) {
             return (
-              <div key={idx} className="text-sm text-white/90 leading-relaxed font-mono">
+              <div key={idx} className="text-sm text-white/90 leading-relaxed font-mono select-text">
                 {renderMarkdown(part.content)}
                 {/* Blinking cursor on the last text part while streaming */}
                 {isStreaming && idx === parts.length - 1 && (

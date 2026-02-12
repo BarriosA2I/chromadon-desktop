@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import type { ChatMessage } from '../../store/chatTypes'
 
@@ -17,10 +17,18 @@ interface ChatBubbleProps {
 
 export function ChatBubble({ message }: ChatBubbleProps) {
   const [thinkingExpanded, setThinkingExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
   const isThinking = message.type === 'thinking'
   const isError = message.type === 'error'
   const isStatus = message.type === 'status'
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }, [message.content])
 
   if (isStatus) {
     return (
@@ -66,7 +74,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         </div>
       )}
       <div
-        className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
+        className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed select-text group/bubble ${
           isUser
             ? 'bg-chroma-teal/15 border border-chroma-teal/25 text-chroma-cyan font-mono'
             : isError
@@ -95,6 +103,15 @@ export function ChatBubble({ message }: ChatBubbleProps) {
             <span className="text-[9px] text-chroma-purple/50 font-mono uppercase">
               {message.metadata.cognitiveMode}
             </span>
+          )}
+          {!isUser && (
+            <button
+              onClick={handleCopy}
+              className="text-[9px] text-chroma-muted/30 hover:text-chroma-teal font-mono transition-colors opacity-0 group-hover/bubble:opacity-100 ml-auto select-none"
+              title="Copy message"
+            >
+              {copied ? 'copied!' : 'copy'}
+            </button>
           )}
         </div>
       </div>

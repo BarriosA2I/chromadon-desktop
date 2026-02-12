@@ -42,13 +42,7 @@ dotenv.config({ path: '.env.local', override: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const path = __importStar(require("path"));
-let playwright_1;
-try {
-    playwright_1 = require("playwright");
-} catch (e) {
-    console.log('[CHROMADON] ⚠️ playwright not available (expected in Desktop mode):', e.message);
-    playwright_1 = { chromium: { connectOverCDP: async () => { throw new Error('playwright not available'); }, launch: async () => { throw new Error('playwright not available'); } } };
-}
+const playwright_1 = require("playwright");
 // Neural RAG Brain v3.0 imports
 const core_1 = require("../core");
 // Agentic Orchestrator imports

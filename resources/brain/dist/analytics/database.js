@@ -34,13 +34,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnalyticsDatabase = void 0;
-let better_sqlite3_1;
-try {
-    better_sqlite3_1 = __importDefault(require("better-sqlite3"));
-} catch (e) {
-    console.log('[CHROMADON] ⚠️ better-sqlite3 not available:', e.message);
-    better_sqlite3_1 = { default: null };
-}
+const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const schema_1 = require("./schema");
@@ -50,9 +44,6 @@ const schema_1 = require("./schema");
 class AnalyticsDatabase {
     db;
     constructor(dbPath) {
-        if (!better_sqlite3_1.default) {
-            throw new Error('better-sqlite3 native module not available (Node version mismatch)');
-        }
         const resolvedPath = dbPath || this.getDefaultPath();
         const dir = path.dirname(resolvedPath);
         if (!fs.existsSync(dir)) {

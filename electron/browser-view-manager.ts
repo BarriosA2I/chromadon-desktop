@@ -215,31 +215,29 @@ export class BrowserViewManager {
     const partition = `persist:platform-${authPlatform}`
     const ses = session.fromPartition(partition)
 
-    // Check for auth cookies based on platform
-    const cookiePatterns: Record<Platform, string[]> = {
-      google: ['.google.com'],
-      twitter: ['.twitter.com', '.x.com'],
-      linkedin: ['.linkedin.com'],
-      facebook: ['.facebook.com'],
-      instagram: ['.instagram.com'],
-      youtube: ['.youtube.com', '.google.com'],
-      tiktok: ['.tiktok.com'],
+    // Platform-specific auth cookie checks
+    // Each entry: { domain, cookieNames } — ALL cookieNames must be present for that domain
+    const authChecks: Record<Platform, { domain: string; cookieNames: string[] }[]> = {
+      google: [{ domain: '.google.com', cookieNames: ['SID', 'HSID'] }],
+      twitter: [
+        { domain: '.twitter.com', cookieNames: ['auth_token'] },
+        { domain: '.x.com', cookieNames: ['auth_token'] },
+      ],
+      linkedin: [{ domain: '.linkedin.com', cookieNames: ['li_at'] }],
+      facebook: [{ domain: '.facebook.com', cookieNames: ['c_user', 'xs'] }],
+      instagram: [{ domain: '.instagram.com', cookieNames: ['sessionid'] }],
+      youtube: [{ domain: '.google.com', cookieNames: ['SID', 'HSID'] }],
+      tiktok: [{ domain: '.tiktok.com', cookieNames: ['sessionid'] }],
     }
 
-    const domains = cookiePatterns[platform] || []
+    const checks = authChecks[authPlatform] || []
 
-    for (const domain of domains) {
+    for (const check of checks) {
       try {
-        const cookies = await ses.cookies.get({ domain })
-        // Look for session cookies that indicate auth
-        const hasAuthCookie = cookies.some(c =>
-          c.name.toLowerCase().includes('sid') ||
-          c.name.toLowerCase().includes('session') ||
-          c.name.toLowerCase().includes('auth') ||
-          c.name.toLowerCase().includes('login') ||
-          c.name.toLowerCase().includes('token')
-        )
-        if (hasAuthCookie) {
+        const cookies = await ses.cookies.get({ domain: check.domain })
+        const cookieNameSet = new Set(cookies.map(c => c.name))
+        const hasAllRequired = check.cookieNames.every(name => cookieNameSet.has(name))
+        if (hasAllRequired) {
           this.updatePlatformSession(platform, { isAuthenticated: true })
           return true
         }
