@@ -47,6 +47,23 @@ export default function UpdateNotifier() {
       }))
     }
 
+    // Query cached update status on mount (catches events that fired before React mounted)
+    if (window.electronAPI?.updaterGetStatus) {
+      window.electronAPI.updaterGetStatus().then((status) => {
+        if (status.status === 'downloaded' && status.version) {
+          setVersion(status.version)
+          setState('ready')
+        } else if (status.status === 'downloading' || status.status === 'available') {
+          if (status.version) setVersion(status.version)
+          setState('downloading')
+          if (status.percent) setProgress(status.percent)
+        } else if (status.status === 'error') {
+          setState('error')
+          setErrorMsg(status.error || 'Update check failed')
+        }
+      })
+    }
+
     return () => cleanups.forEach(fn => fn())
   }, [])
 

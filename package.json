@@ -92,7 +92,10 @@
           "!node_modules/@types/**",
           "!node_modules/@types",
           "!node_modules/protobufjs/**",
-          "!node_modules/protobufjs"
+          "!node_modules/protobufjs",
+          "!node_modules/**/src/**/*.ts",
+          "!node_modules/**/src/**/*.tsx",
+          "!node_modules/**/src/**/*.map"
         ]
       }
     ],

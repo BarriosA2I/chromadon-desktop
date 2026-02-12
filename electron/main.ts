@@ -320,6 +320,15 @@ let mainWindow: BrowserWindow | null = null
 const CONTROL_PORT = 3002
 
 // ==================== AUTO-UPDATER ====================
+// Cache update state so renderer can query on mount (solves race condition)
+let updaterState: {
+  status: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error'
+  version?: string
+  releaseDate?: string
+  percent?: number
+  error?: string
+} = { status: 'idle' }
+
 function initAutoUpdater() {
   if (!app.isPackaged) {
     console.log('[AutoUpdate] Skipping - dev mode')
@@ -331,10 +340,12 @@ function initAutoUpdater() {
 
   autoUpdater.on('checking-for-update', () => {
     console.log('[AutoUpdate] Checking for update...')
+    updaterState = { status: 'checking' }
   })
 
   autoUpdater.on('update-available', (info) => {
     console.log(`[AutoUpdate] Update available: v${info.version}`)
+    updaterState = { status: 'available', version: info.version, releaseDate: info.releaseDate }
     mainWindow?.webContents.send('updater:update-available', {
       version: info.version,
       releaseDate: info.releaseDate,
@@ -343,10 +354,12 @@ function initAutoUpdater() {
 
   autoUpdater.on('update-not-available', () => {
     console.log('[AutoUpdate] Already on latest version')
+    updaterState = { status: 'idle' }
   })
 
   autoUpdater.on('download-progress', (progress) => {
     console.log(`[AutoUpdate] Download: ${Math.round(progress.percent)}%`)
+    updaterState = { ...updaterState, status: 'downloading', percent: Math.round(progress.percent) }
     mainWindow?.webContents.send('updater:download-progress', {
       percent: Math.round(progress.percent),
     })
@@ -354,6 +367,7 @@ function initAutoUpdater() {
 
   autoUpdater.on('update-downloaded', (info) => {
     console.log(`[AutoUpdate] Downloaded v${info.version} - ready to install`)
+    updaterState = { status: 'downloaded', version: info.version, releaseDate: info.releaseDate }
     mainWindow?.webContents.send('updater:update-downloaded', {
       version: info.version,
       releaseDate: info.releaseDate,
@@ -362,6 +376,7 @@ function initAutoUpdater() {
 
   autoUpdater.on('error', (err) => {
     console.error('[AutoUpdate] Error:', err.message)
+    updaterState = { status: 'error', error: err.message }
     mainWindow?.webContents.send('updater:error', { message: err.message })
   })
 
@@ -375,10 +390,27 @@ function initAutoUpdater() {
     }
   })
 
-  autoUpdater.checkForUpdates().catch((err) => {
-    console.error('[AutoUpdate] Check failed:', err.message)
-    mainWindow?.webContents.send('updater:error', { message: err.message })
+  // Renderer queries cached state on mount (fixes race where events fire before React mounts)
+  ipcMain.handle('updater:getStatus', () => {
+    return updaterState
   })
+
+  // Wait for renderer to be ready, then check for updates
+  mainWindow?.webContents.on('did-finish-load', () => {
+    console.log('[AutoUpdate] Renderer loaded — checking for updates...')
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[AutoUpdate] Check failed:', err.message)
+      mainWindow?.webContents.send('updater:error', { message: err.message })
+    })
+  })
+
+  // Also check periodically (every 4 hours)
+  setInterval(() => {
+    console.log('[AutoUpdate] Periodic check...')
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[AutoUpdate] Periodic check failed:', err.message)
+    })
+  }, 4 * 60 * 60 * 1000)
 }
 
 // Store for renderer state (updated via IPC)

@@ -311,6 +311,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('updater:error', handler) }
   },
   updaterCheckForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates'),
+  updaterGetStatus: () => ipcRenderer.invoke('updater:getStatus'),
   updaterQuitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
 })
 
@@ -426,6 +427,7 @@ declare global {
       onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
       onUpdateError: (callback: (info: { message: string }) => void) => (() => void)
       updaterCheckForUpdates: () => Promise<{ success: boolean; version?: string; error?: string }>
+      updaterGetStatus: () => Promise<{ status: string; version?: string; releaseDate?: string; percent?: number; error?: string }>
       updaterQuitAndInstall: () => Promise<void>
     }
   }
