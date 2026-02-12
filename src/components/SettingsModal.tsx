@@ -87,7 +87,8 @@ export default function SettingsModal({
     }
 
     setApiKey('')
-    setSuccessMessage('API key saved. Brain server restarting with AI features...')
+    const warning = validateResult.warning ? ` Note: ${validateResult.warning}` : ''
+    setSuccessMessage(`API key saved. Brain server restarting with AI features...${warning}`)
     setTimeout(refreshStatus, 3000)
   }
 

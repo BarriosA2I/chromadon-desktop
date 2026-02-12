@@ -2777,7 +2777,12 @@ ipcMain.handle('settings:validateApiKey', async (_event, apiKey: string) => {
       return { success: true, valid: false, error: 'Invalid API key' }
     }
     const errorData = await response.json().catch(() => ({})) as any
-    return { success: true, valid: false, error: errorData.error?.message || `HTTP ${response.status}` }
+    const errorMsg = errorData.error?.message || `HTTP ${response.status}`
+    // Key is valid but account has no credits - still accept the key
+    if (response.status === 400 && errorMsg.includes('credit balance')) {
+      return { success: true, valid: true, warning: 'API key is valid but your account has no credits. Add credits at console.anthropic.com' }
+    }
+    return { success: true, valid: false, error: errorMsg }
   } catch (err: any) {
     return { success: false, error: `Network error: ${err.message}` }
   }
