@@ -30,6 +30,7 @@ function storeApiKey(key: string): void {
   }
 
   try {
+    cachedApiKey = key // Cache in memory for crash recovery
     const useEncryption = safeStorage.isEncryptionAvailable()
     log(`storeApiKey: encryption=${useEncryption}, path=${keyPath}`)
 
@@ -64,6 +65,9 @@ function storeApiKey(key: string): void {
 }
 
 function loadApiKey(): string | null {
+  // Return cached key if available (fast path, no disk I/O)
+  if (cachedApiKey) return cachedApiKey
+
   const keyPath = getApiKeyPath()
   if (!fs.existsSync(keyPath)) return null
 
@@ -86,10 +90,12 @@ function loadApiKey(): string | null {
         const encrypted = Buffer.from(envelope.data, 'base64')
         const key = safeStorage.decryptString(encrypted)
         log(`loadApiKey: decrypted OK (${key.slice(0, 10)}...${key.slice(-4)})`)
+        cachedApiKey = key
         return key
       } else if (envelope.format === 'base64') {
         const key = Buffer.from(envelope.data, 'base64').toString('utf8')
         log(`loadApiKey: decoded OK (${key.slice(0, 10)}...${key.slice(-4)})`)
+        cachedApiKey = key
         return key
       }
     }
@@ -100,6 +106,7 @@ function loadApiKey(): string | null {
     if (safeStorage.isEncryptionAvailable()) {
       const key = safeStorage.decryptString(data)
       log(`loadApiKey: legacy decrypt OK (${key.slice(0, 10)}...${key.slice(-4)})`)
+      cachedApiKey = key
       return key
     }
 
@@ -111,6 +118,7 @@ function loadApiKey(): string | null {
 }
 
 function deleteApiKey(): void {
+  cachedApiKey = null
   const keyPath = getApiKeyPath()
   if (fs.existsSync(keyPath)) {
     fs.unlinkSync(keyPath)
@@ -126,6 +134,9 @@ function deleteApiKey(): void {
 
 // Bundled Brain server child process
 let brainProcess: ChildProcess | null = null
+// In-memory API key cache — survives Brain crashes (only child process dies, not Electron)
+let cachedApiKey: string | null = null
+let brainRestarting = false
 
 function startBrainServer(apiKey?: string): void {
   const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
@@ -175,8 +186,10 @@ function startBrainServer(apiKey?: string): void {
     })
 
     log(`fork() succeeded, pid=${brainProcess.pid}`)
+    brainRestarting = false
   } catch (err: any) {
     log(`fork() FAILED: ${err.message}`)
+    brainRestarting = false
     return
   }
 
@@ -197,33 +210,61 @@ function startBrainServer(apiKey?: string): void {
     brainProcess = null
     // Auto-restart on crash (not on clean shutdown)
     if (code !== 0 && code !== null) {
-      log('Restarting in 3s...')
-      setTimeout(startBrainServer, 3000)
+      log(`Restarting in 3s... (cached API key: ${cachedApiKey ? 'YES' : 'NO'})`)
+      setTimeout(() => startBrainServer(cachedApiKey || undefined), 3000)
     }
   })
 }
 
 function restartBrainServer(apiKey?: string): void {
+  if (brainRestarting) return // Prevent concurrent restarts
+  brainRestarting = true
   console.log('[Desktop] Restarting Brain server with updated API key...')
   if (brainProcess) {
+    let started = false
     brainProcess.removeAllListeners('exit')
     brainProcess.on('exit', () => {
       brainProcess = null
-      startBrainServer(apiKey)
+      if (!started) {
+        started = true
+        startBrainServer(apiKey)
+      }
     })
     brainProcess.kill('SIGTERM')
     // Force kill after 5 seconds if it doesn't exit gracefully
-    const forceKillTimer = setTimeout(() => {
+    setTimeout(() => {
       if (brainProcess) {
         brainProcess.kill('SIGKILL')
         brainProcess = null
+      }
+      if (!started) {
+        started = true
         startBrainServer(apiKey)
       }
     }, 5000)
-    brainProcess.on('exit', () => clearTimeout(forceKillTimer))
   } else {
     startBrainServer(apiKey)
   }
+}
+
+// Periodic health check: detect if Brain lost orchestrator and re-inject API key
+let brainHealthInterval: NodeJS.Timeout | null = null
+
+function startBrainHealthCheck(): void {
+  if (brainHealthInterval) clearInterval(brainHealthInterval)
+  brainHealthInterval = setInterval(async () => {
+    if (!brainProcess || !cachedApiKey) return
+    try {
+      const res = await fetch('http://127.0.0.1:3001/health')
+      const data = await res.json() as any
+      if (!data.orchestrator && cachedApiKey) {
+        console.log('[Desktop] Brain lost orchestrator — restarting with cached API key')
+        restartBrainServer(cachedApiKey)
+      }
+    } catch {
+      // Brain unreachable — will auto-restart via exit handler
+    }
+  }, 30_000)
 }
 
 // CRITICAL: Anti-detection measures for Google sign-in
@@ -3238,9 +3279,11 @@ app.whenReady().then(() => {
   const storedKey = loadApiKey()
   console.log(`[CHROMADON] Startup: API key ${storedKey ? 'found' : 'NOT found'}, userData=${app.getPath('userData')}`)
   startBrainServer(storedKey || undefined)
+  startBrainHealthCheck()
 })
 
 app.on('before-quit', () => {
+  if (brainHealthInterval) clearInterval(brainHealthInterval)
   if (brainProcess) {
     console.log('[Desktop] Shutting down Brain server...')
     brainProcess.kill('SIGTERM')
