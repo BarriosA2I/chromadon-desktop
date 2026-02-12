@@ -1,6 +1,6 @@
 {
   "name": "chromadon-desktop",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "description": "CHROMADON AI Browser Automation Control Panel",
   "main": "dist-electron/main.js",
   "author": "Barrios A2I <gary@barriosa2i.com>",
@@ -120,8 +120,9 @@
     "nsis": {
       "oneClick": false,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "allowToChangeInstallationDirectory": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
     }
   }
 }
