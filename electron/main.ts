@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, clipboard, session, safeStorage } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, clipboard, session, safeStorage, Menu } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import express from 'express'
@@ -451,6 +451,22 @@ function createWindow() {
     },
     show: false, // Don't show until ready
   })
+
+  // Enable Ctrl+C/V/X/A keyboard shortcuts (frameless window has no default menu)
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+  ]))
 
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
@@ -2596,8 +2612,12 @@ ipcMain.handle('credential:copyUsername', async (_event, credentialId: string) =
 
 // ==================== PLATFORM SESSION IPC HANDLERS ====================
 
-// Get all platform sessions
-ipcMain.handle('session:list', () => {
+// Get all platform sessions (re-verifies cookies so stale data is never returned)
+ipcMain.handle('session:list', async () => {
+  const platforms: Platform[] = ['google', 'twitter', 'linkedin', 'facebook', 'instagram', 'youtube', 'tiktok']
+  for (const platform of platforms) {
+    await browserViewManager.verifyPlatformAuth(platform)
+  }
   return { success: true, sessions: browserViewManager.getPlatformSessions() }
 })
 
@@ -2616,6 +2636,20 @@ ipcMain.handle('session:verify', async (_event, platform: Platform) => {
 ipcMain.handle('session:update', (_event, { platform, updates }: { platform: Platform; updates: Partial<PlatformSession> }) => {
   browserViewManager.updatePlatformSession(platform, updates)
   return { success: true, session: browserViewManager.getPlatformSession(platform) }
+})
+
+// Clear platform session (sign out)
+ipcMain.handle('session:clear', async (_event, platform: Platform) => {
+  const authPlatform = platform === 'youtube' ? 'google' : platform
+  const partition = `persist:platform-${authPlatform}`
+  const ses = session.fromPartition(partition)
+  await ses.clearStorageData()
+  browserViewManager.updatePlatformSession(platform, { isAuthenticated: false, accountName: undefined, accountEmail: undefined })
+  // If clearing google, also clear youtube
+  if (authPlatform === 'google') {
+    browserViewManager.updatePlatformSession('youtube', { isAuthenticated: false, accountName: undefined, accountEmail: undefined })
+  }
+  return { success: true }
 })
 
 // Hide/show BrowserViews for modal overlays

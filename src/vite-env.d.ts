@@ -139,6 +139,7 @@ interface Window {
     sessionGet: (platform: string) => Promise<{ success: boolean; session: any | null }>
     sessionVerify: (platform: string) => Promise<{ success: boolean; platform: string; isAuthenticated: boolean }>
     sessionUpdate: (platform: string, updates: any) => Promise<{ success: boolean; session: any | null }>
+    sessionClear: (platform: string) => Promise<{ success: boolean }>
     oauthSignIn: (platform: string) => Promise<{ success: boolean; platform: string; userClosed?: boolean; error?: string }>
     tabCreatePlatform: (platform: string, url?: string) => Promise<{ success: boolean; id: number; platform: string; tabs: TabInfo[] }>
 

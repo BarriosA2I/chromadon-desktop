@@ -92,7 +92,7 @@ export default function SessionSetup({
     }
   }, [isOpen, setPlatformSessions])
 
-  // Verify a platform's auth status
+  // Verify a platform's auth status (re-checks cookies)
   const verifyPlatform = async (platform: Platform) => {
     if (!window.electronAPI?.sessionVerify) return
 
@@ -100,15 +100,32 @@ export default function SessionSetup({
     try {
       const result = await window.electronAPI.sessionVerify(platform)
       if (result.success) {
-        // Session will be updated via the IPC response
-        await window.electronAPI.sessionList().then((res) => {
-          if (res.success && res.sessions) {
-            setPlatformSessions(res.sessions)
-          }
-        })
+        // Refresh the full session list with verified data
+        const res = await window.electronAPI.sessionList()
+        if (res.success && res.sessions) {
+          setPlatformSessions(res.sessions)
+        }
       }
     } catch (err) {
       console.error('Failed to verify platform:', err)
+    }
+    setVerifyingPlatform(null)
+  }
+
+  // Disconnect a platform (clear cookies/session)
+  const disconnectPlatform = async (platform: Platform) => {
+    if (!window.electronAPI?.sessionClear) return
+
+    setVerifyingPlatform(platform)
+    try {
+      await window.electronAPI.sessionClear(platform)
+      // Refresh the full session list
+      const res = await window.electronAPI.sessionList()
+      if (res.success && res.sessions) {
+        setPlatformSessions(res.sessions)
+      }
+    } catch (err) {
+      console.error('Failed to disconnect platform:', err)
     }
     setVerifyingPlatform(null)
   }
@@ -323,16 +340,28 @@ export default function SessionSetup({
                               <span className="text-xs text-chroma-teal font-mono">
                                 {session?.accountEmail || session?.accountName || 'Signed In'}
                               </span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  verifyPlatform(platform.id)
-                                }}
-                                className="text-xs text-chroma-muted hover:text-chroma-teal transition-colors"
-                                disabled={isVerifying}
-                              >
-                                {isVerifying ? 'Verifying...' : 'Verify'}
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    verifyPlatform(platform.id)
+                                  }}
+                                  className="text-xs text-chroma-muted hover:text-chroma-teal transition-colors"
+                                  disabled={isVerifying}
+                                >
+                                  {isVerifying ? 'Checking...' : 'Verify'}
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    disconnectPlatform(platform.id)
+                                  }}
+                                  className="text-xs text-chroma-muted hover:text-chroma-error transition-colors"
+                                  disabled={isVerifying}
+                                >
+                                  Disconnect
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <div className="flex items-center justify-between">

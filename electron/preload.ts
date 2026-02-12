@@ -234,6 +234,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sessionUpdate: (platform: Platform, updates: Partial<PlatformSession>) =>
     ipcRenderer.invoke('session:update', { platform, updates }),
 
+  // Clear platform session (sign out)
+  sessionClear: (platform: Platform) => ipcRenderer.invoke('session:clear', platform),
+
   // OAuth popup sign-in (opens separate window for manual sign-in)
   oauthSignIn: (platform: Platform) => ipcRenderer.invoke('oauth:signIn', platform),
 
@@ -405,6 +408,7 @@ declare global {
       sessionGet: (platform: Platform) => Promise<{ success: boolean; session: PlatformSession | null }>
       sessionVerify: (platform: Platform) => Promise<{ success: boolean; platform: Platform; isAuthenticated: boolean }>
       sessionUpdate: (platform: Platform, updates: Partial<PlatformSession>) => Promise<{ success: boolean; session: PlatformSession | null }>
+      sessionClear: (platform: Platform) => Promise<{ success: boolean }>
       oauthSignIn: (platform: Platform) => Promise<{ success: boolean; platform: Platform; userClosed?: boolean; error?: string }>
       tabCreatePlatform: (platform: Platform, url?: string) => Promise<{ success: boolean; id: number; platform: Platform; tabs: TabInfo[] }>
 
