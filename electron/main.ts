@@ -355,6 +355,7 @@ function initAutoUpdater() {
   autoUpdater.on('update-not-available', () => {
     console.log('[AutoUpdate] Already on latest version')
     updaterState = { status: 'idle' }
+    mainWindow?.webContents.send('updater:update-not-available')
   })
 
   autoUpdater.on('download-progress', (progress) => {
@@ -379,6 +380,9 @@ function initAutoUpdater() {
     updaterState = { status: 'error', error: err.message }
     mainWindow?.webContents.send('updater:error', { message: err.message })
   })
+
+  // App version — lets renderer display current version
+  ipcMain.handle('app:getVersion', () => app.getVersion())
 
   // Manual check handler — lets renderer trigger a retry
   ipcMain.handle('updater:checkForUpdates', async () => {

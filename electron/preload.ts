@@ -282,6 +282,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // App info
+  getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+
   // Settings API
   settingsGetApiKeyStatus: () => ipcRenderer.invoke('settings:getApiKeyStatus'),
   settingsSetApiKey: (apiKey: string) => ipcRenderer.invoke('settings:setApiKey', apiKey),
@@ -304,6 +307,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info)
     ipcRenderer.on('updater:update-downloaded', handler)
     return () => { ipcRenderer.removeListener('updater:update-downloaded', handler) }
+  },
+  onUpdateNotAvailable: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('updater:update-not-available', handler)
+    return () => { ipcRenderer.removeListener('updater:update-not-available', handler) }
   },
   onUpdateError: (callback: (info: { message: string }) => void) => {
     const handler = (_event: any, info: { message: string }) => callback(info)
@@ -414,6 +422,9 @@ declare global {
       onTaskStarted: (callback: (task: MarketingTask) => void) => (() => void)
       onTaskCompleted: (callback: (task: MarketingTask) => void) => (() => void)
 
+      // App info
+      getAppVersion: () => Promise<string>
+
       // Settings API
       settingsGetApiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
       settingsSetApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
@@ -425,6 +436,7 @@ declare global {
       onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
       onUpdateDownloadProgress: (callback: (progress: { percent: number }) => void) => (() => void)
       onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
+      onUpdateNotAvailable: (callback: () => void) => (() => void)
       onUpdateError: (callback: (info: { message: string }) => void) => (() => void)
       updaterCheckForUpdates: () => Promise<{ success: boolean; version?: string; error?: string }>
       updaterGetStatus: () => Promise<{ status: string; version?: string; releaseDate?: string; percent?: number; error?: string }>

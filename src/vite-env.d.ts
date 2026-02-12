@@ -156,6 +156,9 @@ interface Window {
     onTaskStarted: (callback: (task: any) => void) => (() => void)
     onTaskCompleted: (callback: (task: any) => void) => (() => void)
 
+    // App info
+    getAppVersion: () => Promise<string>
+
     // Settings API
     settingsGetApiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
     settingsSetApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
@@ -167,6 +170,7 @@ interface Window {
     onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
     onUpdateDownloadProgress: (callback: (progress: { percent: number }) => void) => (() => void)
     onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
+    onUpdateNotAvailable: (callback: () => void) => (() => void)
     onUpdateError: (callback: (info: { message: string }) => void) => (() => void)
     updaterCheckForUpdates: () => Promise<{ success: boolean; version?: string; error?: string }>
     updaterGetStatus: () => Promise<{ status: string; version?: string; releaseDate?: string; percent?: number; error?: string }>

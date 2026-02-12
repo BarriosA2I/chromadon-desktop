@@ -21,11 +21,34 @@ export default function SettingsModal({
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [brainStatus, setBrainStatus] = useState<{ isRunning: boolean; pid: number | null }>({ isRunning: false, pid: null })
+  const [appVersion, setAppVersion] = useState('')
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'>('idle')
+  const [updateVersion, setUpdateVersion] = useState('')
+  const [updatePercent, setUpdatePercent] = useState(0)
+  const [updateError, setUpdateError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isOpen) {
       refreshStatus()
+      // Fetch app version
+      window.electronAPI?.getAppVersion?.().then((v: string) => setAppVersion(v || ''))
+      // Sync cached updater state
+      window.electronAPI?.updaterGetStatus?.().then((s: any) => {
+        if (s?.status === 'downloaded') {
+          setUpdateStatus('downloaded')
+          setUpdateVersion(s.version || '')
+        } else if (s?.status === 'downloading') {
+          setUpdateStatus('downloading')
+          setUpdatePercent(s.percent || 0)
+        } else if (s?.status === 'available') {
+          setUpdateStatus('available')
+          setUpdateVersion(s.version || '')
+        } else if (s?.status === 'error') {
+          setUpdateStatus('error')
+          setUpdateError(s.error || 'Unknown error')
+        }
+      })
       setTimeout(() => inputRef.current?.focus(), 100)
     } else {
       setApiKey('')
@@ -33,6 +56,42 @@ export default function SettingsModal({
       setError('')
       setSuccessMessage('')
     }
+  }, [isOpen])
+
+  // Listen for updater events while modal is open
+  useEffect(() => {
+    if (!isOpen) return
+    const cleanups: (() => void)[] = []
+    if (window.electronAPI?.onUpdateAvailable) {
+      cleanups.push(window.electronAPI.onUpdateAvailable((info) => {
+        setUpdateStatus('available')
+        setUpdateVersion(info.version)
+      }))
+    }
+    if (window.electronAPI?.onUpdateNotAvailable) {
+      cleanups.push(window.electronAPI.onUpdateNotAvailable(() => {
+        setUpdateStatus('up-to-date')
+      }))
+    }
+    if (window.electronAPI?.onUpdateDownloadProgress) {
+      cleanups.push(window.electronAPI.onUpdateDownloadProgress((p) => {
+        setUpdateStatus('downloading')
+        setUpdatePercent(p.percent)
+      }))
+    }
+    if (window.electronAPI?.onUpdateDownloaded) {
+      cleanups.push(window.electronAPI.onUpdateDownloaded((info) => {
+        setUpdateStatus('downloaded')
+        setUpdateVersion(info.version)
+      }))
+    }
+    if (window.electronAPI?.onUpdateError) {
+      cleanups.push(window.electronAPI.onUpdateError((info) => {
+        setUpdateStatus('error')
+        setUpdateError(info.message)
+      }))
+    }
+    return () => cleanups.forEach(fn => fn())
   }, [isOpen])
 
   const refreshStatus = async () => {
@@ -90,6 +149,17 @@ export default function SettingsModal({
     const warning = validateResult.warning ? ` Note: ${validateResult.warning}` : ''
     setSuccessMessage(`API key saved. Brain server restarting with AI features...${warning}`)
     setTimeout(refreshStatus, 3000)
+  }
+
+  const handleCheckForUpdates = async () => {
+    setUpdateStatus('checking')
+    setUpdateError('')
+    const result = await window.electronAPI?.updaterCheckForUpdates?.()
+    if (result && !result.success) {
+      setUpdateStatus('error')
+      setUpdateError(result.error || 'Check failed')
+    }
+    // If successful, the updater events (update-available or update-not-available) will update the status
   }
 
   const handleRemoveKey = async () => {
@@ -282,6 +352,90 @@ export default function SettingsModal({
                       </motion.button>
                     </div>
                   </form>
+                </div>
+
+                {/* Version & Updates */}
+                <div className="mt-6 pt-4 border-t border-chroma-teal/10">
+                  <h3 className="text-sm font-ui font-semibold uppercase tracking-wider text-chroma-teal mb-3">
+                    Version & Updates
+                  </h3>
+                  <div className="p-3 rounded-xl bg-chroma-black/40 border border-chroma-teal/10 space-y-3">
+                    {/* Current version */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-ui uppercase tracking-wider text-chroma-muted">Current Version</span>
+                      <span className="text-xs font-mono text-chroma-teal">{appVersion ? `v${appVersion}` : '...'}</span>
+                    </div>
+
+                    {/* Update status */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-ui uppercase tracking-wider text-chroma-muted">Status</span>
+                      <div className="flex items-center gap-2">
+                        {updateStatus === 'checking' && (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-chroma-gold animate-pulse" />
+                            <span className="text-xs font-mono text-chroma-gold">Checking...</span>
+                          </>
+                        )}
+                        {updateStatus === 'up-to-date' && (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-chroma-success" />
+                            <span className="text-xs font-mono text-chroma-success">Up to date</span>
+                          </>
+                        )}
+                        {updateStatus === 'available' && (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-chroma-teal animate-pulse" />
+                            <span className="text-xs font-mono text-chroma-teal">v{updateVersion} available</span>
+                          </>
+                        )}
+                        {updateStatus === 'downloading' && (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-chroma-teal animate-pulse" />
+                            <span className="text-xs font-mono text-chroma-teal">Downloading {updatePercent}%</span>
+                          </>
+                        )}
+                        {updateStatus === 'downloaded' && (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-chroma-success animate-pulse" />
+                            <span className="text-xs font-mono text-chroma-success">v{updateVersion} ready</span>
+                          </>
+                        )}
+                        {updateStatus === 'error' && (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-chroma-error" />
+                            <span className="text-xs font-mono text-chroma-error truncate max-w-[180px]" title={updateError}>Error</span>
+                          </>
+                        )}
+                        {updateStatus === 'idle' && (
+                          <span className="text-xs font-mono text-chroma-muted">Not checked</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2 pt-1">
+                      {updateStatus === 'downloaded' ? (
+                        <motion.button
+                          onClick={() => window.electronAPI?.updaterQuitAndInstall?.()}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex-1 py-2 rounded-lg font-display font-bold uppercase tracking-[0.1em] text-xs bg-gradient-to-r from-chroma-success to-chroma-teal text-chroma-black"
+                        >
+                          Restart to Update
+                        </motion.button>
+                      ) : (
+                        <motion.button
+                          onClick={handleCheckForUpdates}
+                          disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
+                          whileHover={updateStatus !== 'checking' ? { scale: 1.02 } : {}}
+                          whileTap={updateStatus !== 'checking' ? { scale: 0.98 } : {}}
+                          className="flex-1 py-2 rounded-lg font-display font-bold uppercase tracking-[0.1em] text-xs border border-chroma-teal/30 text-chroma-teal hover:bg-chroma-teal/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {updateStatus === 'checking' ? 'Checking...' : updateStatus === 'downloading' ? `Downloading ${updatePercent}%` : 'Check for Updates'}
+                        </motion.button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Security notice */}
