@@ -84,7 +84,7 @@ interface Window {
     tabGetActive: () => Promise<{ success: boolean; activeTabId: number | null }>
     tabExecute: (id: number, script: string) => Promise<{ success: boolean; result?: any; error?: string }>
     tabScreenshot: (id: number) => Promise<{ success: boolean; screenshot?: string; error?: string }>
-    onTabsUpdated: (callback: (tabs: TabInfo[]) => void) => void
+    onTabsUpdated: (callback: (tabs: TabInfo[]) => void) => (() => void)
 
     // Secure Vault API
     vaultStatus: () => Promise<VaultStatus>
@@ -133,5 +133,42 @@ interface Window {
     credentialCopyPassword: (credentialId: string) => Promise<{ success: boolean; clearAfterSeconds?: number; error?: string }>
     credentialCopyUsername: (credentialId: string) => Promise<{ success: boolean; error?: string }>
     credentialDetectLoginForm: (tabId: number) => Promise<{ success: boolean; hasLoginForm?: boolean; forms?: LoginFormDetection['forms']; domain?: string; error?: string }>
+
+    // Platform Session API
+    sessionList: () => Promise<{ success: boolean; sessions: any[] }>
+    sessionGet: (platform: string) => Promise<{ success: boolean; session: any | null }>
+    sessionVerify: (platform: string) => Promise<{ success: boolean; platform: string; isAuthenticated: boolean }>
+    sessionUpdate: (platform: string, updates: any) => Promise<{ success: boolean; session: any | null }>
+    oauthSignIn: (platform: string) => Promise<{ success: boolean; platform: string; userClosed?: boolean; error?: string }>
+    tabCreatePlatform: (platform: string, url?: string) => Promise<{ success: boolean; id: number; platform: string; tabs: TabInfo[] }>
+
+    // View visibility
+    viewsSetVisible: (visible: boolean) => Promise<{ success: boolean }>
+
+    // Marketing Queue API
+    queueStatus: () => Promise<{ success: boolean; queue: any[]; activeTasks: Record<string, any>; stats: any }>
+    queueAdd: (task: { platform: string; action: string; content?: string; targetUrl?: string; priority?: number }) => Promise<{ success: boolean; task: any }>
+    queueProcess: (platform: string) => Promise<{ success: boolean; task: any | null; error?: string }>
+    queueComplete: (taskId: string, result?: any, error?: string) => Promise<{ success: boolean; task?: any; error?: string }>
+    queueRemove: (taskId: string) => Promise<{ success: boolean; error?: string }>
+    queueClear: (status?: 'completed' | 'failed' | 'all') => Promise<{ success: boolean; remaining: number }>
+    onQueueUpdated: (callback: (queue: any[]) => void) => (() => void)
+    onTaskStarted: (callback: (task: any) => void) => (() => void)
+    onTaskCompleted: (callback: (task: any) => void) => (() => void)
+
+    // Settings API
+    settingsGetApiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
+    settingsSetApiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
+    settingsValidateApiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; warning?: string; error?: string }>
+    settingsRemoveApiKey: () => Promise<{ success: boolean; error?: string }>
+    settingsGetBrainStatus: () => Promise<{ isRunning: boolean; pid: number | null }>
+
+    // Auto-updater API
+    onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
+    onUpdateDownloadProgress: (callback: (progress: { percent: number }) => void) => (() => void)
+    onUpdateDownloaded: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
+    onUpdateError: (callback: (info: { message: string }) => void) => (() => void)
+    updaterCheckForUpdates: () => Promise<{ success: boolean; version?: string; error?: string }>
+    updaterQuitAndInstall: () => Promise<void>
   }
 }

@@ -362,10 +362,22 @@ function initAutoUpdater() {
 
   autoUpdater.on('error', (err) => {
     console.error('[AutoUpdate] Error:', err.message)
+    mainWindow?.webContents.send('updater:error', { message: err.message })
+  })
+
+  // Manual check handler — lets renderer trigger a retry
+  ipcMain.handle('updater:checkForUpdates', async () => {
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      return { success: true, version: result?.updateInfo?.version }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
   })
 
   autoUpdater.checkForUpdates().catch((err) => {
     console.error('[AutoUpdate] Check failed:', err.message)
+    mainWindow?.webContents.send('updater:error', { message: err.message })
   })
 }
 

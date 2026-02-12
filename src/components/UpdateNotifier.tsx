@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-type UpdateState = 'idle' | 'downloading' | 'ready'
+type UpdateState = 'idle' | 'downloading' | 'ready' | 'error'
 
 export default function UpdateNotifier() {
   const [state, setState] = useState<UpdateState>('idle')
   const [version, setVersion] = useState('')
   const [progress, setProgress] = useState(0)
   const [dismissed, setDismissed] = useState(false)
+  const [errorMsg, setErrorMsg] = useState('')
+  const [checking, setChecking] = useState(false)
 
   useEffect(() => {
     const cleanups: (() => void)[] = []
@@ -17,6 +19,7 @@ export default function UpdateNotifier() {
         setVersion(info.version)
         setState('downloading')
         setDismissed(false)
+        setErrorMsg('')
       }))
     }
 
@@ -31,13 +34,36 @@ export default function UpdateNotifier() {
         setVersion(info.version)
         setState('ready')
         setDismissed(false)
+        setErrorMsg('')
+      }))
+    }
+
+    if (window.electronAPI?.onUpdateError) {
+      cleanups.push(window.electronAPI.onUpdateError((info) => {
+        setState('error')
+        setErrorMsg(info.message)
+        setDismissed(false)
+        setChecking(false)
       }))
     }
 
     return () => cleanups.forEach(fn => fn())
   }, [])
 
-  const visible = !dismissed && (state === 'downloading' || state === 'ready')
+  const handleRetry = async () => {
+    if (!window.electronAPI?.updaterCheckForUpdates) return
+    setChecking(true)
+    setErrorMsg('')
+    const result = await window.electronAPI.updaterCheckForUpdates()
+    setChecking(false)
+    if (!result.success) {
+      setErrorMsg(result.error || 'Check failed')
+      setState('error')
+    }
+    // If successful, the update-available or update-not-available events will fire
+  }
+
+  const visible = !dismissed && (state === 'downloading' || state === 'ready' || state === 'error')
 
   return (
     <AnimatePresence>
@@ -51,8 +77,14 @@ export default function UpdateNotifier() {
           style={{
             background: state === 'ready'
               ? 'linear-gradient(90deg, rgba(212,175,55,0.12) 0%, rgba(0,206,209,0.06) 100%)'
+              : state === 'error'
+              ? 'linear-gradient(90deg, rgba(239,68,68,0.10) 0%, rgba(139,92,246,0.06) 100%)'
               : 'linear-gradient(90deg, rgba(0,206,209,0.08) 0%, rgba(139,92,246,0.06) 100%)',
-            borderColor: state === 'ready' ? 'rgba(212,175,55,0.3)' : 'rgba(0,206,209,0.15)',
+            borderColor: state === 'ready'
+              ? 'rgba(212,175,55,0.3)'
+              : state === 'error'
+              ? 'rgba(239,68,68,0.25)'
+              : 'rgba(0,206,209,0.15)',
           }}
         >
           {/* Download progress background */}
@@ -64,7 +96,11 @@ export default function UpdateNotifier() {
           )}
 
           <div className="relative flex items-center gap-2">
-            <div className={`w-1.5 h-1.5 rounded-full ${state === 'ready' ? 'bg-chroma-gold animate-pulse' : 'bg-chroma-teal animate-pulse'}`} />
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              state === 'ready' ? 'bg-chroma-gold animate-pulse'
+              : state === 'error' ? 'bg-red-500'
+              : 'bg-chroma-teal animate-pulse'
+            }`} />
             <span className="text-xs font-mono">
               {state === 'downloading' && (
                 <span className="text-chroma-teal">
@@ -74,6 +110,11 @@ export default function UpdateNotifier() {
               {state === 'ready' && (
                 <span className="text-chroma-gold">
                   Update v{version} ready
+                </span>
+              )}
+              {state === 'error' && (
+                <span className="text-red-400">
+                  Update check failed
                 </span>
               )}
             </span>
@@ -90,6 +131,19 @@ export default function UpdateNotifier() {
                            hover:bg-chroma-gold/30 transition-all rounded"
               >
                 Restart to Apply
+              </motion.button>
+            )}
+            {state === 'error' && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleRetry}
+                disabled={checking}
+                className="px-2.5 py-0.5 text-[10px] font-ui font-semibold uppercase tracking-wider
+                           bg-red-500/20 border border-red-500/40 text-red-400
+                           hover:bg-red-500/30 transition-all rounded disabled:opacity-50"
+              >
+                {checking ? 'Checking...' : 'Retry'}
               </motion.button>
             )}
             <button

@@ -25,7 +25,7 @@ export function GrowthChart({ data, height = 220, color = CHART_COLORS.teal }: G
         <CartesianGrid {...GRID_STYLE} />
         <XAxis dataKey="date" {...AXIS_STYLE} tickFormatter={formatDate} />
         <YAxis {...AXIS_STYLE} tickFormatter={formatNumber} width={50} />
-        <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={formatDate} />
+        <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(label: any) => formatDate(String(label))} />
         <Area type="monotone" dataKey="followers" stroke={color} fill="url(#growthGradient)" strokeWidth={2} />
       </AreaChart>
     </ResponsiveContainer>

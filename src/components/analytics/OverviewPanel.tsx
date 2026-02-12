@@ -67,7 +67,7 @@ export function OverviewPanel() {
                 <div className="flex items-center gap-2.5">
                   <div
                     className="w-2 h-2 rounded-full ring-2 ring-opacity-20"
-                    style={{ backgroundColor: PLATFORM_COLORS[p.platform] || '#888', ringColor: PLATFORM_COLORS[p.platform] || '#888' }}
+                    style={{ backgroundColor: PLATFORM_COLORS[p.platform] || '#888', '--tw-ring-color': PLATFORM_COLORS[p.platform] || '#888' } as React.CSSProperties}
                   />
                   <span className="text-gray-300 capitalize text-xs font-medium">{p.platform}</span>
                 </div>
