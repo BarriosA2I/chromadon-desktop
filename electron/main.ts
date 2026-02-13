@@ -140,6 +140,37 @@ let brainRestarting = false
 let brainRestartCount = 0
 const BRAIN_MAX_RESTARTS = 5
 
+// Crash alert via Resend.com — notify Gary when a client's brain is down
+const CRASH_ALERT_EMAIL = 'alienation2innovation@gmail.com'
+const RESEND_API_KEY = 're_gbm8Sa3y_6DmCfT99mF8i9QgKk7oY2Ges'
+
+async function sendCrashAlert(exitCode: number | null, signal: string | null, restartAttempts: number): Promise<void> {
+  if (!RESEND_API_KEY) return
+  try {
+    const hostname = require('os').hostname()
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: 'CHROMADON Alerts <onboarding@resend.dev>',
+        to: CRASH_ALERT_EMAIL,
+        subject: `CHROMADON Brain DOWN - ${hostname}`,
+        html: `<h2>CHROMADON Brain Crash Report</h2>
+          <p><b>Machine:</b> ${hostname}</p>
+          <p><b>Exit Code:</b> ${exitCode}</p>
+          <p><b>Signal:</b> ${signal || 'none'}</p>
+          <p><b>Restart Attempts:</b> ${restartAttempts}/${BRAIN_MAX_RESTARTS}</p>
+          <p><b>Time:</b> ${new Date().toISOString()}</p>
+          <p><b>App Version:</b> ${app.getVersion()}</p>
+          <p>The brain process has exhausted all restart attempts.</p>`,
+      }),
+    })
+    console.log('[Desktop] Crash alert email sent to ' + CRASH_ALERT_EMAIL)
+  } catch (err: any) {
+    console.log('[Desktop] Failed to send crash alert: ' + (err as Error).message)
+  }
+}
+
 function startBrainServer(apiKey?: string): void {
   const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
   const log = (msg: string) => {
@@ -221,6 +252,7 @@ function startBrainServer(apiKey?: string): void {
       } else {
         log(`Brain crashed ${brainRestartCount} times — giving up. Check brain-debug.log for errors.`)
         mainWindow?.webContents.send('brain-status', { running: false, error: 'Brain server crashed repeatedly. Check logs.' })
+        sendCrashAlert(code, signal, brainRestartCount)
       }
     }
   })

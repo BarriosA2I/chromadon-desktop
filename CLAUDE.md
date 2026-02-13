@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.13.3 — 2026-02-13)
+## Recent Changes (v1.13.4 — 2026-02-13)
+
+| Change | File |
+|--------|------|
+| Added: Email crash alerts via Resend.com — notifies Gary when a client's brain exhausts all restart attempts | `electron/main.ts` |
+
+## Changes (v1.13.3 — 2026-02-13)
 
 | Change | File |
 |--------|------|
@@ -265,5 +271,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.13.3 (Production brain fix + .env hardening)
+**Version:** 1.13.4 (Email crash alerts for client brain downtime)
 **Author:** Barrios A2I (Gary Barrios)
