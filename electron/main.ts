@@ -999,9 +999,6 @@ function startControlServer() {
   // ════════════════════════════════════════════════════════════
   const DEEP_SEARCH_SCRIPT = `
 (function() {
-  if (window.__chromadonDeepSearch) return;
-  window.__chromadonDeepSearch = true;
-
   window.deepQuerySelector = function(selector, root) {
     root = root || document;
     try {
@@ -1112,12 +1109,27 @@ function startControlServer() {
         return
       }
 
-      // Inject deep search utilities
-      await view.webContents.executeJavaScript(DEEP_SEARCH_SCRIPT).catch(() => {})
+      // Inject deep search utilities (always re-inject, no guard)
+      await view.webContents.executeJavaScript(DEEP_SEARCH_SCRIPT).catch((e: any) => {
+        console.error('[CHROMADON] DEEP_SEARCH_SCRIPT injection failed:', e?.message || e)
+      })
+
+      // Helper: executeJavaScript with 5s timeout to prevent hanging
+      const execWithTimeout = (script: string, label: string) =>
+        Promise.race([
+          view.webContents.executeJavaScript(script),
+          new Promise<null>(resolve => setTimeout(() => {
+            console.log(`[CHROMADON] ${label} timed out after 5s`)
+            resolve(null)
+          }, 5000))
+        ]).catch((e: any) => {
+          console.log(`[CHROMADON] ${label} error: ${e?.message || e}`)
+          return null
+        })
 
       // ── Strategy 1: CSS Selector (light + shadow DOM) ──
       if (selector) {
-        const result = await view.webContents.executeJavaScript(`
+        const result = await execWithTimeout(`
           (function() {
             var sel = ${JSON.stringify(selector)};
             var el = document.querySelector(sel) || window.deepQuerySelector(sel);
@@ -1127,7 +1139,7 @@ function startControlServer() {
             if (rect.width === 0 && rect.height === 0) return null;
             return { x: Math.round(rect.left + rect.width/2), y: Math.round(rect.top + rect.height/2), tag: el.tagName, text: (el.textContent||'').trim().substring(0,50) };
           })()
-        `).catch(() => null)
+        `, 'Strategy1:css_deep')
 
         if (result) {
           await nativeClick(view, result.x, result.y)
@@ -1138,11 +1150,11 @@ function startControlServer() {
 
       // ── Strategy 2: Text match (light + shadow DOM, direct text nodes) ──
       if (text) {
-        const result = await view.webContents.executeJavaScript(`
+        const result = await execWithTimeout(`
           (function() {
+            if (typeof window.deepFindByText !== 'function') return { error: 'deepFindByText not injected' };
             var matches = window.deepFindByText(${JSON.stringify(text)});
             if (matches.length === 0) return null;
-            // Sort: exact matches first, then interactive elements, then shortest text
             matches.sort(function(a,b) {
               if (a.exact && !b.exact) return -1;
               if (b.exact && !a.exact) return 1;
@@ -1154,18 +1166,19 @@ function startControlServer() {
               return a.text.length - b.text.length;
             });
             var t = matches[0];
-            // Scroll into view
             if (t.el && t.el.scrollIntoView) t.el.scrollIntoView({block:'center'});
-            // Re-read rect after scroll
             var rect = t.el ? t.el.getBoundingClientRect() : t.rect;
             return { x: Math.round(rect.left + rect.width/2), y: Math.round(rect.top + rect.height/2), tag: t.tagName, text: t.text, candidates: matches.length, exact: t.exact };
           })()
-        `).catch(() => null)
+        `, 'Strategy2:text_deep')
 
-        if (result) {
+        if (result && !result.error) {
           await nativeClick(view, result.x, result.y)
           console.log(`[CHROMADON] Click: "${text}" → text_deep (${result.tag}:${result.text}) [${result.candidates} candidates, exact=${result.exact}]`)
           return res.json({ success: true, result: `clicked_text_deep:${result.tag}:${result.text}`, strategy: 'text_deep', candidates: result.candidates })
+        }
+        if (result?.error) {
+          console.log(`[CHROMADON] Strategy2 skipped: ${result.error}`)
         }
       }
 
@@ -1178,7 +1191,7 @@ function startControlServer() {
         }
         const testIdSelector = testIdMap[text]
         if (testIdSelector) {
-          const result = await view.webContents.executeJavaScript(`
+          const result = await execWithTimeout(`
             (function() {
               var selectors = ${JSON.stringify(testIdSelector)}.split(', ');
               for (var i = 0; i < selectors.length; i++) {
@@ -1193,7 +1206,7 @@ function startControlServer() {
               }
               return null;
             })()
-          `).catch(() => null)
+          `, 'Strategy3:testid')
 
           if (result) {
             await nativeClick(view, result.x, result.y)
@@ -1203,12 +1216,12 @@ function startControlServer() {
         }
       }
 
-      // ── Strategy 4: Partial text match on interactive elements ──
+      // ── Strategy 4: Partial text match on interactive elements (self-contained shadow DOM search) ──
       if (text) {
-        const result = await view.webContents.executeJavaScript(`
+        const result = await execWithTimeout(`
           (function() {
             var searchLower = ${JSON.stringify(text)}.toLowerCase();
-            var tags = 'button,[role="button"],[role="tab"],[role="link"],a,input[type="submit"],[tabindex],tp-yt-paper-tab,tp-yt-paper-item,ytcp-button,ytcp-checkbox-lit';
+            var tags = 'button,[role="button"],[role="tab"],[role="link"],a,input[type="submit"],[tabindex],tp-yt-paper-tab,tp-yt-paper-item,ytcp-button,ytcp-checkbox-lit,yt-formatted-string';
             function searchPartial(node) {
               var els;
               try { els = node.querySelectorAll(tags); } catch(e) { return null; }
@@ -1239,7 +1252,7 @@ function startControlServer() {
             }
             return searchPartial(document);
           })()
-        `).catch(() => null)
+        `, 'Strategy4:partial_text')
 
         if (result) {
           await nativeClick(view, result.x, result.y)
@@ -1248,7 +1261,7 @@ function startControlServer() {
         }
       }
 
-      console.log(`[CHROMADON] Click FAILED: "${selector || text}" — not found in light DOM or shadow DOM`)
+      console.log(`[CHROMADON] Click FAILED: "${selector || text}" — all 4 strategies exhausted (css_deep, text_deep, testid, partial_text)`)
       res.status(404).json({
         success: false,
         error: `Element not found (searched light DOM + shadow DOM): ${text || selector}`,
@@ -1274,8 +1287,10 @@ function startControlServer() {
         return
       }
 
-      // Inject deep search utilities
-      await view.webContents.executeJavaScript(DEEP_SEARCH_SCRIPT).catch(() => {})
+      // Inject deep search utilities (always re-inject, no guard)
+      await view.webContents.executeJavaScript(DEEP_SEARCH_SCRIPT).catch((e: any) => {
+        console.error('[CHROMADON] DEEP_SEARCH_SCRIPT injection failed:', e?.message || e)
+      })
 
       const coords = await view.webContents.executeJavaScript(`
         (function() {
@@ -1556,61 +1571,68 @@ function startControlServer() {
       const view = browserViewManager.getView(tabId)
       if (!view) { res.status(404).json({ success: false, error: 'Tab not found' }); return }
 
-      await view.webContents.executeJavaScript(DEEP_SEARCH_SCRIPT).catch(() => {})
+      await view.webContents.executeJavaScript(DEEP_SEARCH_SCRIPT).catch((e: any) => {
+        console.error('[CHROMADON] DEEP_SEARCH_SCRIPT injection failed:', e?.message || e)
+      })
 
-      const result = await view.webContents.executeJavaScript(`
-        (function() {
-          var elements = [];
-          var tags = 'a,button,span,div,li,label,' +
-            '[role="tab"],[role="button"],[role="link"],[role="menuitem"],[role="option"],[role="checkbox"],' +
-            'tp-yt-paper-tab,ytcp-button,tp-yt-paper-item,ytcp-checkbox-lit,yt-formatted-string,' +
-            'tp-yt-paper-radio-button,ytcp-dropdown-trigger,input[type="submit"],select,[tabindex]';
+      const result = await Promise.race([
+        view.webContents.executeJavaScript(`
+          (function() {
+            var elements = [];
+            var tags = 'a,button,span,div,li,label,' +
+              '[role="tab"],[role="button"],[role="link"],[role="menuitem"],[role="option"],[role="checkbox"],' +
+              'tp-yt-paper-tab,ytcp-button,tp-yt-paper-item,ytcp-checkbox-lit,yt-formatted-string,' +
+              'tp-yt-paper-radio-button,ytcp-dropdown-trigger,input[type="submit"],select,[tabindex]';
 
-          function search(node, depth) {
-            if (depth > 5) return;
-            var els;
-            try { els = node.querySelectorAll(tags); } catch(e) { return; }
-            for (var i = 0; i < els.length; i++) {
-              var el = els[i];
-              var rect = el.getBoundingClientRect();
-              if (rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top < window.innerHeight) {
-                var text = '';
-                for (var c = 0; c < el.childNodes.length; c++) {
-                  if (el.childNodes[c].nodeType === 3) text += el.childNodes[c].textContent;
-                }
-                text = text.trim();
-                if (!text) text = (el.textContent || '').trim().substring(0, 60);
-                if (text) {
-                  elements.push({
-                    text: text.substring(0, 60),
-                    tag: el.tagName.toLowerCase(),
-                    role: el.getAttribute('role') || '',
-                    ariaLabel: el.getAttribute('aria-label') || '',
-                    href: el.getAttribute('href') || '',
-                    x: Math.round(rect.left + rect.width/2),
-                    y: Math.round(rect.top + rect.height/2)
-                  });
+            function search(node, depth) {
+              if (depth > 15) return;
+              var els;
+              try { els = node.querySelectorAll(tags); } catch(e) { return; }
+              for (var i = 0; i < els.length; i++) {
+                var el = els[i];
+                var rect = el.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top < window.innerHeight) {
+                  var text = '';
+                  for (var c = 0; c < el.childNodes.length; c++) {
+                    if (el.childNodes[c].nodeType === 3) text += el.childNodes[c].textContent;
+                  }
+                  text = text.trim();
+                  if (!text) text = (el.textContent || '').trim().substring(0, 60);
+                  if (text) {
+                    elements.push({
+                      text: text.substring(0, 60),
+                      tag: el.tagName.toLowerCase(),
+                      role: el.getAttribute('role') || '',
+                      ariaLabel: el.getAttribute('aria-label') || '',
+                      href: el.getAttribute('href') || '',
+                      x: Math.round(rect.left + rect.width/2),
+                      y: Math.round(rect.top + rect.height/2)
+                    });
+                  }
                 }
               }
+              var allEls;
+              try { allEls = node.querySelectorAll('*'); } catch(e) { return; }
+              for (var j = 0; j < allEls.length; j++) {
+                if (allEls[j].shadowRoot) search(allEls[j].shadowRoot, depth + 1);
+              }
             }
-            var allEls;
-            try { allEls = node.querySelectorAll('*'); } catch(e) { return; }
-            for (var j = 0; j < allEls.length; j++) {
-              if (allEls[j].shadowRoot) search(allEls[j].shadowRoot, depth + 1);
-            }
-          }
-          search(document, 0);
+            search(document, 0);
 
-          // Deduplicate by text
-          var seen = {};
-          return elements.filter(function(e) {
-            var key = e.text + '|' + e.tag;
-            if (seen[key]) return false;
-            seen[key] = true;
-            return true;
-          }).slice(0, 50);
-        })()
-      `).catch(() => [])
+            var seen = {};
+            return elements.filter(function(e) {
+              var key = e.text + '|' + e.tag;
+              if (seen[key]) return false;
+              seen[key] = true;
+              return true;
+            }).slice(0, 50);
+          })()
+        `),
+        new Promise<any[]>(resolve => setTimeout(() => {
+          console.log('[CHROMADON] get_interactive_elements timed out after 8s')
+          resolve([])
+        }, 8000))
+      ]).catch(() => [])
 
       res.json({ success: true, elements: result, count: result.length })
     } catch (error) {

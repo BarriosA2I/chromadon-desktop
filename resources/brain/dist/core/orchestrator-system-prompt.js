@@ -40,7 +40,8 @@ SPEED & BEHAVIOR:
 - NEVER repeat failed actions more than twice. Try a completely different approach.
 - Never list numbered options unless asked "what can you do".
 - Prefer API tools over browser tools. API is faster and more reliable.
-- Use get_page_context instead of screenshots when possible. Snapshots are free, screenshots cost tokens.
+- Use get_page_context instead of screenshots when possible. Screenshots cost tokens.
+- On Shadow DOM sites (YouTube Studio), call get_interactive_elements before clicking to confirm the element exists.
 - You have 50 tool calls max. Every wasted turn is a tool call you can't use for actual work.
 
 TOOL STRATEGY:
@@ -113,7 +114,6 @@ YOUTUBE STUDIO BROWSER:
 - Use get_interactive_elements when you can't find something — it sees inside Shadow DOM.
 - Content tabs (Videos, Shorts, Live, Posts) are inside <tp-yt-paper-tab> — click by TEXT, never by CSS selector.
 - Buttons are <ytcp-button>, checkboxes are <ytcp-checkbox-lit>, menus are <tp-yt-paper-item>.
-- Use take_snapshot (DOM) over screenshots. Snapshots are free, screenshots cost tokens.
 - Direct URLs are fastest:
   - Edit: https://studio.youtube.com/video/{VIDEO_ID}/edit
   - Copyright: https://studio.youtube.com/video/{VIDEO_ID}/copyright

@@ -95,7 +95,7 @@ class AgenticOrchestrator {
                     session.messages = this.truncateHistory(session.messages, this.config.maxSessionMessages);
                 }
                 // 5b. Prune old screenshots — keep only last 2 to prevent payload bloat
-                this.pruneOldScreenshots(session.messages, 2);
+                this.pruneOldScreenshots(session.messages, 1);
                 // 5c. Sanitize history — ensure all tool_use/tool_result pairs are intact
                 const sanitizedMessages = this.sanitizeHistory(session.messages);
                 // 6. Call Claude API with streaming (browser tools + any additional tools)
@@ -168,6 +168,7 @@ class AgenticOrchestrator {
                 if (stopReason === 'tool_use') {
                     const toolUseBlocks = finalMessage.content.filter((b) => b.type === 'tool_use');
                     const toolResults = [];
+                    let prevToolName = '';
                     for (const toolBlock of toolUseBlocks) {
                         // Check abort signal before each tool
                         if (context.abortSignal?.aborted) {
@@ -225,7 +226,7 @@ class AgenticOrchestrator {
                         // HIGH_STAKES: always screenshot + page context on success
                         // MEDIUM_STAKES: page context on success, screenshot on failure
                         // LOW_STAKES: no verification
-                        const needsScreenshot = isDesktop && ((isHigh && result.success) || ((isHigh || isMedium) && !result.success));
+                        const needsScreenshot = isDesktop && (isHigh && result.success);
                         if (needsScreenshot) {
                             try {
                                 await new Promise(resolve => setTimeout(resolve, 500));
@@ -249,8 +250,11 @@ class AgenticOrchestrator {
                                 // Non-fatal — fall back to text-only verification
                             }
                         }
-                        // Auto-capture page context for ALL state-changing tools on success (not just HIGH)
-                        if (isDesktop && result.success && (isHigh || isMedium)) {
+                        // Auto-capture page context for state-changing tools on success
+                        // Skip if previous tool was also a click (avoids redundant context in click sequences)
+                        const skipAutoContext = (toolName === 'click' || toolName === 'click_table_row') &&
+                            (prevToolName === 'click' || prevToolName === 'click_table_row');
+                        if (isDesktop && result.success && (isHigh || isMedium) && !skipAutoContext) {
                             try {
                                 const pageCtx = await this.toolExecutor('get_page_context', {}, context);
                                 if (pageCtx.success) {
@@ -315,6 +319,7 @@ class AgenticOrchestrator {
                                 content: `${result.result}${verificationText ? `\n\n[AUTO-CONTEXT]\n${verificationText}` : ''}`,
                             });
                         }
+                        prevToolName = toolName;
                     }
                     // If aborted during tool execution, break out
                     if (context.abortSignal?.aborted)
