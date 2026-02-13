@@ -1997,6 +1997,20 @@ app.post('/api/orchestrator/chat', async (req, res) => {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.flushHeaders();
+    // Prevent socket timeout on long-running SSE streams
+    if (res.socket)
+        res.socket.setTimeout(0);
+    // Keep-alive heartbeat — prevents connection drops during long operations
+    const keepAliveInterval = setInterval(() => {
+        if (!closed) {
+            try {
+                res.write(':keepalive\n\n');
+            }
+            catch {
+                closed = true;
+            }
+        }
+    }, 15_000);
     // Sync Desktop state before building context (ensures desktopActiveTabId is current)
     const useDesktop = desktopAvailable;
     if (useDesktop) {
@@ -2071,6 +2085,7 @@ app.post('/api/orchestrator/chat', async (req, res) => {
         }
     }
     finally {
+        clearInterval(keepAliveInterval);
         activeAbortControllers.delete(trackingId);
         if (!closed) {
             res.end();
@@ -3329,7 +3344,10 @@ async function startServer() {
         console.log('[CHROMADON] ⚠️ ANTHROPIC_API_KEY not set - AI features disabled');
     }
     return new Promise((resolve) => {
-        app.listen(PORT, () => {
+        const server = app.listen(PORT, () => {
+            // Prevent Node.js from killing idle SSE connections (default keepAliveTimeout is 5s)
+            server.keepAliveTimeout = 120_000; // 2 minutes
+            server.headersTimeout = 125_000; // must be > keepAliveTimeout
             console.log(`\n[CHROMADON] ===========================================`);
             console.log(`[CHROMADON] 🚀 CHROMADON v4.0.0 - NEURAL RAG BRAIN ENABLED`);
             console.log(`[CHROMADON] Running on http://localhost:${PORT}`);

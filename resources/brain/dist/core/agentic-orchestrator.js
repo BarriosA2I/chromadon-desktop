@@ -384,6 +384,20 @@ class AgenticOrchestrator {
                         continue;
                     }
                 }
+                // Recovery: connection error — retry with backoff (first 2 loops only)
+                if (errorMsg.includes('Connection error') || errorMsg.includes('ECONNREFUSED') ||
+                    errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNRESET') ||
+                    errorMsg.includes('socket hang up') || errorMsg.includes('fetch failed')) {
+                    if (loopCount <= 2) {
+                        const waitMs = Math.min(3000 * Math.pow(2, loopCount - 1), 15000);
+                        console.warn(`[CHROMADON Orchestrator] Connection error — waiting ${waitMs}ms before retry`);
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: `\n\nConnection lost. Retrying in ${Math.ceil(waitMs / 1000)}s...\n` });
+                        }
+                        await new Promise(resolve => setTimeout(resolve, waitMs));
+                        continue;
+                    }
+                }
                 // User-friendly error messages (raw error preserved in console.error above)
                 let userMsg;
                 if (error?.status === 401) {
@@ -395,7 +409,9 @@ class AgenticOrchestrator {
                 else if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('ETIMEDOUT')) {
                     userMsg = 'The AI service timed out. Please try again.';
                 }
-                else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network') || errorMsg.includes('fetch failed')) {
+                else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network') || errorMsg.includes('fetch failed') ||
+                    errorMsg.includes('Connection error') || errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNRESET') ||
+                    errorMsg.includes('socket hang up') || errorMsg.includes('EHOSTUNREACH')) {
                     userMsg = 'Cannot reach the AI service. Please check your internet connection.';
                 }
                 else {
