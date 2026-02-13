@@ -52,7 +52,8 @@ export declare class AgenticOrchestrator {
     private additionalExecutor;
     private additionalToolNames;
     private getSkillsForPrompt;
-    constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string);
+    private getClientKnowledge;
+    constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string, getClientKnowledge?: () => string | null);
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
      */

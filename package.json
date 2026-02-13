@@ -24,6 +24,7 @@
     "@react-three/fiber": "^8.15.0",
     "argon2": "^0.44.0",
     "axios": "^1.6.0",
+    "better-sqlite3": "^12.6.2",
     "electron-updater": "^6.7.3",
     "express": "^5.2.1",
     "framer-motion": "^10.16.0",

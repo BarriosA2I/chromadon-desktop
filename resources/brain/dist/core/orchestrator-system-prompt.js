@@ -7,11 +7,14 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildOrchestratorSystemPrompt = void 0;
-function buildOrchestratorSystemPrompt(pageContext, skillsJson) {
+function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge) {
     const pageSection = pageContext
         ? `\nCURRENT PAGE:\nURL: ${pageContext.url}\nTitle: ${pageContext.title}${pageContext.interactiveElements?.length
             ? `\nInteractive Elements: ${pageContext.interactiveElements.length} found`
             : ''}`
+        : '';
+    const clientSection = clientKnowledge
+        ? `\n\nACTIVE CLIENT KNOWLEDGE:\n${clientKnowledge}\nUse this context when creating content, answering business questions, or executing tasks for this client.`
         : '';
     return `RULE #0 — COMMAND SCOPE (HIGHEST PRIORITY)
 Do EXACTLY what the user asks — nothing more, nothing less.
@@ -326,7 +329,7 @@ LIMITATIONS:
 - You can upload files but cannot read or create files.
 - If a site requires credentials you don't have, ask the user.
 - If a CAPTCHA appears, inform the user.
-${pageSection}`;
+${pageSection}${clientSection}`;
 }
 exports.buildOrchestratorSystemPrompt = buildOrchestratorSystemPrompt;
 //# sourceMappingURL=orchestrator-system-prompt.js.map

@@ -60,7 +60,8 @@ class AgenticOrchestrator {
     additionalExecutor;
     additionalToolNames;
     getSkillsForPrompt;
-    constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt) {
+    getClientKnowledge;
+    constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge) {
         this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 2 });
         this.toolExecutor = toolExecutor;
         this.config = { ...DEFAULT_CONFIG, ...config };
@@ -68,6 +69,7 @@ class AgenticOrchestrator {
         this.additionalExecutor = additionalExecutor || null;
         this.additionalToolNames = new Set(this.additionalTools.map(t => t.name));
         this.getSkillsForPrompt = getSkillsForPrompt || null;
+        this.getClientKnowledge = getClientKnowledge || null;
         // Prune expired sessions every 5 minutes
         this.pruneInterval = setInterval(() => this.pruneExpiredSessions(), 5 * 60 * 1000);
     }
@@ -101,9 +103,10 @@ class AgenticOrchestrator {
         writer.writeEvent('session_id', { sessionId: session.id });
         // 2. Add user message to session
         session.messages.push({ role: 'user', content: userMessage });
-        // 3. Build system prompt with current page context + skill memory
+        // 3. Build system prompt with current page context + skill memory + client knowledge
         const skillsJson = this.getSkillsForPrompt ? this.getSkillsForPrompt() : '';
-        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson);
+        const clientKnowledge = this.getClientKnowledge ? this.getClientKnowledge() : null;
+        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson, clientKnowledge || undefined);
         // Inject video tracking blacklist so AI knows what's already done
         let finalSystemPrompt = systemPrompt;
         if (session.videoTracker.allVideoIds.length > 0) {

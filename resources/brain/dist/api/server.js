@@ -3758,7 +3758,12 @@ async function startServer() {
                     return analyticsExec(toolName, input);
                 return `Unknown additional tool: ${toolName}`;
             };
-            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY, toolExecutor, undefined, additionalTools, combinedExecutor, () => skillMemory.getSkillsJson());
+            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY, toolExecutor, undefined, additionalTools, combinedExecutor, () => skillMemory.getSkillsJson(), () => {
+                const activeId = clientStorage.getActiveClientId();
+                if (!activeId)
+                    return null;
+                return knowledgeVault.getClientContextSummary(activeId);
+            });
             console.log('[CHROMADON] ✅ Agentic Orchestrator initialized (Claude tool-use mode)');
             if (analyticsDb)
                 console.log('[CHROMADON]    - 8 Analytics tools registered');
