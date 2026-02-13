@@ -55,7 +55,14 @@ TOOL STRATEGY:
 - Fall back to text-based clicking when CSS selectors aren't obvious.
 - For typing: always target the input/textarea element, not a label.
 - For forms: get_page_context -> type_text for each field -> click submit.
-- For navigation: navigate -> get_page_context to see what loaded.
+- For navigation: navigate auto-checks for blank pages, errors, and login prompts.
+
+PAGE HEALTH & TOAST TOOLS:
+- navigate() now auto-detects and auto-refreshes blank pages. No manual checking needed.
+- After clicking confirm/erase/submit, call wait_for_result to detect success/error toasts.
+- If page health returns EDITING_IN_PROGRESS → skip immediately.
+- If page health returns CLAIMS_READY → click "Take action" immediately.
+- If you see [STUCK DETECTED] in a tool result → change your approach completely.
 
 SOCIAL MEDIA POSTING:
 - Use create_tab with the platform URL to ensure you're using the authenticated session.

@@ -217,6 +217,22 @@ exports.BROWSER_TOOLS = [
             properties: {},
         },
     },
+    {
+        name: 'check_page_health',
+        description: 'Check if page loaded correctly. Detects blank pages, rate limits, login prompts, editing in progress.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+        },
+    },
+    {
+        name: 'wait_for_result',
+        description: 'Wait up to 10s for success/error toast after clicking confirm/submit.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+        },
+    },
 ];
 // ============================================================================
 // DESKTOP HELPER FUNCTIONS
@@ -568,7 +584,39 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: tabId, url }),
             });
-            await new Promise(r => setTimeout(r, 1500)); // Wait for navigation
+            await new Promise(r => setTimeout(r, 2000)); // Wait for page load
+            // Auto health check after navigation
+            try {
+                const health = await desktopExecuteScript(tabId, `
+          (function() {
+            var body = document.body;
+            if (!body || body.children.length < 3 || (body.innerText || '').trim().length < 50)
+              return 'BLANK';
+            if (/something went wrong|unusual traffic/i.test(body.innerText))
+              return 'ERROR';
+            if (/sign in|log in|choose an account/i.test(body.innerText))
+              return 'LOGGED_OUT';
+            return 'OK';
+          })()
+        `, desktopUrl);
+                if (health === 'BLANK') {
+                    // Auto-retry once
+                    await fetch(`${desktopUrl}/tabs/navigate`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: tabId, url }),
+                    });
+                    await new Promise(r => setTimeout(r, 3000));
+                    return { success: true, result: `Navigated to ${url} [page was blank, auto-refreshed]` };
+                }
+                if (health === 'ERROR') {
+                    return { success: true, result: `Navigated to ${url} [WARNING: page shows error]` };
+                }
+                if (health === 'LOGGED_OUT') {
+                    return { success: false, result: '', error: `Navigation to ${url} landed on login page — session expired` };
+                }
+            }
+            catch { /* non-fatal */ }
             return { success: true, result: `Navigated to ${url}` };
         }
         case 'click': {
@@ -776,6 +824,50 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
         case 'get_interactive_elements': {
             const result = await desktopGetInteractiveElements(tabId, desktopUrl);
             return { success: true, result };
+        }
+        case 'check_page_health': {
+            const health = await desktopExecuteScript(tabId, `
+        (function() {
+          var body = document.body;
+          if (!body) return { status: 'BLANK_PAGE', action: 'REFRESH' };
+          var text = body.innerText || '';
+          var children = body.children.length;
+          if (children < 3 || text.trim().length < 50)
+            return { status: 'BLANK_PAGE', action: 'REFRESH' };
+          if (/something went wrong|try again later|unusual traffic/i.test(text))
+            return { status: 'RATE_LIMITED', action: 'WAIT_60S_AND_RETRY' };
+          if (/sign in|log in|choose an account/i.test(text))
+            return { status: 'LOGGED_OUT', action: 'ALERT_USER' };
+          if (/editing is in progress/i.test(text))
+            return { status: 'EDITING_IN_PROGRESS', action: 'SKIP_VIDEO' };
+          if (/take action/i.test(text))
+            return { status: 'CLAIMS_READY', action: 'CLICK_TAKE_ACTION' };
+          if (/no copyright claims|no issues found/i.test(text))
+            return { status: 'NO_CLAIMS', action: 'NEXT_VIDEO' };
+          return { status: 'OK', action: 'CONTINUE' };
+        })()
+      `, desktopUrl);
+            return { success: true, result: `Page health: ${health.status} → ${health.action}` };
+        }
+        case 'wait_for_result': {
+            for (let i = 0; i < 20; i++) {
+                const check = await desktopExecuteScript(tabId, `
+          (function() {
+            var text = document.body?.innerText || '';
+            if (/changes saved|video updated|edit.*applied|erase.*complete/i.test(text))
+              return 'SUCCESS';
+            if (/editing is in progress/i.test(text))
+              return 'SUCCESS_EDITING';
+            if (/something went wrong|couldn.*save|error occurred|failed/i.test(text))
+              return 'ERROR';
+            return null;
+          })()
+        `, desktopUrl);
+                if (check)
+                    return { success: true, result: `Result: ${check}` };
+                await new Promise(r => setTimeout(r, 500));
+            }
+            return { success: true, result: 'Result: TIMEOUT — no confirmation detected after 10s' };
         }
         default:
             return { success: false, result: '', error: `Unknown tool: ${toolName}` };

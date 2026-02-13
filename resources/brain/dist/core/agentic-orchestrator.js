@@ -29,6 +29,27 @@ const DEFAULT_CONFIG = {
     maxSessionMessages: 15,
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
 };
+// ============================================================================
+// NO-OP DETECTOR — detects when the Brain is stuck (same page state 3x)
+// ============================================================================
+class NoOpDetector {
+    lastContextHash = '';
+    noOpCount = 0;
+    check(pageContext) {
+        const hash = pageContext.slice(0, 500);
+        if (hash === this.lastContextHash) {
+            this.noOpCount++;
+            return this.noOpCount >= 3;
+        }
+        this.noOpCount = 0;
+        this.lastContextHash = hash;
+        return false;
+    }
+    reset() {
+        this.noOpCount = 0;
+        this.lastContextHash = '';
+    }
+}
 class AgenticOrchestrator {
     client;
     sessions = new Map();
@@ -78,6 +99,7 @@ class AgenticOrchestrator {
         // 4. Agentic loop
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
+        const noOpDetector = new NoOpDetector();
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
                 break;
@@ -221,7 +243,7 @@ class AgenticOrchestrator {
                             }
                         }
                         // Tiered verification — screenshot + auto-context (ACT → VERIFY → DECIDE)
-                        const LOW_STAKES = ['scroll', 'wait', 'list_tabs', 'switch_tab', 'get_video_ids'];
+                        const LOW_STAKES = ['scroll', 'wait', 'list_tabs', 'switch_tab', 'get_video_ids', 'check_page_health', 'wait_for_result'];
                         const MEDIUM_STAKES = ['type_text', 'select_option', 'extract_text', 'hover', 'press_key'];
                         const HIGH_STAKES = ['click', 'navigate', 'create_tab', 'upload_file', 'hover_and_click', 'click_table_row'];
                         let verificationBase64 = null;
@@ -269,6 +291,11 @@ class AgenticOrchestrator {
                                 }
                             }
                             catch { /* non-fatal */ }
+                        }
+                        // No-op detection: if page context unchanged for 3 tool rounds, inject recovery hint
+                        if (verificationText && noOpDetector.check(verificationText)) {
+                            verificationText += '\n\n[STUCK DETECTED] Page unchanged after 3 actions. Try a different approach.';
+                            noOpDetector.reset();
                         }
                         // Notify client of tool result
                         if (!writer.isClosed()) {
