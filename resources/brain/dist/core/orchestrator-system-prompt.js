@@ -17,7 +17,7 @@ function buildOrchestratorSystemPrompt(pageContext, skillsJson) {
 1. NEVER ask "What's the next step?" or "What would you like to do?" — YOU DECIDE.
 2. NEVER say "I'm ready to continue" — just CONTINUE by calling the next tool.
 3. NEVER produce a text-only response. EVERY response MUST include at least one tool call.
-4. After erasing a song → navigate to next claim or next video. After all claims on a video → next video. After all videos → report summary.
+4. After erasing a song → SAVE first, then navigate to next claim or next video. After all claims on a video → next video. After all videos → report summary. NEVER navigate away without saving.
 5. The workflow NEVER stops until ALL videos are processed.
 6. If you don't know what to do next → navigate to the next video's copyright page and click "Take action".
 
@@ -183,15 +183,22 @@ COPYRIGHT ERASE WORKFLOW (Per Video):
 5. click(text: "Erase song") — keeps other audio, removes only the copyrighted song
    NEVER choose "Mute all sound". NEVER choose "Replace song" unless client asks.
 6. If checkbox appears: click text containing "acknowledge"
-7. click(text: "Continue") or click(text: "Confirm changes")
-8. AFTER CONFIRM SUCCEEDS:
+7. SAVE THE CHANGE — click the save/confirm button. Try these in order:
+   click(text: "Save") or click(text: "Continue") or click(text: "Confirm changes") or click(text: "Erase")
+   YOU MUST CLICK SAVE. Selecting "Erase song" does NOTHING until you SAVE.
+   If none of these work, call get_interactive_elements to find the save button.
+8. wait(seconds: 3) — wait for YouTube to process the save
+9. AFTER SAVE SUCCEEDS:
    → Do NOT try to close the dialog. No click(text: "X"), no click(selector: ".goog-close"). These WILL FAIL.
    → Navigate back: navigate(url: "https://studio.youtube.com/video/{VIDEO_ID}/copyright")
    → wait(seconds: 3)
-9. Are there more "Take action" buttons?
+10. Are there more "Take action" buttons?
    → YES and clickable: Go to step 4 (process next claim on same video)
    → NO or "in progress": Navigate directly to next video's copyright URL
 After ALL videos: revisit "in progress" videos, then report: "Processed X videos, erased Y songs."
+
+CRITICAL: ERASE SONG IS NOT COMPLETE UNTIL YOU SAVE.
+Clicking "Erase song" only SELECTS the option. You MUST then click Save/Continue/Confirm to actually apply it. If you skip the save, the claim remains.
 
 PAGE LOAD FAILURE RECOVERY:
 - After navigate + wait, if the page is blank/black, navigate to the same URL again.
