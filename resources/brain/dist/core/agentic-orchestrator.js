@@ -77,6 +77,7 @@ class AgenticOrchestrator {
         const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson);
         // 4. Agentic loop
         let loopCount = 0;
+        let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
                 break;
@@ -326,10 +327,13 @@ class AgenticOrchestrator {
                         break;
                     // Push tool results as user message
                     session.messages.push({ role: 'user', content: toolResults });
+                    // Reset transient retry counter on successful tool execution
+                    transientRetryCount = 0;
                     // Continue the loop - Claude will process tool results
                     continue;
                 }
                 // 9. stop_reason is "end_turn" or "max_tokens" - we're done
+                transientRetryCount = 0; // Reset on success
                 break;
             }
             catch (error) {
@@ -377,34 +381,27 @@ class AgenticOrchestrator {
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
-                // Recovery: timeout — retry with backoff (first 2 loops only)
-                if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('ETIMEDOUT')) {
-                    if (loopCount <= 2) {
-                        const waitMs = Math.min(3000 * Math.pow(2, loopCount - 1), 15000);
-                        console.warn(`[CHROMADON Orchestrator] Timeout — waiting ${waitMs}ms before retry`);
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: `\n\nConnection timed out. Retrying in ${Math.ceil(waitMs / 1000)}s...\n` });
-                        }
-                        await new Promise(resolve => setTimeout(resolve, waitMs));
-                        continue;
+                // Recovery: transient errors (timeout, connection, network) — retry up to 3 times
+                // Uses independent transientRetryCount so retries work mid-workflow (not tied to loopCount)
+                const errorLower = errorMsg.toLowerCase();
+                const isTransient = [
+                    'connection error', 'econnrefused', 'enotfound', 'econnreset',
+                    'socket hang up', 'fetch failed', 'network error', 'networkerror',
+                    'ehostunreach', 'etimedout', 'cannot reach', 'timed out', 'timeout',
+                    'econnaborted', 'epipe', 'eproto'
+                ].some(pattern => errorLower.includes(pattern));
+                if (isTransient && transientRetryCount < 3) {
+                    transientRetryCount++;
+                    const waitMs = Math.min(3000 * Math.pow(2, transientRetryCount - 1), 15000);
+                    console.warn(`[CHROMADON Orchestrator] Transient error (attempt ${transientRetryCount}/3) — waiting ${waitMs}ms: ${errorMsg}`);
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('text_delta', { text: `\n\nConnection issue. Retrying (${transientRetryCount}/3)...\n` });
                     }
-                }
-                // Recovery: connection error — retry with backoff (first 2 loops only)
-                if (errorMsg.includes('Connection error') || errorMsg.includes('ECONNREFUSED') ||
-                    errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNRESET') ||
-                    errorMsg.includes('socket hang up') || errorMsg.includes('fetch failed')) {
-                    if (loopCount <= 2) {
-                        const waitMs = Math.min(3000 * Math.pow(2, loopCount - 1), 15000);
-                        console.warn(`[CHROMADON Orchestrator] Connection error — waiting ${waitMs}ms before retry`);
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: `\n\nConnection lost. Retrying in ${Math.ceil(waitMs / 1000)}s...\n` });
-                        }
-                        await new Promise(resolve => setTimeout(resolve, waitMs));
-                        continue;
-                    }
+                    await new Promise(resolve => setTimeout(resolve, waitMs));
+                    continue;
                 }
                 // User-friendly error messages (raw error preserved in console.error above)
-                console.error(`[CHROMADON Orchestrator] Raw error for classification — status: ${error?.status}, message: ${errorMsg}`);
+                console.error(`[CHROMADON Orchestrator] Unrecoverable error — status: ${error?.status}, message: ${errorMsg}, transientRetries: ${transientRetryCount}`);
                 let userMsg;
                 if (error?.status === 401) {
                     userMsg = 'Authentication failed. Please check your API key in settings.';
@@ -412,13 +409,8 @@ class AgenticOrchestrator {
                 else if (error?.status === 413 || errorMsg.includes('request_too_large') || errorMsg.includes('Request too large')) {
                     userMsg = 'The conversation got too long. Starting a fresh chat session may help.';
                 }
-                else if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('ETIMEDOUT')) {
-                    userMsg = 'The AI service timed out. Please try again.';
-                }
-                else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network error') || errorMsg.includes('NetworkError') ||
-                    errorMsg.includes('fetch failed') || errorMsg.includes('Connection error') || errorMsg.includes('ENOTFOUND') ||
-                    errorMsg.includes('ECONNRESET') || errorMsg.includes('socket hang up') || errorMsg.includes('EHOSTUNREACH')) {
-                    userMsg = 'Cannot reach the AI service. Please check your internet connection.';
+                else if (isTransient) {
+                    userMsg = 'Lost connection to the AI service after 3 retries. Please check your internet and try again.';
                 }
                 else {
                     userMsg = `Something went wrong: ${errorMsg}`;
