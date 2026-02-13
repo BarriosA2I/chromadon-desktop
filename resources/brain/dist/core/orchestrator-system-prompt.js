@@ -68,7 +68,7 @@ TOOL STRATEGY:
 PAGE HEALTH & TOAST TOOLS:
 - navigate() now auto-detects and auto-refreshes blank pages. No manual checking needed.
 - After clicking confirm/erase/submit, call wait_for_result to detect success/error toasts.
-- If page health returns EDITING_IN_PROGRESS → skip immediately.
+- If page health returns EDITING_IN_PROGRESS → check for "Take action" buttons first. Only defer if ZERO buttons remain.
 - If page health returns CLAIMS_READY → click "Take action" immediately.
 - If you see [STUCK DETECTED] in a tool result → change your approach completely.
 
@@ -177,7 +177,8 @@ COPYRIGHT ERASE WORKFLOW (Per Video):
 1. navigate(url: "https://studio.youtube.com/video/{VIDEO_ID}/copyright")
 2. wait(seconds: 3)
 3. CHECK: Does page show "Video editing is in progress..."?
-   → YES: Navigate directly to next video's copyright URL. Add to revisit list.
+   → YES, but "Take action" buttons ARE visible: IGNORE the banner. Continue to step 4 and process ALL remaining claims.
+   → YES, and NO "Take action" buttons: All claims already actioned. Defer this video and navigate to next.
    → NO: Continue to step 4.
 4. click(text: "Take action")
 5. click(text: "Erase song") — keeps other audio, removes only the copyrighted song
@@ -209,9 +210,22 @@ CRITICAL RULES:
 - A single video can have 5-10+ claims. ERASE ALL OF THEM.
 - Always choose "Erase song" (NOT "Mute all sound", NOT "Replace song").
 - NEVER try to close dialogs. Navigate away instead.
-- "Video editing is in progress" → SKIP IMMEDIATELY. click(text: "Channel content") and move on.
+- "Video editing is in progress" WITHOUT "Take action" buttons → defer and move on. WITH "Take action" buttons → process remaining claims first.
 - NEVER use selector "input[type=checkbox]" — click checkboxes by LABEL TEXT.
 - FALLBACK if get_video_ids returns empty: Use click_table_row with rowIndex.
+
+"EDITING IN PROGRESS" + "TAKE ACTION" = KEEP CLICKING:
+The "editing in progress" banner means a PREVIOUS erase is being processed by YouTube.
+It does NOT mean the page is frozen. It does NOT mean all claims are handled.
+ALWAYS check: are there "Take action" buttons still visible?
+  → YES: Click them. Erase each song. Save. Repeat for ALL buttons.
+  → NO: All claims actioned. Defer this video (YouTube is processing). Move to next.
+"Take action" buttons ALWAYS take priority over the "editing in progress" banner.
+
+TOOL CALL EFFICIENCY:
+- NEVER call the same tool twice in a row with identical parameters.
+- After get_video_ids returns a list, use that list. Do not re-fetch it.
+- One screenshot per page is enough. Do not take multiple screenshots of the same page.
 
 SHADOW DOM ELEMENTS (need text click, not CSS selector):
 - Tabs: <tp-yt-paper-tab> (Videos, Live, Shorts)

@@ -838,10 +838,10 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
             return { status: 'RATE_LIMITED', action: 'WAIT_60S_AND_RETRY' };
           if (/sign in|log in|choose an account/i.test(text))
             return { status: 'LOGGED_OUT', action: 'ALERT_USER' };
-          if (/editing is in progress/i.test(text))
-            return { status: 'EDITING_IN_PROGRESS', action: 'SKIP_VIDEO' };
           if (/take action/i.test(text))
             return { status: 'CLAIMS_READY', action: 'CLICK_TAKE_ACTION' };
+          if (/editing is in progress/i.test(text))
+            return { status: 'EDITING_IN_PROGRESS', action: 'DEFER_VIDEO' };
           if (/no copyright claims|no issues found/i.test(text))
             return { status: 'NO_CLAIMS', action: 'NEXT_VIDEO' };
           return { status: 'OK', action: 'CONTINUE' };

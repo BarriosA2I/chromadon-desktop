@@ -358,7 +358,7 @@ class AgenticOrchestrator {
                                 }
                             }
                         }
-                        // "Editing in progress" enforcement — auto-skip at code level
+                        // "Editing in progress" enforcement — auto-skip ONLY if no actionable buttons
                         if (toolName === 'navigate' && result.success && tracker.allVideoIds.length > 0) {
                             const navUrl = toolInput.url;
                             if (navUrl.includes('/copyright') && context.useDesktop && context.desktopTabId !== null) {
@@ -369,16 +369,28 @@ class AgenticOrchestrator {
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({
                                             id: context.desktopTabId,
-                                            script: `(function(){ return (document.body && document.body.innerText || '').includes('editing is in progress'); })()`,
+                                            script: `(function(){
+                        var t = (document.body && document.body.innerText) || '';
+                        var hasEditing = t.includes('editing is in progress');
+                        var hasTakeAction = t.includes('Take action');
+                        return { hasEditing: hasEditing, hasTakeAction: hasTakeAction };
+                      })()`,
                                         }),
                                     });
                                     const editCheckData = await editCheckResp.json();
-                                    if (editCheckData.result === true && tracker.currentVideoId) {
+                                    const { hasEditing, hasTakeAction } = editCheckData.result || {};
+                                    if (hasEditing && !hasTakeAction && tracker.currentVideoId) {
+                                        // Editing in progress with NO actionable buttons → auto-defer
                                         if (!tracker.skippedIds.includes(tracker.currentVideoId)) {
                                             tracker.skippedIds.push(tracker.currentVideoId);
-                                            console.log(`[VIDEO TRACKER] Auto-skipped (editing in progress): ${tracker.currentVideoId}`);
+                                            console.log(`[VIDEO TRACKER] Auto-skipped (editing, no buttons): ${tracker.currentVideoId}`);
                                         }
-                                        result = { ...result, result: 'EDITING IN PROGRESS — auto-skipped. Navigate to the next unprocessed video immediately.' };
+                                        result = { ...result, result: 'EDITING IN PROGRESS with no actionable claims. Auto-deferred. Navigate to the next unprocessed video.' };
+                                    }
+                                    else if (hasEditing && hasTakeAction) {
+                                        // Editing in progress BUT Take action buttons exist → tell AI to keep clicking
+                                        console.log(`[VIDEO TRACKER] Editing in progress but ${tracker.currentVideoId} has Take action buttons — NOT skipping`);
+                                        result = { ...result, result: result.result + '\n\n[NOTE] "Editing in progress" banner is visible but "Take action" buttons are still present. Process ALL remaining claims. Do NOT skip this video.' };
                                     }
                                 }
                                 catch { /* non-fatal */ }
