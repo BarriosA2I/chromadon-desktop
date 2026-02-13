@@ -24,9 +24,9 @@ const browser_tools_1 = require("./browser-tools");
 const orchestrator_system_prompt_1 = require("./orchestrator-system-prompt");
 const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
-    maxTokens: 1024,
+    maxTokens: 2048,
     maxLoops: 50,
-    maxSessionMessages: 40,
+    maxSessionMessages: 20,
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
 };
 class AgenticOrchestrator {
