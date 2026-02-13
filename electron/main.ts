@@ -1496,7 +1496,8 @@ function startControlServer() {
   server.post('/tabs/get-video-ids', async (req: Request, res: Response) => {
     try {
       const { id } = req.body
-      const view = tabManager.getViewById(id !== undefined ? id : tabManager.getActiveTabId())
+      const tabId = id !== undefined ? id : browserViewManager.getActiveTabId()
+      const view = browserViewManager.getView(tabId)
       if (!view) { res.status(404).json({ success: false, error: 'Tab not found' }); return }
 
       const result = await view.webContents.executeJavaScript(`
@@ -1536,7 +1537,8 @@ function startControlServer() {
   server.post('/tabs/click-table-row', async (req: Request, res: Response) => {
     try {
       const { id, rowIndex = 0 } = req.body
-      const view = tabManager.getViewById(id !== undefined ? id : tabManager.getActiveTabId())
+      const tabId = id !== undefined ? id : browserViewManager.getActiveTabId()
+      const view = browserViewManager.getView(tabId)
       if (!view) { res.status(404).json({ success: false, error: 'Tab not found' }); return }
 
       const coords = await view.webContents.executeJavaScript(`
