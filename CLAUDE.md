@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.13.2 — 2026-02-13)
+## Recent Changes (v1.13.3 — 2026-02-13)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain dist agents compiled with correct decorator settings (tier1/tier4 were missing) | `resources/brain/dist/agents/*` |
+| Fixed: Production `.env` — `NODE_ENV=production`, removed empty `ANTHROPIC_API_KEY` override | `resources/brain/.env` |
+
+## Changes (v1.13.2 — 2026-02-13)
 
 | Change | File |
 |--------|------|
@@ -258,5 +265,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.13.2 (Brain bundle fix + auto-updater fix)
+**Version:** 1.13.3 (Production brain fix + .env hardening)
 **Author:** Barrios A2I (Gary Barrios)

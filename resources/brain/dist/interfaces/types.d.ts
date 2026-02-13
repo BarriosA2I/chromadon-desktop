@@ -232,48 +232,47 @@ export declare const MissionSchema: z.ZodObject<{
         id: z.ZodString;
         type: z.ZodEnum<["navigate", "click", "fill", "select", "hover", "scroll", "screenshot", "wait", "conditional"]>;
     }, "strip", z.ZodTypeAny, {
-        id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+        id?: string;
+        type?: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }, {
-        id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+        id?: string;
+        type?: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }>, "many">;
     complexity: z.ZodNativeEnum<typeof Complexity>;
     timeout: z.ZodOptional<z.ZodNumber>;
     checkpoints: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    id: string;
-    description: string;
-    actions: {
-        id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+    timeout?: number;
+    id?: string;
+    description?: string;
+    actions?: {
+        id?: string;
+        type?: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }[];
-    complexity: Complexity;
-    timeout?: number | undefined;
-    checkpoints?: boolean | undefined;
+    complexity?: Complexity;
+    checkpoints?: boolean;
 }, {
-    id: string;
-    description: string;
-    actions: {
-        id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+    timeout?: number;
+    id?: string;
+    description?: string;
+    actions?: {
+        id?: string;
+        type?: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }[];
-    complexity: Complexity;
-    timeout?: number | undefined;
-    checkpoints?: boolean | undefined;
+    complexity?: Complexity;
+    checkpoints?: boolean;
 }>;
 export declare const SelectorSchema: z.ZodObject<{
     value: z.ZodString;
     strategy: z.ZodEnum<["css", "xpath", "text", "aria", "testid", "visual"]>;
     confidence: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
-    value: string;
-    strategy: "text" | "css" | "xpath" | "aria" | "testid" | "visual";
-    confidence: number;
+    value?: string;
+    strategy?: "css" | "xpath" | "text" | "aria" | "testid" | "visual";
+    confidence?: number;
 }, {
-    value: string;
-    strategy: "text" | "css" | "xpath" | "aria" | "testid" | "visual";
-    confidence: number;
+    value?: string;
+    strategy?: "css" | "xpath" | "text" | "aria" | "testid" | "visual";
+    confidence?: number;
 }>;
 export type MissionInput = z.infer<typeof MissionSchema>;
-//# sourceMappingURL=types.d.ts.map

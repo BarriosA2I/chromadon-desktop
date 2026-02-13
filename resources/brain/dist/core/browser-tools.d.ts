@@ -31,4 +31,3 @@ export interface ExecutionContext {
 export type ToolExecutor = (toolName: string, input: Record<string, any>, context: ExecutionContext) => Promise<ToolExecutionResult>;
 export declare const BROWSER_TOOLS: ToolDefinition[];
 export declare function createToolExecutor(): ToolExecutor;
-//# sourceMappingURL=browser-tools.d.ts.map

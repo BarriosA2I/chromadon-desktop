@@ -55,4 +55,3 @@ export declare class SocialOverlord {
      */
     processQueue(tasks: QueueTask[], writer: SSEWriter, onProgress?: TaskProgressCallback): Promise<TaskResult[]>;
 }
-//# sourceMappingURL=social-overlord.d.ts.map

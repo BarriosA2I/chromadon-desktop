@@ -6,4 +6,3 @@
  */
 import type { PageContext } from './ai-engine-v3';
 export declare function buildOrchestratorSystemPrompt(pageContext?: PageContext, skillsJson?: string, clientKnowledge?: string): string;
-//# sourceMappingURL=orchestrator-system-prompt.d.ts.map
