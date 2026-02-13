@@ -7,6 +7,15 @@
 
 ---
 
+## Recent Changes (v1.13.0 — 2026-02-13)
+
+| Change | File |
+|--------|------|
+| Fixed: `/tabs/scroll/:id` uses `behavior: 'instant'` + verifies scrollTop changed; keyboard fallback triggers when JS scroll fails | `electron/main.ts` |
+| Fixed: Interview panel scroll (added `h-0` to chat container + `flex-shrink-0` to input bar) | `src/components/interview/InterviewChat.tsx`, `InterviewScreen.tsx` |
+
+---
+
 ## CRITICAL: BROWSER AUTOMATION RULES
 
 ### NEVER USE THESE (FORBIDDEN)
@@ -236,6 +245,6 @@ CHROMADON Desktop v1.0
 
 ---
 
-**Last Updated:** 2026-02-06
-**Version:** 1.0.0 (Production Audited)
+**Last Updated:** 2026-02-13
+**Version:** 1.13.0 (Phase 2 Quality Overhaul + Scroll Fix)
 **Author:** Barrios A2I (Gary Barrios)

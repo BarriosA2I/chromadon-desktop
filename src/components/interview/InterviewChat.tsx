@@ -41,7 +41,7 @@ export default function InterviewChat({ messages, isLoading, error, onRetry, cur
   }, [currentPhase])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 crystal-grid">
+    <div ref={scrollRef} className="flex-1 h-0 overflow-y-auto px-6 py-4 space-y-4 crystal-grid">
       {/* Error state */}
       {error && messages.length === 0 && !isLoading && (
         <motion.div

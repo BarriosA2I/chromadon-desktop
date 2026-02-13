@@ -1849,7 +1849,7 @@ function startControlServer() {
     }
   })
 
-  // Native scroll endpoint — smart container detection + keyboard fallback
+  // Native scroll endpoint — verified JS scroll + keyboard fallback
   server.post('/tabs/scroll/:id', async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10)
@@ -1862,7 +1862,7 @@ function startControlServer() {
 
       const scrollY = deltaY || (direction === 'up' ? -(amount || 500) : (amount || 500))
 
-      // Try JS scroll: container first, then window
+      // Try JS scroll with INSTANT behavior and VERIFIED position change
       const result = await view.webContents.executeJavaScript(`
         (function() {
           var scrollAmount = ${scrollY};
@@ -1883,14 +1883,20 @@ function startControlServer() {
             }
             return null;
           }
+          // Strategy 1: Container scroll with instant behavior + verification
           var scrollable = findScrollable();
           if (scrollable) {
-            scrollable.scrollBy({ top: scrollAmount, behavior: 'smooth' });
-            return { success: true, strategy: 'container_scroll', element: scrollable.tagName };
+            var beforeY = scrollable.scrollTop;
+            scrollable.scrollBy({ top: scrollAmount, behavior: 'instant' });
+            var afterY = scrollable.scrollTop;
+            if (Math.abs(afterY - beforeY) > 2) {
+              return { success: true, strategy: 'container_scroll', element: scrollable.tagName };
+            }
           }
-          var beforeY = window.scrollY;
-          window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
-          if (window.scrollY !== beforeY || scrollAmount === 0) {
+          // Strategy 2: Window scroll with instant behavior + verification
+          var beforeWinY = window.scrollY;
+          window.scrollBy({ top: scrollAmount, behavior: 'instant' });
+          if (Math.abs(window.scrollY - beforeWinY) > 2) {
             return { success: true, strategy: 'window_scroll' };
           }
           return { success: false };
@@ -1902,11 +1908,12 @@ function startControlServer() {
         return
       }
 
-      // Keyboard fallback
+      // Keyboard fallback — sendInputEvent is native and always works
       const key = scrollY < 0 ? 'PageUp' : 'PageDown'
       view.webContents.sendInputEvent({ type: 'keyDown', keyCode: key } as any)
       await new Promise(r => setTimeout(r, 50))
       view.webContents.sendInputEvent({ type: 'keyUp', keyCode: key } as any)
+      console.log(`[CHROMADON] Scroll via keyboard fallback (${key}) on tab ${id}`)
       res.json({ success: true, strategy: 'keyboard_fallback' })
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) })

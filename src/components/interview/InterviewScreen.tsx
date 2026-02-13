@@ -289,7 +289,7 @@ export default function InterviewScreen({ onComplete, onClose }: Props) {
             />
 
             {/* Input bar */}
-            <div className="px-6 py-4 border-t border-chroma-teal/10 bg-chroma-obsidian/50">
+            <div className="flex-shrink-0 px-6 py-4 border-t border-chroma-teal/10 bg-chroma-obsidian/50">
               {/* File preview strip */}
               {pendingFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
