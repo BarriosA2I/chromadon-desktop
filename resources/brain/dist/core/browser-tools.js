@@ -117,13 +117,27 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'hover',
-        description: 'Hover the mouse over an element. Use to trigger dropdown menus, tooltips, or hover effects.',
+        description: 'Hover the mouse over an element using real mouse events. Triggers tooltips, dropdowns, and hover effects. Searches Shadow DOM.',
         input_schema: {
             type: 'object',
             properties: {
                 selector: { type: 'string', description: 'CSS selector for the element to hover over' },
+                text: { type: 'string', description: 'Text content of the element to hover over (alternative to selector)' },
             },
-            required: ['selector'],
+        },
+    },
+    {
+        name: 'hover_and_click',
+        description: 'Hover over an element, wait for a tooltip/popup to appear, then click a button inside the tooltip. Single atomic action — prevents rate limiting from multiple round trips. Use for YouTube Studio copyright "See details", dropdown menus, and any hover-triggered UI.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                hoverSelector: { type: 'string', description: 'CSS selector of the element to hover over' },
+                hoverText: { type: 'string', description: 'Text content of the element to hover over (alternative to hoverSelector)' },
+                clickText: { type: 'string', description: 'Text of the button/link to click inside the tooltip' },
+                waitMs: { type: 'number', description: 'Milliseconds to wait for tooltip to appear (default: 800)' },
+            },
+            required: ['clickText'],
         },
     },
     {
@@ -199,6 +213,28 @@ async function desktopTypeText(tabId, selector, text, clearFirst, desktopUrl) {
     const data = await response.json();
     if (!data.success)
         throw new Error(data.error || 'Type text failed');
+    return data.result;
+}
+async function desktopHover(tabId, selector, text, desktopUrl) {
+    const response = await fetch(`${desktopUrl}/tabs/hover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tabId, selector, text }),
+    });
+    const data = await response.json();
+    if (!data.success)
+        throw new Error(data.error || 'Hover failed');
+    return data.result;
+}
+async function desktopHoverAndClick(tabId, hoverSelector, hoverText, clickText, waitMs, desktopUrl) {
+    const response = await fetch(`${desktopUrl}/tabs/hover-and-click`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tabId, hoverSelector, hoverText, clickText, waitMs }),
+    });
+    const data = await response.json();
+    if (!data.success)
+        throw new Error(data.error || 'Hover and click failed');
     return data.result;
 }
 async function desktopClick(tabId, selector, text, desktopUrl) {
@@ -557,19 +593,23 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
             return { success: true, result };
         }
         case 'hover': {
-            const selector = escape(input.selector);
-            const result = await desktopExecuteScript(tabId, `
-        (function() {
-          var el = document.querySelector('${selector}');
-          if (!el) return null;
-          el.scrollIntoView({block:'center'});
-          el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true}));
-          el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
-          return 'Hovered over ' + el.tagName;
-        })()
-      `, desktopUrl);
-            if (!result)
-                return { success: false, result: '', error: `Element not found: ${input.selector}` };
+            const selector = input.selector;
+            const text = input.text;
+            if (!selector && !text) {
+                return { success: false, result: '', error: 'hover requires either selector or text' };
+            }
+            const result = await desktopHover(tabId, selector || null, text || null, desktopUrl);
+            return { success: true, result };
+        }
+        case 'hover_and_click': {
+            const hoverSelector = input.hoverSelector;
+            const hoverText = input.hoverText;
+            const clickText = input.clickText;
+            const waitMs = input.waitMs;
+            if (!hoverSelector && !hoverText) {
+                return { success: false, result: '', error: 'hover_and_click requires either hoverSelector or hoverText' };
+            }
+            const result = await desktopHoverAndClick(tabId, hoverSelector || null, hoverText || null, clickText, waitMs, desktopUrl);
             return { success: true, result };
         }
         case 'get_page_context': {

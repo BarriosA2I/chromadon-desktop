@@ -230,8 +230,36 @@
           "rules": []
         }
       },
-      "siteRules": ["YouTube Studio uses Polymer/Lit components, not React"],
-      "knownSelectors": {}
+      "view_copyright_details": {
+          "description": "View copyright claim details for a specific video",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://studio.youtube.com/video/{VIDEO_ID}/copyright" }, "waitAfter": 3000, "note": "Replace {VIDEO_ID} with the actual video ID from the content list" },
+            { "order": 2, "action": "get_page_context", "waitAfter": 0, "note": "Read the copyright details and available actions" }
+          ],
+          "rules": ["Get the video ID from the content list URL or page links", "Direct URL navigation is the most reliable method — no hover/tooltip needed"]
+        },
+        "copyright_see_details_via_hover": {
+          "description": "Open copyright details from the content list via hover tooltip",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "hover_and_click", "params": { "hoverText": "Copyright", "clickText": "See details", "waitMs": 800 }, "waitAfter": 3000, "note": "Hovers over Copyright in Restrictions column, waits for tooltip, clicks See details" }
+          ],
+          "rules": ["ALWAYS use hover_and_click — NEVER try separate hover + click", "If this fails, use direct URL navigation to /video/{VIDEO_ID}/copyright instead"]
+        }
+      },
+      "siteRules": ["YouTube Studio uses Polymer/Lit Web Components with Shadow DOM", "Many elements are inside shadow roots — click handler pierces them automatically", "For copyright workflows, prefer direct URL navigation over hover tooltips"],
+      "knownSelectors": {
+        "content_tabs": "tp-yt-paper-tab[role='tab']",
+        "video_rows": "ytcp-video-row",
+        "create_button": "button#create-icon"
+      }
     }
   },
   "globalRules": [

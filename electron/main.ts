@@ -1280,6 +1280,218 @@ function startControlServer() {
     }
   })
 
+  // Hover over element with Shadow DOM piercing + sendInputEvent (real mouse)
+  server.post('/tabs/hover', async (req: Request, res: Response) => {
+    try {
+      const { id, selector, text } = req.body
+      if (id === undefined || (!selector && !text)) {
+        res.status(400).json({ success: false, error: 'id and (selector or text) are required' })
+        return
+      }
+
+      const view = browserViewManager.getView(id)
+      if (!view || view.webContents.isDestroyed()) {
+        res.status(404).json({ success: false, error: `Tab ${id} not found` })
+        return
+      }
+
+      const target = selector || text
+
+      // Find element coordinates, piercing Shadow DOM
+      const coords = await view.webContents.executeJavaScript(`
+        (function() {
+          var target = ${JSON.stringify(target)};
+          function deepQuery(sel, root) {
+            if (!root) root = document;
+            try { var r = root.querySelector(sel); if (r) return r; } catch(e) {}
+            var all = root.querySelectorAll('*');
+            for (var i = 0; i < all.length; i++) {
+              if (all[i].shadowRoot) { var f = deepQuery(sel, all[i].shadowRoot); if (f) return f; }
+            }
+            return null;
+          }
+          function deepFindByText(searchText, root) {
+            if (!root) root = document;
+            var results = [];
+            function search(node) {
+              var els = node.querySelectorAll('a, button, [role="tab"], [role="button"], [role="link"], span, div, td, th, tp-yt-paper-tab');
+              for (var i = 0; i < els.length; i++) {
+                var t = (els[i].textContent || '').trim();
+                if (t === searchText || t.toLowerCase() === searchText.toLowerCase()) {
+                  var rect = els[i].getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) results.push({ el: els[i], rect: rect });
+                }
+                if (els[i].shadowRoot) search(els[i].shadowRoot);
+              }
+              var allEls = node.querySelectorAll('*');
+              for (var j = 0; j < allEls.length; j++) {
+                if (allEls[j].shadowRoot) search(allEls[j].shadowRoot);
+              }
+            }
+            search(root);
+            return results;
+          }
+          var el = null;
+          try { el = document.querySelector(target); } catch(e) {}
+          if (!el) el = deepQuery(target);
+          if (!el) {
+            var textMatches = deepFindByText(target);
+            if (textMatches.length > 0) el = textMatches[0].el;
+          }
+          if (!el) return null;
+          el.scrollIntoView({block:'center'});
+          var rect = el.getBoundingClientRect();
+          return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2), tag: el.tagName, text: (el.textContent || '').trim().slice(0, 50) };
+        })()
+      `)
+
+      if (!coords) {
+        res.json({ success: false, error: `Hover target not found (searched light + shadow DOM): ${target}` })
+        return
+      }
+
+      // Use sendInputEvent for real mouse hover (tooltips need real mouse events)
+      view.webContents.sendInputEvent({ type: 'mouseMove', x: coords.x, y: coords.y })
+      await new Promise(resolve => setTimeout(resolve, 400))
+      // Slight jiggle to ensure hover state registers
+      view.webContents.sendInputEvent({ type: 'mouseMove', x: coords.x + 1, y: coords.y })
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      console.log(`[CHROMADON] Hover: "${target}" → (${coords.x}, ${coords.y}) ${coords.tag}`)
+      res.json({ success: true, result: `Hovered over ${coords.tag}:${coords.text} at (${coords.x},${coords.y}). Tooltip should be visible.` })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Combined hover → wait → click tooltip button (single round trip, prevents rate limiting)
+  server.post('/tabs/hover-and-click', async (req: Request, res: Response) => {
+    try {
+      const { id, hoverSelector, hoverText, clickText, waitMs } = req.body
+      if (id === undefined || (!hoverSelector && !hoverText) || !clickText) {
+        res.status(400).json({ success: false, error: 'id, (hoverSelector or hoverText), and clickText are required' })
+        return
+      }
+
+      const view = browserViewManager.getView(id)
+      if (!view || view.webContents.isDestroyed()) {
+        res.status(404).json({ success: false, error: `Tab ${id} not found` })
+        return
+      }
+
+      const hoverTarget = hoverSelector || hoverText
+
+      // Step 1: Find hover target (piercing Shadow DOM)
+      const hoverCoords = await view.webContents.executeJavaScript(`
+        (function() {
+          var target = ${JSON.stringify(hoverTarget)};
+          function deepQuery(sel, root) {
+            if (!root) root = document;
+            try { var r = root.querySelector(sel); if (r) return r; } catch(e) {}
+            var all = root.querySelectorAll('*');
+            for (var i = 0; i < all.length; i++) {
+              if (all[i].shadowRoot) { var f = deepQuery(sel, all[i].shadowRoot); if (f) return f; }
+            }
+            return null;
+          }
+          function deepFindByText(searchText, root) {
+            if (!root) root = document;
+            var results = [];
+            function search(node) {
+              var els = node.querySelectorAll('*');
+              for (var i = 0; i < els.length; i++) {
+                var t = (els[i].textContent || '').trim();
+                if (t === searchText || t.toLowerCase() === searchText.toLowerCase()) {
+                  var rect = els[i].getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) results.push(els[i]);
+                }
+                if (els[i].shadowRoot) search(els[i].shadowRoot);
+              }
+            }
+            search(root);
+            return results;
+          }
+          var el = null;
+          try { el = document.querySelector(target); } catch(e) {}
+          if (!el) el = deepQuery(target);
+          if (!el) {
+            var matches = deepFindByText(target);
+            if (matches.length > 0) el = matches[0];
+          }
+          if (!el) return null;
+          el.scrollIntoView({block:'center'});
+          var rect = el.getBoundingClientRect();
+          return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2) };
+        })()
+      `)
+
+      if (!hoverCoords) {
+        res.json({ success: false, error: `Hover target not found: ${hoverTarget}` })
+        return
+      }
+
+      // Step 2: Hover using real mouse event
+      view.webContents.sendInputEvent({ type: 'mouseMove', x: hoverCoords.x, y: hoverCoords.y })
+      await new Promise(resolve => setTimeout(resolve, waitMs || 800))
+      view.webContents.sendInputEvent({ type: 'mouseMove', x: hoverCoords.x + 1, y: hoverCoords.y })
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      // Step 3: Find click target in tooltip (piercing Shadow DOM)
+      const clickCoords = await view.webContents.executeJavaScript(`
+        (function() {
+          var searchText = ${JSON.stringify(clickText)};
+          var hoverX = ${hoverCoords.x}, hoverY = ${hoverCoords.y};
+          var results = [];
+          function search(node) {
+            var els = node.querySelectorAll('a, button, [role="button"], [role="link"], span, div');
+            for (var i = 0; i < els.length; i++) {
+              var t = (els[i].textContent || '').trim();
+              if (t === searchText || t.toLowerCase() === searchText.toLowerCase()) {
+                var rect = els[i].getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top < window.innerHeight) {
+                  var dist = Math.abs(rect.top - hoverY) + Math.abs(rect.left - hoverX);
+                  results.push({ x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + rect.height / 2), tag: els[i].tagName, text: t, dist: dist });
+                }
+              }
+              if (els[i].shadowRoot) search(els[i].shadowRoot);
+            }
+            var allEls = node.querySelectorAll('*');
+            for (var j = 0; j < allEls.length; j++) {
+              if (allEls[j].shadowRoot) search(allEls[j].shadowRoot);
+            }
+          }
+          search(document);
+          if (results.length === 0) return null;
+          results.sort(function(a, b) { return a.dist - b.dist; });
+          return results[0];
+        })()
+      `)
+
+      if (!clickCoords) {
+        res.json({ success: false, error: `Tooltip appeared but "${clickText}" not found inside it. Tooltip may have disappeared or uses different text.`, hoverSucceeded: true })
+        return
+      }
+
+      // Step 4: Click inside tooltip using sendInputEvent (keeps mouse in tooltip area)
+      view.webContents.sendInputEvent({ type: 'mouseMove', x: clickCoords.x, y: clickCoords.y })
+      await new Promise(resolve => setTimeout(resolve, 50))
+      view.webContents.sendInputEvent({ type: 'mouseDown', x: clickCoords.x, y: clickCoords.y, button: 'left', clickCount: 1 })
+      await new Promise(resolve => setTimeout(resolve, 50))
+      view.webContents.sendInputEvent({ type: 'mouseUp', x: clickCoords.x, y: clickCoords.y, button: 'left', clickCount: 1 })
+
+      console.log(`[CHROMADON] Hover+Click: hovered (${hoverCoords.x},${hoverCoords.y}) → clicked "${clickCoords.text}" at (${clickCoords.x},${clickCoords.y})`)
+      res.json({
+        success: true,
+        result: `Hovered, then clicked "${clickCoords.text}" (${clickCoords.tag}) inside tooltip`,
+        hoverCoords,
+        clickCoords: { x: clickCoords.x, y: clickCoords.y },
+        clickedText: clickCoords.text,
+      })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // Upload file to a file input on the page using CDP DOM.setFileInputFiles
   server.post('/tabs/upload', async (req: Request, res: Response) => {
     try {
