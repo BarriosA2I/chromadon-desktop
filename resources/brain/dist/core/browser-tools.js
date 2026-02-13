@@ -565,21 +565,75 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
         `, desktopUrl);
                 return { success: true, result: `Scrolled to element: ${selector}` };
             }
-            const scrollMap = {
-                down: `window.scrollBy(0, ${amount})`,
-                up: `window.scrollBy(0, -${amount})`,
-                right: `window.scrollBy(${amount}, 0)`,
-                left: `window.scrollBy(-${amount}, 0)`,
-            };
-            await desktopExecuteScript(tabId, scrollMap[direction] || scrollMap.down, desktopUrl);
-            return { success: true, result: `Scrolled ${direction} by ${amount}px` };
+            // Smart scroll: find scrollable container first, fall back to window, then keyboard
+            const scrollY = direction === 'up' ? -amount : amount;
+            const scrollResult = await desktopExecuteScript(tabId, `
+        (function() {
+          var scrollAmount = ${scrollY};
+          // Strategy 1: Find the actual scrollable container (SPA apps use these, not window)
+          function findScrollable() {
+            var candidates = document.querySelectorAll('[style*="overflow"],[class*="scroll"],[class*="content"],main,[role="main"],#contents,.style-scope');
+            for (var i = 0; i < candidates.length; i++) {
+              var style = window.getComputedStyle(candidates[i]);
+              if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && candidates[i].scrollHeight > candidates[i].clientHeight) {
+                return candidates[i];
+              }
+            }
+            var all = document.querySelectorAll('*');
+            for (var j = 0; j < all.length; j++) {
+              if (all[j].scrollHeight > all[j].clientHeight + 10) {
+                var s = window.getComputedStyle(all[j]);
+                if (s.overflowY !== 'hidden' && s.overflowY !== 'visible') return all[j];
+              }
+            }
+            return null;
+          }
+          var scrollable = findScrollable();
+          if (scrollable) {
+            var beforeY = scrollable.scrollTop;
+            scrollable.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+            return { success: true, strategy: 'container_scroll', element: scrollable.tagName, beforeY: Math.round(beforeY) };
+          }
+          // Strategy 2: Window scroll
+          var beforeWinY = window.scrollY;
+          window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+          if (window.scrollY !== beforeWinY || scrollAmount === 0) {
+            return { success: true, strategy: 'window_scroll', beforeY: Math.round(beforeWinY) };
+          }
+          return { success: false, strategy: 'none' };
+        })()
+      `, desktopUrl);
+            if (scrollResult && scrollResult.success) {
+                return { success: true, result: `Scrolled ${direction} by ${amount}px (${scrollResult.strategy}: ${scrollResult.element || 'window'})` };
+            }
+            // Strategy 3: Keyboard fallback via sendInputEvent (works on everything)
+            const keyEndpoint = `${desktopUrl}/tabs/key/${tabId}`;
+            const keyCode = direction === 'up' ? 'PageUp' : 'PageDown';
+            await fetch(keyEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: keyCode }),
+            }).catch(() => { });
+            return { success: true, result: `Scrolled ${direction} via keyboard (PageDown fallback)` };
         }
         case 'press_key': {
             const key = input.key;
-            await desktopExecuteScript(tabId, `
-        document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: '${escape(key)}', bubbles: true}));
-        document.activeElement.dispatchEvent(new KeyboardEvent('keyup', {key: '${escape(key)}', bubbles: true}));
-      `, desktopUrl);
+            // Use sendInputEvent via the native key endpoint for real key events
+            const keyEndpoint = `${desktopUrl}/tabs/key/${tabId}`;
+            try {
+                await fetch(keyEndpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key }),
+                });
+            }
+            catch {
+                // Fallback to JS dispatch
+                await desktopExecuteScript(tabId, `
+          document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key: '${escape(key)}', bubbles: true}));
+          document.activeElement.dispatchEvent(new KeyboardEvent('keyup', {key: '${escape(key)}', bubbles: true}));
+        `, desktopUrl);
+            }
             return { success: true, result: `Pressed key: ${key}` };
         }
         case 'take_screenshot': {

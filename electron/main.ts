@@ -1771,20 +1771,65 @@ function startControlServer() {
     }
   })
 
-  // Native scroll endpoint
+  // Native scroll endpoint — smart container detection + keyboard fallback
   server.post('/tabs/scroll/:id', async (req: Request, res: Response) => {
     try {
       const id = parseInt(req.params.id, 10)
-      const { deltaX, deltaY } = req.body
+      const { deltaX, deltaY, direction, amount } = req.body
       const view = browserViewManager.getView(id)
       if (!view) {
         res.status(404).json({ success: false, error: 'Tab not found' })
         return
       }
-      // Execute scroll via JavaScript
-      await view.webContents.executeJavaScript(`window.scrollBy(${deltaX || 0}, ${deltaY || 0})`)
-      console.log(`[CHROMADON] Scroll by (${deltaX}, ${deltaY}) on tab ${id}`)
-      res.json({ success: true, deltaX, deltaY })
+
+      const scrollY = deltaY || (direction === 'up' ? -(amount || 500) : (amount || 500))
+
+      // Try JS scroll: container first, then window
+      const result = await view.webContents.executeJavaScript(`
+        (function() {
+          var scrollAmount = ${scrollY};
+          function findScrollable() {
+            var candidates = document.querySelectorAll('[style*="overflow"],[class*="scroll"],[class*="content"],main,[role="main"],#contents,.style-scope');
+            for (var i = 0; i < candidates.length; i++) {
+              var style = window.getComputedStyle(candidates[i]);
+              if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && candidates[i].scrollHeight > candidates[i].clientHeight) {
+                return candidates[i];
+              }
+            }
+            var all = document.querySelectorAll('*');
+            for (var j = 0; j < all.length; j++) {
+              if (all[j].scrollHeight > all[j].clientHeight + 10) {
+                var s = window.getComputedStyle(all[j]);
+                if (s.overflowY !== 'hidden' && s.overflowY !== 'visible') return all[j];
+              }
+            }
+            return null;
+          }
+          var scrollable = findScrollable();
+          if (scrollable) {
+            scrollable.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+            return { success: true, strategy: 'container_scroll', element: scrollable.tagName };
+          }
+          var beforeY = window.scrollY;
+          window.scrollBy({ top: scrollAmount, behavior: 'smooth' });
+          if (window.scrollY !== beforeY || scrollAmount === 0) {
+            return { success: true, strategy: 'window_scroll' };
+          }
+          return { success: false };
+        })()
+      `).catch(() => ({ success: false }))
+
+      if (result.success) {
+        res.json({ success: true, strategy: result.strategy, element: result.element })
+        return
+      }
+
+      // Keyboard fallback
+      const key = scrollY < 0 ? 'PageUp' : 'PageDown'
+      view.webContents.sendInputEvent({ type: 'keyDown', keyCode: key } as any)
+      await new Promise(r => setTimeout(r, 50))
+      view.webContents.sendInputEvent({ type: 'keyUp', keyCode: key } as any)
+      res.json({ success: true, strategy: 'keyboard_fallback' })
     } catch (error) {
       res.status(500).json({ success: false, error: String(error) })
     }
