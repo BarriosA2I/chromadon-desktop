@@ -24,7 +24,7 @@ const browser_tools_1 = require("./browser-tools");
 const orchestrator_system_prompt_1 = require("./orchestrator-system-prompt");
 const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
-    maxTokens: 2048,
+    maxTokens: 1024,
     maxLoops: 50,
     maxSessionMessages: 15,
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
@@ -99,11 +99,17 @@ class AgenticOrchestrator {
                 this.pruneOldScreenshots(session.messages, 1);
                 // 5c. Sanitize history — ensure all tool_use/tool_result pairs are intact
                 const sanitizedMessages = this.sanitizeHistory(session.messages);
+                // Guard: prevent 400 "at least one message is required"
+                if (sanitizedMessages.length === 0) {
+                    console.warn('[CHROMADON Orchestrator] sanitizeHistory produced empty messages — injecting recovery');
+                    sanitizedMessages.push({ role: 'user', content: 'Continue with the current task. Resume where you left off.' });
+                }
                 // 6. Call Claude API with streaming (browser tools + any additional tools)
                 const allTools = [...browser_tools_1.BROWSER_TOOLS, ...this.additionalTools];
                 const stream = this.client.messages.stream({
                     model: this.config.model,
                     max_tokens: this.config.maxTokens,
+                    temperature: 0,
                     system: systemPrompt,
                     tools: allTools,
                     messages: sanitizedMessages,
@@ -358,6 +364,12 @@ class AgenticOrchestrator {
                     // Don't break — let the loop retry with clean history
                     continue;
                 }
+                // Recovery: 400 "at least one message" — messages were empty/malformed
+                if (error?.status === 400 && errorMsg.includes('at least one message')) {
+                    console.warn('[CHROMADON Orchestrator] Empty messages detected — recovering');
+                    session.messages.push({ role: 'user', content: 'Continue with the current task. Resume where you left off.' });
+                    continue;
+                }
                 // Recovery: 429 rate limit — exponential backoff and retry
                 if (error?.status === 429) {
                     const retryAfterHeader = error?.headers?.get?.('retry-after') || error?.headers?.['retry-after'];
@@ -549,6 +561,10 @@ class AgenticOrchestrator {
         // Ensure first message is from user
         while (final.length > 0 && final[0].role !== 'user') {
             final.shift();
+        }
+        // Safety: never return empty — prevents 400 "at least one message is required"
+        if (final.length === 0) {
+            return [{ role: 'user', content: 'Continue.' }];
         }
         return final;
     }
