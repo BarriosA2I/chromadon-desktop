@@ -7,9 +7,11 @@ interface Props {
   isLoading: boolean
   error?: string | null
   onRetry?: () => void
+  currentPhase?: string
+  onUpload?: () => void
 }
 
-export default function InterviewChat({ messages, isLoading, error, onRetry }: Props) {
+export default function InterviewChat({ messages, isLoading, error, onRetry, currentPhase, onUpload }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -70,6 +72,29 @@ export default function InterviewChat({ messages, isLoading, error, onRetry }: P
           </motion.div>
         ))}
       </AnimatePresence>
+
+      {/* Upload prompt during document_upload phase */}
+      {currentPhase === 'document_upload' && onUpload && !isLoading && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex justify-start"
+        >
+          <div className="max-w-[80%] px-4 py-4 bg-chroma-teal/5 border border-chroma-teal/20 rounded-2xl">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-lg">📄</span>
+              <span className="text-chroma-teal text-xs font-bold uppercase tracking-wider">Knowledge Vault</span>
+            </div>
+            <p className="text-sm text-white/70 mb-3">Upload your business documents — logos, brochures, brand guides, product sheets, competitor analysis, or any files that help CHROMADON understand your business.</p>
+            <button
+              onClick={onUpload}
+              className="px-4 py-2 bg-chroma-teal/20 border border-chroma-teal/40 rounded-lg text-chroma-teal text-xs font-medium hover:bg-chroma-teal/30 transition-colors"
+            >
+              Upload Documents
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {isLoading && (
         <motion.div

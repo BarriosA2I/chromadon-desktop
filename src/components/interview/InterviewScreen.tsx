@@ -1,8 +1,25 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import InterviewPhaseIndicator from './InterviewPhaseIndicator'
 import InterviewChat from './InterviewChat'
 import { useClientContext } from '../../hooks/useClientContext'
+
+const FILE_ICONS: Record<string, string> = {
+  pdf: '📕', docx: '📘', doc: '📘', csv: '📊', xlsx: '📊',
+  txt: '📝', md: '📝', json: '📋', xml: '📋',
+  jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️', webp: '🖼️',
+  mp3: '🎵', wav: '🎵', mp4: '🎬', webm: '🎬',
+}
+
+function getFileIcon(name: string) {
+  return FILE_ICONS[name.split('.').pop()?.toLowerCase() || ''] || '📎'
+}
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
 
 interface Props {
   onComplete: () => void
@@ -19,11 +36,15 @@ export default function InterviewScreen({ onComplete, onClose }: Props) {
     startInterview,
     sendInterviewMessage,
     skipPhase,
+    uploadDocument,
   } = useClientContext()
 
   const [clientName, setClientName] = useState('')
   const [inputMessage, setInputMessage] = useState('')
   const [started, setStarted] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleStart = useCallback(async () => {
     if (!clientName.trim()) return
@@ -36,12 +57,44 @@ export default function InterviewScreen({ onComplete, onClose }: Props) {
     await startInterview(clientName.trim())
   }, [clientName, startInterview])
 
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) setPendingFiles(prev => [...prev, ...files])
+    e.target.value = ''
+  }, [])
+
+  const removePendingFile = useCallback((index: number) => {
+    setPendingFiles(prev => prev.filter((_, i) => i !== index))
+  }, [])
+
+  const handleUploadFiles = useCallback(async () => {
+    if (!activeClient || pendingFiles.length === 0) return
+    setUploading(true)
+    let uploaded = 0
+    for (const file of pendingFiles) {
+      const result = await uploadDocument(activeClient.id, file)
+      if (result) uploaded++
+    }
+    setPendingFiles([])
+    setUploading(false)
+    if (uploaded > 0) {
+      await sendInterviewMessage(activeClient.id, `[Uploaded ${uploaded} file(s) to the knowledge vault]`)
+    }
+  }, [activeClient, pendingFiles, uploadDocument, sendInterviewMessage])
+
   const handleSend = useCallback(async () => {
-    if (!inputMessage.trim() || !activeClient || interviewLoading) return
-    const msg = inputMessage.trim()
-    setInputMessage('')
-    await sendInterviewMessage(activeClient.id, msg)
-  }, [inputMessage, activeClient, interviewLoading, sendInterviewMessage])
+    if (!activeClient || interviewLoading) return
+    // Upload pending files first
+    if (pendingFiles.length > 0) {
+      await handleUploadFiles()
+    }
+    // Then send text message
+    if (inputMessage.trim()) {
+      const msg = inputMessage.trim()
+      setInputMessage('')
+      await sendInterviewMessage(activeClient.id, msg)
+    }
+  }, [inputMessage, activeClient, interviewLoading, pendingFiles, handleUploadFiles, sendInterviewMessage])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -185,27 +238,78 @@ export default function InterviewScreen({ onComplete, onClose }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <InterviewChat messages={interviewMessages} isLoading={interviewLoading} error={error} onRetry={handleRetry} />
+            <InterviewChat
+              messages={interviewMessages}
+              isLoading={interviewLoading}
+              error={error}
+              onRetry={handleRetry}
+              currentPhase={interviewProgress?.currentPhase}
+              onUpload={() => fileInputRef.current?.click()}
+            />
+
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".pdf,.docx,.doc,.csv,.txt,.md,.png,.jpg,.jpeg,.webp,.json,.xml,.yaml"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
 
             {/* Input bar */}
             <div className="px-6 py-4 border-t border-white/10 bg-chroma-panel/30">
+              {/* File preview strip */}
+              {pendingFiles.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {pendingFiles.map((file, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-chroma-teal/20 rounded-lg text-xs">
+                      <span>{getFileIcon(file.name)}</span>
+                      <span className="text-white/70 max-w-[120px] truncate">{file.name}</span>
+                      <span className="text-white/30">{formatSize(file.size)}</span>
+                      <button
+                        onClick={() => removePendingFile(i)}
+                        className="text-white/20 hover:text-red-400 transition-colors ml-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex gap-3">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || interviewLoading}
+                  className="px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white/40 hover:text-chroma-teal hover:border-chroma-teal/30 transition-colors disabled:opacity-30"
+                  title="Attach documents"
+                >
+                  {uploading ? (
+                    <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="12" r="10" strokeDasharray="31.4 31.4" strokeDashoffset="10" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                    </svg>
+                  )}
+                </button>
                 <input
                   type="text"
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Type your response..."
-                  disabled={interviewLoading}
+                  disabled={interviewLoading || uploading}
                   className="flex-1 px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder-white/30 focus:outline-none focus:border-chroma-teal/50 disabled:opacity-50"
                   autoFocus
                 />
                 <button
                   onClick={handleSend}
-                  disabled={!inputMessage.trim() || interviewLoading}
+                  disabled={(!inputMessage.trim() && pendingFiles.length === 0) || interviewLoading || uploading}
                   className="px-5 py-2.5 bg-chroma-teal/20 border border-chroma-teal/40 rounded-xl text-chroma-teal text-sm font-medium disabled:opacity-30 hover:bg-chroma-teal/30 transition-colors"
                 >
-                  Send
+                  {uploading ? 'Uploading...' : 'Send'}
                 </button>
               </div>
             </div>
