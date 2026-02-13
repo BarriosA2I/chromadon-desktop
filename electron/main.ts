@@ -2207,7 +2207,7 @@ function startControlServer() {
 
       // Capture the page as a NativeImage
       const image = await view.webContents.capturePage()
-      const buffer = image.toJPEG(70) // JPEG at 70% quality
+      const buffer = image.toJPEG(85) // JPEG at 85% quality — sharper for AI vision
       const base64 = buffer.toString('base64')
 
       // Save via StorageManager

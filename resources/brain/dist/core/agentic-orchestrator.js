@@ -1,0 +1,629 @@
+"use strict";
+// @ts-nocheck
+/**
+ * CHROMADON Agentic Orchestrator
+ * ==============================
+ * Claude Code-like agentic loop for browser automation.
+ * Uses Claude's native tool_use API with streaming SSE.
+ *
+ * Flow:
+ *   User message -> Claude API (streaming) -> text + tool_use blocks
+ *   -> Execute tools -> Send tool_result -> Claude continues
+ *   -> Repeat until stop_reason === "end_turn"
+ *
+ * @author Barrios A2I
+ */
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AgenticOrchestrator = void 0;
+const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
+const uuid_1 = require("uuid");
+const browser_tools_1 = require("./browser-tools");
+const orchestrator_system_prompt_1 = require("./orchestrator-system-prompt");
+const DEFAULT_CONFIG = {
+    model: 'claude-haiku-4-5-20251001',
+    maxTokens: 4096,
+    maxLoops: 50,
+    maxSessionMessages: 100,
+    sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
+};
+class AgenticOrchestrator {
+    client;
+    sessions = new Map();
+    toolExecutor;
+    config;
+    pruneInterval = null;
+    additionalTools;
+    additionalExecutor;
+    additionalToolNames;
+    getSkillsForPrompt;
+    constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt) {
+        this.client = new sdk_1.default({ apiKey });
+        this.toolExecutor = toolExecutor;
+        this.config = { ...DEFAULT_CONFIG, ...config };
+        this.additionalTools = additionalTools || [];
+        this.additionalExecutor = additionalExecutor || null;
+        this.additionalToolNames = new Set(this.additionalTools.map(t => t.name));
+        this.getSkillsForPrompt = getSkillsForPrompt || null;
+        // Prune expired sessions every 5 minutes
+        this.pruneInterval = setInterval(() => this.pruneExpiredSessions(), 5 * 60 * 1000);
+    }
+    /**
+     * Main entry point - runs the full agentic loop with SSE streaming.
+     */
+    async chat(sessionId, userMessage, writer, context, pageContext) {
+        // 1. Session management
+        let session;
+        if (sessionId && this.sessions.has(sessionId)) {
+            session = this.sessions.get(sessionId);
+            session.lastActivityAt = Date.now();
+        }
+        else {
+            session = {
+                id: (0, uuid_1.v4)(),
+                messages: [],
+                createdAt: Date.now(),
+                lastActivityAt: Date.now(),
+            };
+            this.sessions.set(session.id, session);
+        }
+        writer.writeEvent('session_id', { sessionId: session.id });
+        // 2. Add user message to session
+        session.messages.push({ role: 'user', content: userMessage });
+        // 3. Build system prompt with current page context + skill memory
+        const skillsJson = this.getSkillsForPrompt ? this.getSkillsForPrompt() : '';
+        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson);
+        // 4. Agentic loop
+        let loopCount = 0;
+        while (loopCount < this.config.maxLoops) {
+            if (writer.isClosed())
+                break;
+            // Check abort signal before each loop iteration
+            if (context.abortSignal?.aborted) {
+                if (!writer.isClosed()) {
+                    writer.writeEvent('text_delta', { text: '\n\nExecution stopped by user.' });
+                    writer.writeEvent('done', {});
+                }
+                break;
+            }
+            loopCount++;
+            try {
+                // 5. Prune history before API call to limit context cost
+                if (session.messages.length > this.config.maxSessionMessages) {
+                    session.messages = this.truncateHistory(session.messages, this.config.maxSessionMessages);
+                }
+                // 5b. Prune old screenshots — keep only last 3 to save context tokens
+                this.pruneOldScreenshots(session.messages, 3);
+                // 5c. Sanitize history — ensure all tool_use/tool_result pairs are intact
+                const sanitizedMessages = this.sanitizeHistory(session.messages);
+                // 6. Call Claude API with streaming (browser tools + any additional tools)
+                const allTools = [...browser_tools_1.BROWSER_TOOLS, ...this.additionalTools];
+                const stream = this.client.messages.stream({
+                    model: this.config.model,
+                    max_tokens: this.config.maxTokens,
+                    system: systemPrompt,
+                    tools: allTools,
+                    messages: sanitizedMessages,
+                });
+                // Wire abort signal to cancel the stream
+                let abortHandler = null;
+                if (context.abortSignal) {
+                    abortHandler = () => { stream.abort(); };
+                    context.abortSignal.addEventListener('abort', abortHandler, { once: true });
+                }
+                // 6. Process stream events and accumulate content blocks
+                const contentBlocks = [];
+                let currentBlockIndex = -1;
+                let currentToolInput = '';
+                let currentToolId = '';
+                let currentToolName = '';
+                let stopReason = '';
+                const messageStream = stream.on('text', (text) => {
+                    // Stream text deltas to client
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('text_delta', { text });
+                    }
+                });
+                // Process raw stream events for tool use handling
+                stream.on('contentBlock', (block) => {
+                    contentBlocks.push(block);
+                });
+                stream.on('error', (error) => {
+                    // Ignore abort errors — they're expected when user stops
+                    if (context.abortSignal?.aborted)
+                        return;
+                    console.error(`[CHROMADON Orchestrator] Stream error event:`, error.message || error);
+                });
+                // Wait for the full message
+                let finalMessage;
+                try {
+                    finalMessage = await stream.finalMessage();
+                }
+                catch (streamErr) {
+                    // If aborted, break cleanly
+                    if (context.abortSignal?.aborted) {
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: '\n\nExecution stopped by user.' });
+                            writer.writeEvent('done', {});
+                        }
+                        break;
+                    }
+                    throw streamErr;
+                }
+                finally {
+                    // Clean up abort listener
+                    if (abortHandler && context.abortSignal) {
+                        context.abortSignal.removeEventListener('abort', abortHandler);
+                    }
+                }
+                stopReason = finalMessage.stop_reason || '';
+                // 7. Push assistant message to session history
+                session.messages.push({ role: 'assistant', content: finalMessage.content });
+                // 8. Check if we need to execute tools
+                if (stopReason === 'tool_use') {
+                    const toolUseBlocks = finalMessage.content.filter((b) => b.type === 'tool_use');
+                    const toolResults = [];
+                    for (const toolBlock of toolUseBlocks) {
+                        // Check abort signal before each tool
+                        if (context.abortSignal?.aborted) {
+                            if (!writer.isClosed()) {
+                                writer.writeEvent('text_delta', { text: '\n\nExecution stopped by user.' });
+                                writer.writeEvent('done', {});
+                            }
+                            break;
+                        }
+                        const toolName = toolBlock.name;
+                        const toolInput = toolBlock.input;
+                        const toolId = toolBlock.id;
+                        // Notify client of tool execution
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('tool_start', { id: toolId, name: toolName });
+                            writer.writeEvent('tool_executing', {
+                                id: toolId,
+                                name: toolName,
+                                input: toolInput,
+                            });
+                        }
+                        // Execute the tool - route to additional executor if applicable
+                        const startMs = Date.now();
+                        let result;
+                        if (this.additionalExecutor && this.additionalToolNames.has(toolName)) {
+                            // Additional tools (analytics, YouTube, etc.) - may be sync or async
+                            const text = await this.additionalExecutor(toolName, toolInput);
+                            result = { success: true, result: text };
+                        }
+                        else {
+                            result = await this.toolExecutor(toolName, toolInput, context);
+                        }
+                        const durationMs = Date.now() - startMs;
+                        // Update context if tab was switched or created
+                        if (toolName === 'switch_tab' && result.success && context.useDesktop) {
+                            context.desktopTabId = toolInput.tabId;
+                        }
+                        else if (toolName === 'create_tab' && result.success && context.useDesktop) {
+                            // Extract new tab ID from result if available
+                            const match = result.result.match(/\[(\d+)\]/);
+                            if (match) {
+                                context.desktopTabId = parseInt(match[1], 10);
+                            }
+                        }
+                        // Tiered verification — screenshot only when it matters (cost optimization)
+                        const LOW_STAKES = ['scroll', 'wait', 'hover', 'list_tabs', 'switch_tab', 'press_key'];
+                        const MEDIUM_STAKES = ['type_text', 'select_option', 'extract_text'];
+                        const HIGH_STAKES = ['click', 'navigate', 'create_tab', 'upload_file'];
+                        let verificationBase64 = null;
+                        let verificationText = '';
+                        const isDesktop = context.useDesktop && context.desktopTabId !== null;
+                        const isLow = LOW_STAKES.includes(toolName);
+                        const isMedium = MEDIUM_STAKES.includes(toolName);
+                        const isHigh = HIGH_STAKES.includes(toolName);
+                        // HIGH_STAKES: always screenshot on success
+                        // MEDIUM_STAKES: screenshot only on failure (so AI can see what went wrong)
+                        // LOW_STAKES: never screenshot
+                        const needsScreenshot = isDesktop && ((isHigh && result.success) || ((isHigh || isMedium) && !result.success));
+                        if (needsScreenshot) {
+                            try {
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                                const storageUrl = context.desktopUrl || 'http://127.0.0.1:3002';
+                                const screenshotResp = await fetch(`${storageUrl}/storage/screenshot`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        tabId: context.desktopTabId,
+                                        sessionId: session.id,
+                                        action: toolName,
+                                        platform: this.detectPlatformFromResult(result.result),
+                                    }),
+                                });
+                                const screenshotData = await screenshotResp.json();
+                                if (screenshotData.success && screenshotData.base64) {
+                                    verificationBase64 = screenshotData.base64;
+                                }
+                            }
+                            catch {
+                                // Non-fatal — fall back to text-only verification
+                            }
+                            // Page context only for high-stakes actions (not medium failures)
+                            if (isHigh) {
+                                try {
+                                    const pageCtx = await this.toolExecutor('get_page_context', {}, context);
+                                    if (pageCtx.success) {
+                                        verificationText = pageCtx.result;
+                                    }
+                                }
+                                catch { /* non-fatal */ }
+                            }
+                        }
+                        // Notify client of tool result
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('tool_result', {
+                                id: toolId,
+                                name: toolName,
+                                success: result.success,
+                                result: result.result.slice(0, 500),
+                                error: result.error,
+                                durationMs,
+                                hasScreenshot: !!verificationBase64,
+                            });
+                        }
+                        // Build tool_result for Claude
+                        // CRITICAL: Anthropic API requires ALL content to be type "text" when is_error is true.
+                        // Sending image blocks with is_error:true causes a 400 crash.
+                        if (!result.success) {
+                            toolResults.push({
+                                type: 'tool_result',
+                                tool_use_id: toolId,
+                                content: `Error: ${result.error || 'Unknown error'}`,
+                                is_error: true,
+                            });
+                        }
+                        else if (verificationBase64) {
+                            // Success + screenshot (HIGH_STAKES) — AI sees the result
+                            toolResults.push({
+                                type: 'tool_result',
+                                tool_use_id: toolId,
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: `${result.result}\n\n[SCREENSHOT — verify action succeeded before proceeding]${verificationText ? `\n\nPage context:\n${verificationText}` : ''}`,
+                                    },
+                                    {
+                                        type: 'image',
+                                        source: { type: 'base64', media_type: 'image/jpeg', data: verificationBase64 },
+                                    },
+                                ],
+                            });
+                        }
+                        else if (isLow) {
+                            // LOW_STAKES — no screenshot, minimal result
+                            toolResults.push({
+                                type: 'tool_result',
+                                tool_use_id: toolId,
+                                content: `${result.result} [Verified via DOM — visual check skipped]`,
+                            });
+                        }
+                        else {
+                            // MEDIUM_STAKES success — text only
+                            toolResults.push({
+                                type: 'tool_result',
+                                tool_use_id: toolId,
+                                content: result.result,
+                            });
+                        }
+                    }
+                    // If aborted during tool execution, break out
+                    if (context.abortSignal?.aborted)
+                        break;
+                    // Push tool results as user message
+                    session.messages.push({ role: 'user', content: toolResults });
+                    // Continue the loop - Claude will process tool results
+                    continue;
+                }
+                // 9. stop_reason is "end_turn" or "max_tokens" - we're done
+                break;
+            }
+            catch (error) {
+                const errorMsg = error.message || 'Unknown error';
+                console.error(`[CHROMADON Orchestrator] Error in loop ${loopCount}:`, errorMsg);
+                // Recovery: if 400 with tool_use_id mismatch, purge tool messages and retry once
+                if (error?.status === 400 && errorMsg.includes('tool_use_id')) {
+                    console.warn('[CHROMADON Orchestrator] Tool history corruption detected — purging tool blocks and retrying');
+                    // Strip tool_use and tool_result blocks, keep text AND image blocks
+                    session.messages = session.messages.map(msg => {
+                        if (Array.isArray(msg.content)) {
+                            const keepBlocks = msg.content.filter((b) => b.type === 'text' || b.type === 'image');
+                            if (keepBlocks.length === 0) {
+                                // Convert to a placeholder so role alternation is preserved
+                                return { role: msg.role, content: msg.role === 'user' ? '(continued)' : '(tool actions completed)' };
+                            }
+                            return { ...msg, content: keepBlocks.length === 1 && keepBlocks[0].type === 'text' ? keepBlocks[0].text : keepBlocks };
+                        }
+                        return msg;
+                    });
+                    session.messages = this.sanitizeHistory(session.messages);
+                    // Don't break — let the loop retry with clean history
+                    continue;
+                }
+                // Recovery: 429 rate limit — exponential backoff and retry
+                if (error?.status === 429) {
+                    const retryAfterHeader = error?.headers?.get?.('retry-after') || error?.headers?.['retry-after'];
+                    const retryAfterMs = retryAfterHeader
+                        ? parseInt(String(retryAfterHeader), 10) * 1000
+                        : Math.min(1000 * Math.pow(2, loopCount), 30000);
+                    console.warn(`[CHROMADON Orchestrator] Rate limited (429) — waiting ${retryAfterMs}ms before retry`);
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('text_delta', { text: `\n\nRate limited. Retrying in ${Math.ceil(retryAfterMs / 1000)}s...\n` });
+                    }
+                    await new Promise(resolve => setTimeout(resolve, retryAfterMs));
+                    continue;
+                }
+                // Recovery: 529 overloaded — longer backoff and retry
+                if (error?.status === 529) {
+                    const waitMs = Math.min(5000 * Math.pow(2, loopCount), 60000);
+                    console.warn(`[CHROMADON Orchestrator] API overloaded (529) — waiting ${waitMs}ms before retry`);
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('text_delta', { text: `\n\nAPI busy. Retrying in ${Math.ceil(waitMs / 1000)}s...\n` });
+                    }
+                    await new Promise(resolve => setTimeout(resolve, waitMs));
+                    continue;
+                }
+                // User-friendly error messages (raw error preserved in console.error above)
+                let userMsg;
+                if (error?.status === 401) {
+                    userMsg = 'Authentication failed. Please check your API key in settings.';
+                }
+                else if (error?.status === 413 || errorMsg.includes('request_too_large') || errorMsg.includes('Request too large')) {
+                    userMsg = 'The conversation got too long. Starting a fresh chat session may help.';
+                }
+                else if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT')) {
+                    userMsg = 'The AI service timed out. Please try again.';
+                }
+                else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network') || errorMsg.includes('fetch failed')) {
+                    userMsg = 'Cannot reach the AI service. Please check your internet connection.';
+                }
+                else {
+                    userMsg = `Something went wrong: ${errorMsg}`;
+                }
+                if (!writer.isClosed()) {
+                    writer.writeEvent('error', { message: userMsg });
+                }
+                break;
+            }
+        }
+        if (loopCount >= this.config.maxLoops && !writer.isClosed()) {
+            writer.writeEvent('error', {
+                message: `Reached maximum tool-use loops (${this.config.maxLoops}). Stopping.`,
+            });
+        }
+        // 10. Done
+        if (!writer.isClosed()) {
+            writer.writeEvent('done', {});
+        }
+        // 11. Prune session messages if needed
+        this.pruneSessionMessages(session);
+    }
+    // =========================================================================
+    // SESSION MANAGEMENT
+    // =========================================================================
+    getSession(sessionId) {
+        return this.sessions.get(sessionId);
+    }
+    clearSession(sessionId) {
+        return this.sessions.delete(sessionId);
+    }
+    getSessionCount() {
+        return this.sessions.size;
+    }
+    /**
+     * Sanitize conversation history to prevent tool_use/tool_result mismatches.
+     * Every tool_result must reference a tool_use in the immediately preceding
+     * assistant message, and vice versa. Orphaned blocks are stripped.
+     */
+    sanitizeHistory(messages) {
+        if (!messages || messages.length === 0)
+            return [];
+        const sanitized = [];
+        for (let i = 0; i < messages.length; i++) {
+            const msg = messages[i];
+            // --- ASSISTANT messages with tool_use blocks ---
+            if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+                const toolUseBlocks = msg.content.filter((b) => b.type === 'tool_use');
+                const otherBlocks = msg.content.filter((b) => b.type !== 'tool_use');
+                if (toolUseBlocks.length > 0) {
+                    const nextMsg = messages[i + 1];
+                    if (nextMsg && nextMsg.role === 'user' && Array.isArray(nextMsg.content)) {
+                        // Get tool_result IDs from the next user message
+                        const toolResultIds = new Set(nextMsg.content
+                            .filter((b) => b.type === 'tool_result')
+                            .map((b) => b.tool_use_id));
+                        // Only keep tool_use blocks that have matching tool_results
+                        const matched = toolUseBlocks.filter((b) => toolResultIds.has(b.id));
+                        if (matched.length > 0 || otherBlocks.length > 0) {
+                            sanitized.push({ role: 'assistant', content: [...otherBlocks, ...matched] });
+                        }
+                    }
+                    else {
+                        // No matching user message — drop tool_use blocks, keep text
+                        if (otherBlocks.length > 0) {
+                            sanitized.push({ role: 'assistant', content: otherBlocks });
+                        }
+                    }
+                    continue;
+                }
+            }
+            // --- USER messages with tool_result blocks ---
+            if (msg.role === 'user' && Array.isArray(msg.content)) {
+                const toolResultBlocks = msg.content.filter((b) => b.type === 'tool_result');
+                const otherBlocks = msg.content.filter((b) => b.type !== 'tool_result');
+                if (toolResultBlocks.length > 0) {
+                    const prevMsg = sanitized[sanitized.length - 1];
+                    if (prevMsg && prevMsg.role === 'assistant' && Array.isArray(prevMsg.content)) {
+                        const toolUseIds = new Set(prevMsg.content
+                            .filter((b) => b.type === 'tool_use')
+                            .map((b) => b.id));
+                        // Only keep tool_results that have matching tool_use blocks
+                        const matched = toolResultBlocks.filter((b) => toolUseIds.has(b.tool_use_id));
+                        if (matched.length > 0 || otherBlocks.length > 0) {
+                            sanitized.push({ role: 'user', content: [...matched, ...otherBlocks] });
+                        }
+                    }
+                    else {
+                        // No matching assistant message — drop tool_results, keep text
+                        if (otherBlocks.length > 0) {
+                            sanitized.push({ role: 'user', content: otherBlocks });
+                        }
+                    }
+                    continue;
+                }
+            }
+            // Regular messages — pass through
+            sanitized.push(msg);
+        }
+        // Ensure messages alternate roles (merge consecutive same-role messages)
+        const final = [];
+        for (const msg of sanitized) {
+            const prev = final[final.length - 1];
+            if (prev && prev.role === msg.role) {
+                // Never merge messages that contain tool_use or tool_result blocks —
+                // merging would destroy the block structure the API requires
+                const hasToolBlocks = (m) => {
+                    if (typeof m.content === 'string')
+                        return false;
+                    return m.content.some((b) => b.type === 'tool_use' || b.type === 'tool_result');
+                };
+                if (hasToolBlocks(prev) || hasToolBlocks(msg)) {
+                    // Can't merge — drop the duplicate-role message to maintain alternation
+                    // Keep the one with tool blocks (more important), or keep prev if neither has them
+                    if (!hasToolBlocks(prev) && hasToolBlocks(msg)) {
+                        final[final.length - 1] = msg;
+                    }
+                    // else: keep prev, skip msg
+                    continue;
+                }
+                // Safe to merge: both are text-only
+                const prevText = typeof prev.content === 'string'
+                    ? prev.content
+                    : prev.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+                const msgText = typeof msg.content === 'string'
+                    ? msg.content
+                    : msg.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+                final[final.length - 1] = {
+                    role: msg.role,
+                    content: [prevText, msgText].filter(Boolean).join('\n'),
+                };
+                continue;
+            }
+            final.push(msg);
+        }
+        // Ensure first message is from user
+        while (final.length > 0 && final[0].role !== 'user') {
+            final.shift();
+        }
+        return final;
+    }
+    /**
+     * Truncate history while preserving tool_use/tool_result pairs.
+     * Removes oldest messages first but never breaks a pair.
+     */
+    truncateHistory(messages, maxMessages) {
+        if (messages.length <= maxMessages)
+            return messages;
+        // Walk from the front, find a safe cut point that doesn't split a tool pair
+        let cutIndex = messages.length - maxMessages;
+        // If the cut lands on a user(tool_result), move forward to skip it
+        // (its paired assistant(tool_use) was already cut)
+        while (cutIndex < messages.length) {
+            const msg = messages[cutIndex];
+            if (msg.role === 'user' && Array.isArray(msg.content) &&
+                msg.content.some((b) => b.type === 'tool_result')) {
+                cutIndex++;
+                continue;
+            }
+            // If we land on an assistant(tool_use), also skip it — its tool_results
+            // in the next message would become orphaned
+            if (msg.role === 'assistant' && Array.isArray(msg.content) &&
+                msg.content.some((b) => b.type === 'tool_use')) {
+                cutIndex += 2; // Skip both the tool_use and its paired tool_result
+                // Bounds check: if we overshot, keep at least the last message
+                if (cutIndex >= messages.length) {
+                    cutIndex = messages.length - 1;
+                    break;
+                }
+                continue;
+            }
+            break;
+        }
+        // Final bounds safety — always return at least the last message
+        if (cutIndex >= messages.length) {
+            cutIndex = messages.length - 1;
+        }
+        return messages.slice(cutIndex);
+    }
+    pruneSessionMessages(session) {
+        if (session.messages.length > this.config.maxSessionMessages) {
+            session.messages = this.truncateHistory(session.messages, this.config.maxSessionMessages);
+        }
+    }
+    /**
+     * Replace old screenshot image blocks with text placeholders to save context tokens.
+     * Walks messages in reverse, keeps the last `keep` image blocks intact,
+     * replaces older ones with "[screenshot pruned]".
+     */
+    pruneOldScreenshots(messages, keep) {
+        let imageCount = 0;
+        // Walk in reverse to find and count image blocks
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (!Array.isArray(msg.content))
+                continue;
+            const blocks = msg.content;
+            for (let j = blocks.length - 1; j >= 0; j--) {
+                if (blocks[j].type === 'image') {
+                    imageCount++;
+                    if (imageCount > keep) {
+                        // Replace with text placeholder
+                        blocks[j] = { type: 'text', text: '[screenshot pruned — older image removed to save context]' };
+                    }
+                }
+            }
+        }
+    }
+    detectPlatformFromResult(result) {
+        const lower = result.toLowerCase();
+        if (lower.includes('twitter.com') || lower.includes('x.com'))
+            return 'twitter';
+        if (lower.includes('linkedin.com'))
+            return 'linkedin';
+        if (lower.includes('facebook.com') || lower.includes('fb.com'))
+            return 'facebook';
+        if (lower.includes('instagram.com'))
+            return 'instagram';
+        if (lower.includes('youtube.com'))
+            return 'youtube';
+        if (lower.includes('tiktok.com'))
+            return 'tiktok';
+        if (lower.includes('google.com'))
+            return 'google';
+        return undefined;
+    }
+    pruneExpiredSessions() {
+        const now = Date.now();
+        for (const [id, session] of this.sessions) {
+            if (now - session.lastActivityAt > this.config.sessionTimeoutMs) {
+                this.sessions.delete(id);
+                console.log(`[CHROMADON Orchestrator] Pruned expired session: ${id}`);
+            }
+        }
+    }
+    destroy() {
+        if (this.pruneInterval) {
+            clearInterval(this.pruneInterval);
+            this.pruneInterval = null;
+        }
+        this.sessions.clear();
+    }
+}
+exports.AgenticOrchestrator = AgenticOrchestrator;
+//# sourceMappingURL=agentic-orchestrator.js.map

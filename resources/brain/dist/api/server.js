@@ -57,6 +57,8 @@ const data_collector_1 = require("../analytics/data-collector");
 const youtube_token_manager_1 = require("../youtube/youtube-token-manager");
 const youtube_tools_1 = require("../youtube/youtube-tools");
 const youtube_executor_1 = require("../youtube/youtube-executor");
+// Skill Memory imports
+const skills_1 = require("../skills");
 // 27-Agent System imports (runtime load to avoid type conflicts)
 // @ts-ignore - Agent types handled at runtime
 const agentModule = require('../../dist/agents/index.js');
@@ -3275,32 +3277,41 @@ async function startServer() {
             catch (ytError) {
                 console.log(`[CHROMADON] ⚠️ YouTube init failed: ${ytError.message}`);
             }
-            // Initialize Agentic Orchestrator with merged tools (browser + analytics + YouTube)
+            // Initialize Skill Memory
+            const skillDataDir = process.env.CHROMADON_DATA_DIR || process.env.USERPROFILE || process.env.HOME || '.';
+            const skillDefaultsPath = path.join(process.cwd(), 'skills.json');
+            const skillMemory = new skills_1.SkillMemory(skillDataDir, skillDefaultsPath);
+            const skillExec = (0, skills_1.createSkillExecutor)(skillMemory);
+            const skillToolNames = new Set(skills_1.SKILL_TOOLS.map(t => t.name));
+            console.log('[CHROMADON] ✅ Skill Memory initialized');
+            // Initialize Agentic Orchestrator with merged tools (browser + analytics + YouTube + skills)
             const toolExecutor = (0, browser_tools_1.createToolExecutor)();
-            // Merge additional tools: analytics + YouTube
+            // Merge additional tools: analytics + YouTube + skills
             const additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
+                ...skills_1.SKILL_TOOLS,
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
             const youtubeExec = youtubeTokenManager ? (0, youtube_executor_1.createYouTubeExecutor)(youtubeTokenManager) : null;
             const youtubeToolNames = new Set(youtube_tools_1.YOUTUBE_TOOLS.map(t => t.name));
-            const combinedExecutor = additionalTools.length > 0
-                ? async (toolName, input) => {
-                    if (youtubeExec && youtubeToolNames.has(toolName))
-                        return youtubeExec(toolName, input);
-                    if (analyticsExec)
-                        return analyticsExec(toolName, input);
-                    return `Unknown additional tool: ${toolName}`;
-                }
-                : undefined;
-            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY, toolExecutor, undefined, additionalTools.length > 0 ? additionalTools : undefined, combinedExecutor);
+            const combinedExecutor = async (toolName, input) => {
+                if (skillToolNames.has(toolName))
+                    return skillExec(toolName, input);
+                if (youtubeExec && youtubeToolNames.has(toolName))
+                    return youtubeExec(toolName, input);
+                if (analyticsExec)
+                    return analyticsExec(toolName, input);
+                return `Unknown additional tool: ${toolName}`;
+            };
+            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY, toolExecutor, undefined, additionalTools, combinedExecutor, () => skillMemory.getSkillsJson());
             console.log('[CHROMADON] ✅ Agentic Orchestrator initialized (Claude tool-use mode)');
             if (analyticsDb)
                 console.log('[CHROMADON]    - 8 Analytics tools registered');
             if (youtubeTokenManager)
                 console.log(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube tools registered`);
+            console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
             // Initialize Social Overlord (queue execution engine)
             socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext);
             console.log('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');

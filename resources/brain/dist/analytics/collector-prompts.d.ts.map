@@ -1,0 +1,1 @@
+{"version":3,"file":"collector-prompts.d.ts","sourceRoot":"","sources":["../../src/analytics/collector-prompts.ts"],"names":[],"mappings":"AAAA;;;;;;;GAOG;AAEH,MAAM,MAAM,mBAAmB,GAAG,SAAS,GAAG,UAAU,GAAG,WAAW,GAAG,UAAU,GAAG,SAAS,CAAC;AAgKhG,wBAAgB,mBAAmB,CAAC,QAAQ,EAAE,mBAAmB,GAAG,MAAM,CAczE;AAED,wBAAgB,qBAAqB,IAAI,mBAAmB,EAAE,CAE7D"}
