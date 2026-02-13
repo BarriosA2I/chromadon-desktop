@@ -18,6 +18,7 @@ export interface ChatMessage {
     currentUrl?: string
     currentTitle?: string
   }
+  attachedMedia?: MediaAttachment[]
 }
 
 export interface StreamingPart {
@@ -44,4 +45,16 @@ export interface ActionResult {
   success: boolean
   details?: string
   durationMs?: number
+}
+
+export type MediaType = 'image' | 'video'
+
+export interface MediaAttachment {
+  id: string
+  name: string
+  path: string           // Full local filesystem path (Electron file.path)
+  type: MediaType
+  mimeType: string
+  size: number           // bytes
+  previewUrl: string     // URL.createObjectURL() for thumbnail preview
 }

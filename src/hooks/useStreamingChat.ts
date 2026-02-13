@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef } from 'react'
 import { useChromadonStore } from '../store/chromadonStore'
+import type { MediaAttachment } from '../store/chatTypes'
 
 const API_BASE = 'http://localhost:3001'
 
@@ -54,7 +55,7 @@ export function useStreamingChat() {
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingMsgIdRef = useRef<string | null>(null)
 
-  const sendMessage = useCallback(async (text: string) => {
+  const sendMessage = useCallback(async (text: string, media?: MediaAttachment[]) => {
     // Read isConnected at call time from store (not from closure)
     // to avoid stale closure issues that prevent messages from sending
     const currentIsConnected = useChromadonStore.getState().isConnected
@@ -69,8 +70,8 @@ export function useStreamingChat() {
     // to avoid stale closure issues that abort the stream
     const currentSessionId = useChromadonStore.getState().orchestratorSessionId
 
-    // Add user message immediately
-    addChatMessage({ role: 'user', type: 'text', content: text.trim() })
+    // Add user message immediately (with attached media if provided)
+    addChatMessage({ role: 'user', type: 'text', content: text.trim(), attachedMedia: media })
     setIsProcessing(true)
 
     // Create streaming assistant message placeholder
@@ -276,10 +277,16 @@ export function useStreamingChat() {
   }, [])
 
   // Listen for chat submit events from ChatPanel
+  // Supports both plain string (legacy) and { text, media } object detail
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as string
-      if (detail) sendMessage(detail)
+      const detail = (e as CustomEvent).detail
+      if (typeof detail === 'string') {
+        if (detail) sendMessage(detail)
+      } else if (detail && typeof detail === 'object') {
+        const { text, media } = detail as { text: string; media?: MediaAttachment[] }
+        if (text) sendMessage(text, media)
+      }
     }
 
     window.addEventListener('chromadon-chat-submit', handler)

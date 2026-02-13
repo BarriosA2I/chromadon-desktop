@@ -83,7 +83,38 @@ export function ChatBubble({ message }: ChatBubbleProps) {
         }`}
       >
         {isUser ? (
-          <span>{message.content}</span>
+          <div>
+            {message.attachedMedia && message.attachedMedia.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {message.attachedMedia.map((media) => (
+                  <div key={media.id} className="relative">
+                    {media.type === 'image' ? (
+                      <img
+                        src={media.previewUrl}
+                        alt={media.name}
+                        className="max-w-[120px] max-h-[80px] rounded-lg object-cover border border-chroma-teal/20 hover:border-chroma-teal/50 transition-colors"
+                      />
+                    ) : (
+                      <div className="w-[120px] h-[80px] rounded-lg border border-chroma-purple/20 bg-black/30 flex flex-col items-center justify-center">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2" className="text-chroma-purple">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                        <span className="text-[8px] text-chroma-muted font-mono mt-1 truncate max-w-[100px]">
+                          {media.name}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            <span>
+              {message.attachedMedia && message.attachedMedia.length > 0
+                ? message.content.replace(/\[ATTACHED (?:IMAGE|VIDEO): .+? \u2192 .+?\]\n?/g, '').trim()
+                : message.content}
+            </span>
+          </div>
         ) : (
           <div
             className="chat-markdown"
