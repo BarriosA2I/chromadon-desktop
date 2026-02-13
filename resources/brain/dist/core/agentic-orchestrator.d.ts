@@ -14,11 +14,20 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { type ToolExecutor, type ExecutionContext, type ToolDefinition } from './browser-tools';
 import type { PageContext } from './ai-engine-v3';
+export interface VideoTracker {
+    allVideoIds: string[];
+    processedIds: string[];
+    skippedIds: string[];
+    failedIds: string[];
+    currentVideoId: string;
+    claimsErased: number;
+}
 export interface OrchestratorSession {
     id: string;
     messages: Anthropic.MessageParam[];
     createdAt: number;
     lastActivityAt: number;
+    videoTracker: VideoTracker;
 }
 export interface SSEWriter {
     writeEvent(event: string, data: any): void;
