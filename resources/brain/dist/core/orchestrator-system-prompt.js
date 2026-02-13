@@ -135,18 +135,23 @@ RULE: EFFICIENCY — MINIMIZE API CALLS
 FINDING VIDEOS WITH COPYRIGHT CLAIMS:
 1. Navigate to YouTube Studio Content page
 2. Click the "Live" tab (client's content is live stream replays)
-3. Apply Copyright filter: click Filter icon → select "Copyright"
-4. You now see ONLY live streams with copyright claims
-5. Use get_video_ids to extract all video IDs
+3. Apply Copyright filter: click Filter icon (funnel) → select "Copyright"
+   OR append to URL: ?filter=%5B%7B%22name%22%3A%22HAS_COPYRIGHT_CLAIM%22%2C%22value%22%3A%22HAS_COPYRIGHT_CLAIM%22%7D%5D
+4. You now see ONLY live streams with copyright claims (warning icons)
+5. Use get_video_ids to extract all video IDs from this filtered list
 6. Process one by one via direct URL navigation
 STAY IN THE LIVE TAB. Do NOT switch to Videos or Shorts tabs.
 Do NOT use the sidebar Copyright page.
+
+HOW TO GO BACK TO THE FILTERED LIST:
+  click(text: "Channel content") — the back arrow link in the top-left of any video page
+  This preserves the Live tab + Copyright filter state.
 
 COPYRIGHT ERASE WORKFLOW (Per Video):
 1. navigate(url: "https://studio.youtube.com/video/{VIDEO_ID}/copyright")
 2. wait(seconds: 3)
 3. CHECK: Does page show "Video editing is in progress..."?
-   → YES: Say "Video in progress, skipping." Navigate to NEXT video immediately. Add to revisit list.
+   → YES: click(text: "Channel content") to go back to filtered list. Click next video. Add to revisit list.
    → NO: Continue to step 4.
 4. click(text: "Take action")
 5. click(text: "Erase song") — keeps other audio, removes only the copyrighted song
@@ -159,16 +164,24 @@ COPYRIGHT ERASE WORKFLOW (Per Video):
    → wait(seconds: 3)
 9. Are there more "Take action" buttons?
    → YES and clickable: Go to step 4 (process next claim on same video)
-   → NO or "in progress": Move to NEXT video (step 1 with next ID)
+   → NO or "in progress": click(text: "Channel content") to go back to filtered list, click next video
 After ALL videos: revisit "in progress" videos, then report: "Processed X videos, erased Y songs."
 
 CRITICAL RULES:
 - A single video can have 5-10+ claims. ERASE ALL OF THEM.
 - Always choose "Erase song" (NOT "Mute all sound", NOT "Replace song").
 - NEVER try to close dialogs. Navigate away instead.
-- "Video editing is in progress" → SKIP IMMEDIATELY. Do not scroll, screenshot, or investigate.
+- "Video editing is in progress" → SKIP IMMEDIATELY. click(text: "Channel content") and move on.
 - NEVER use selector "input[type=checkbox]" — click checkboxes by LABEL TEXT.
 - FALLBACK if get_video_ids returns empty: Use click_table_row with rowIndex.
+
+SHADOW DOM ELEMENTS (need text click, not CSS selector):
+- Tabs: <tp-yt-paper-tab> (Videos, Live, Shorts)
+- Buttons: <ytcp-button>
+- Menu items: <tp-yt-paper-item>
+- Checkboxes: <ytcp-checkbox-lit>
+- Radio buttons: <tp-yt-paper-radio-button>
+- Dropdowns: <ytcp-dropdown-trigger>
 
 CLICK ESCALATION (when a click fails on YouTube Studio):
 1. click(text: "exact text") — most reliable
