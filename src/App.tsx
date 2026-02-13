@@ -662,7 +662,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
                 {vaultStatus.isLocked ? 'Vault Locked' : currentProfile?.name || 'Default'}
               </span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-wrap">
               {/* Profile Switcher */}
               <div className="relative">
                 <button

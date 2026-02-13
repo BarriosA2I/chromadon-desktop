@@ -135,7 +135,9 @@ export function useClientContext() {
           if (!line.startsWith('data: ')) continue
           try {
             const event = JSON.parse(line.slice(6))
-            if (event.type === 'client_created') {
+            if (event.type === 'error') {
+              setError(event.error || 'Interview failed')
+            } else if (event.type === 'client_created') {
               await fetchClients()
               setActiveClient({ id: event.clientId, name: clientName, createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), interviewComplete: false, documentCount: 0, hasStrategy: false })
             } else if (event.type === 'message') {
@@ -187,7 +189,9 @@ export function useClientContext() {
           if (!line.startsWith('data: ')) continue
           try {
             const event = JSON.parse(line.slice(6))
-            if (event.type === 'message') {
+            if (event.type === 'error') {
+              setError(event.error || 'Interview chat failed')
+            } else if (event.type === 'message') {
               setInterviewMessages(prev => [...prev, { role: event.role, content: event.content, phase: interviewProgress?.currentPhase || 'greeting', timestamp: new Date().toISOString() }])
             } else if (event.type === 'phase_change') {
               setInterviewProgress(prev => prev ? { ...prev, currentPhase: event.phase, completedPhases: event.completedPhases } : null)
