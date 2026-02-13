@@ -6,14 +6,16 @@ import { useClientContext } from '../../hooks/useClientContext'
 
 interface Props {
   onComplete: () => void
+  onClose: () => void
 }
 
-export default function InterviewScreen({ onComplete }: Props) {
+export default function InterviewScreen({ onComplete, onClose }: Props) {
   const {
     activeClient,
     interviewMessages,
     interviewProgress,
     interviewLoading,
+    error,
     startInterview,
     sendInterviewMessage,
     skipPhase,
@@ -26,6 +28,11 @@ export default function InterviewScreen({ onComplete }: Props) {
   const handleStart = useCallback(async () => {
     if (!clientName.trim()) return
     setStarted(true)
+    await startInterview(clientName.trim())
+  }, [clientName, startInterview])
+
+  const handleRetry = useCallback(async () => {
+    if (!clientName.trim()) return
     await startInterview(clientName.trim())
   }, [clientName, startInterview])
 
@@ -100,14 +107,26 @@ export default function InterviewScreen({ onComplete }: Props) {
             <p className="text-[10px] text-white/40">{activeClient ? activeClient.name : 'New Client'}</p>
           </div>
         </div>
-        {started && interviewProgress && (
+        <div className="flex items-center gap-2">
+          {started && interviewProgress && (
+            <button
+              onClick={handleSkip}
+              className="text-xs text-white/30 hover:text-white/60 border border-white/10 px-3 py-1 rounded-lg transition-colors"
+            >
+              Skip Phase →
+            </button>
+          )}
           <button
-            onClick={handleSkip}
-            className="text-xs text-white/30 hover:text-white/60 border border-white/10 px-3 py-1 rounded-lg transition-colors"
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-white/30 hover:text-white/80 hover:bg-white/10 transition-colors"
+            title="Close"
           >
-            Skip Phase →
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <line x1="2" y1="2" x2="12" y2="12" />
+              <line x1="12" y1="2" x2="2" y2="12" />
+            </svg>
           </button>
-        )}
+        </div>
       </div>
 
       {/* Phase indicator */}
@@ -166,7 +185,7 @@ export default function InterviewScreen({ onComplete }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <InterviewChat messages={interviewMessages} isLoading={interviewLoading} />
+            <InterviewChat messages={interviewMessages} isLoading={interviewLoading} error={error} onRetry={handleRetry} />
 
             {/* Input bar */}
             <div className="px-6 py-4 border-t border-white/10 bg-chroma-panel/30">

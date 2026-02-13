@@ -797,7 +797,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
       {/* Interview Screen */}
       {showInterviewScreen && (
-        <InterviewScreen onComplete={() => { setShowInterviewScreen(false); fetchActiveClient() }} />
+        <InterviewScreen onComplete={() => { setShowInterviewScreen(false); fetchActiveClient() }} onClose={() => setShowInterviewScreen(false)} />
       )}
 
       {/* Document Vault */}
