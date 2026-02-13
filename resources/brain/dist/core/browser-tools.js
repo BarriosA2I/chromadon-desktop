@@ -191,7 +191,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'get_video_ids',
-        description: 'Extract all video IDs from YouTube Studio content page for direct URL navigation.',
+        description: 'Extract video IDs with copyright flags from YouTube Studio. Only returns flagged videos when copyright filter is applied.',
         input_schema: {
             type: 'object',
             properties: {},
@@ -300,8 +300,11 @@ async function desktopGetVideoIds(tabId, desktopUrl) {
     if (!data.success)
         throw new Error(data.error || 'Failed to extract video IDs');
     if (data.count === 0)
-        return 'No video IDs found on page. Make sure you are on the YouTube Studio Content page.';
-    return `Found ${data.count} video IDs:\n${data.videoIds.map((id, i) => `${i + 1}. ${id} → https://studio.youtube.com/video/${id}/copyright`).join('\n')}`;
+        return 'No video IDs found on page. Make sure you are on the YouTube Studio Content page with the Copyright filter applied.';
+    const header = data.copyrightOnly
+        ? `Found ${data.count} videos WITH COPYRIGHT FLAGS (out of ${data.totalOnPage} total on page):`
+        : `Found ${data.count} video IDs (copyrightOnly: false — copyright filter may not be applied, go back and apply it):`;
+    return `${header}\n${data.videoIds.map((id, i) => `${i + 1}. ${id} → https://studio.youtube.com/video/${id}/copyright`).join('\n')}`;
 }
 async function desktopClickTableRow(tabId, rowIndex, desktopUrl) {
     const response = await fetch(`${desktopUrl}/tabs/click-table-row`, {

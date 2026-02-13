@@ -138,7 +138,8 @@ FINDING VIDEOS WITH COPYRIGHT CLAIMS:
 3. Apply Copyright filter: click Filter icon (funnel) → select "Copyright"
    OR append to URL: ?filter=%5B%7B%22name%22%3A%22HAS_COPYRIGHT_CLAIM%22%2C%22value%22%3A%22HAS_COPYRIGHT_CLAIM%22%7D%5D
 4. You now see ONLY live streams with copyright claims (warning icons)
-5. Use get_video_ids to extract all video IDs from this filtered list
+5. Use get_video_ids — it automatically detects copyright flags and ONLY returns flagged video IDs
+   If copyrightOnly: false in the response, the filter was not applied. Go back to step 3.
 6. Process one by one via direct URL navigation
 STAY IN THE LIVE TAB. Do NOT switch to Videos or Shorts tabs.
 Do NOT use the sidebar Copyright page.

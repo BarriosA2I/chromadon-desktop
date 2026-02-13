@@ -1463,30 +1463,73 @@ function startControlServer() {
         (function() {
           var ids = [];
           var seen = {};
-          // Extract from links with /video/ pattern
+
+          // Find the closest row container for a video link
+          function getRow(el) {
+            var node = el;
+            for (var i = 0; i < 15 && node; i++) {
+              if (node.tagName === 'YTCP-VIDEO-ROW' || node.tagName === 'TR' ||
+                  (node.getAttribute && (node.getAttribute('class') || '').match(/video-row|row-container/i))) {
+                return node;
+              }
+              node = node.parentElement || (node.getRootNode && node.getRootNode().host) || null;
+            }
+            return null;
+          }
+
+          // Check if a row has a copyright/warning indicator
+          function hasCopyrightFlag(row) {
+            if (!row) return false;
+            var html = row.innerHTML || '';
+            // Check for warning icons, copyright text, restriction indicators
+            if (html.match(/copyright|claim|warning|restriction|⚠/i)) return true;
+            // Check for warning icon SVGs or icon elements
+            var icons = row.querySelectorAll('iron-icon, yt-icon, svg, [icon], [class*="warning"], [class*="copyright"], [class*="claim"]');
+            for (var i = 0; i < icons.length; i++) {
+              var iconName = icons[i].getAttribute('icon') || icons[i].getAttribute('class') || '';
+              if (iconName.match(/warning|copyright|claim|error|alert/i)) return true;
+            }
+            // Check for tooltip text about copyright
+            var tooltips = row.querySelectorAll('[tooltip], [title], [aria-label]');
+            for (var j = 0; j < tooltips.length; j++) {
+              var tip = (tooltips[j].getAttribute('tooltip') || tooltips[j].getAttribute('title') || tooltips[j].getAttribute('aria-label') || '');
+              if (tip.match(/copyright|claim|restriction/i)) return true;
+            }
+            return false;
+          }
+
+          // Extract from links with /video/ pattern — only from rows with copyright flags
           var links = document.querySelectorAll('a[href]');
+          var allIds = [];
+          var flaggedIds = [];
           for (var i = 0; i < links.length; i++) {
             var m = links[i].href.match(/\\/video\\/([a-zA-Z0-9_-]{6,})/);
-            if (m && !seen[m[1]]) { seen[m[1]] = true; ids.push(m[1]); }
-          }
-          // Also check data attributes (light + shadow DOM)
-          function searchAttrs(root) {
-            var els = root.querySelectorAll('[data-video-id],[video-id]');
-            for (var j = 0; j < els.length; j++) {
-              var vid = els[j].getAttribute('data-video-id') || els[j].getAttribute('video-id');
-              if (vid && !seen[vid]) { seen[vid] = true; ids.push(vid); }
-            }
-            var all = root.querySelectorAll('*');
-            for (var k = 0; k < all.length; k++) {
-              if (all[k].shadowRoot) searchAttrs(all[k].shadowRoot);
+            if (m && !seen[m[1]]) {
+              seen[m[1]] = true;
+              allIds.push(m[1]);
+              var row = getRow(links[i]);
+              if (row && hasCopyrightFlag(row)) {
+                flaggedIds.push(m[1]);
+              }
             }
           }
-          searchAttrs(document);
-          return ids;
-        })()
-      `).catch(() => [])
 
-      res.json({ success: true, videoIds: result, count: result.length })
+          // If copyright filter is applied (flaggedIds found), return ONLY flagged ones.
+          // If no flags detected (filter not applied or different page structure), return all as fallback.
+          if (flaggedIds.length > 0) {
+            return { ids: flaggedIds, copyrightOnly: true, total: allIds.length };
+          }
+          return { ids: allIds, copyrightOnly: false, total: allIds.length };
+        })()
+      `).catch(() => ({ ids: [], copyrightOnly: false, total: 0 }))
+
+      res.json({
+        success: true,
+        videoIds: result.ids || result,
+        count: (result.ids || result).length,
+        copyrightOnly: result.copyrightOnly || false,
+        totalOnPage: result.total || (result.ids || result).length,
+      })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
     }
