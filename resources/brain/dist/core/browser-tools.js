@@ -210,7 +210,15 @@ async function desktopClick(tabId, selector, text, desktopUrl) {
     const data = await response.json();
     if (!data.success)
         throw new Error(data.error || 'Click failed');
-    return data.result;
+    // Include pageChanged and warning in the result so Claude knows if click actually worked
+    let result = data.result;
+    if (data.pageChanged === true) {
+        result += ' [PAGE CHANGED — click confirmed]';
+    }
+    else if (data.warning) {
+        result += ` [WARNING: ${data.warning}]`;
+    }
+    return result;
 }
 async function desktopUploadFile(tabId, selector, filePath, desktopUrl) {
     const response = await fetch(`${desktopUrl}/tabs/upload`, {

@@ -978,7 +978,7 @@ function startControlServer() {
     }
   })
 
-  // Click element with 6-strategy fallback (social media optimized)
+  // Click element with 7-strategy fallback + visibility checks + sendInputEvent nuclear fallback
   server.post('/tabs/click', async (req: Request, res: Response) => {
     try {
       const { id, selector, text } = req.body
@@ -988,7 +988,7 @@ function startControlServer() {
       }
 
       const view = browserViewManager.getView(id)
-      if (!view) {
+      if (!view || view.webContents.isDestroyed()) {
         res.status(404).json({ success: false, error: `Tab ${id} not found` })
         return
       }
@@ -996,47 +996,69 @@ function startControlServer() {
       // The target is the selector or text to match
       const target = selector || text
 
+      // Capture pre-click state for verification
+      const preUrl = view.webContents.getURL()
+      const preTitle = await view.webContents.executeJavaScript('document.title').catch(() => '')
+
       const result = await view.webContents.executeJavaScript(`
         (function() {
           var target = ${JSON.stringify(target)};
 
-          // Real click helper: fires full mouse event sequence (works with React/Twitter)
+          // Visibility check: element must have non-zero dimensions and be in viewport
+          function isVisible(el) {
+            if (!el || !el.getBoundingClientRect) return false;
+            var rect = el.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) return false;
+            var style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+            return true;
+          }
+
+          // Real click helper: fires full pointer + mouse event sequence
           function realClick(el) {
             el.scrollIntoView({block:'center'});
             var rect = el.getBoundingClientRect();
             var x = rect.left + rect.width / 2;
             var y = rect.top + rect.height / 2;
             var opts = {bubbles: true, cancelable: true, view: window, clientX: x, clientY: y};
-            el.dispatchEvent(new MouseEvent('pointerdown', opts));
+            el.dispatchEvent(new PointerEvent('pointerover', opts));
+            el.dispatchEvent(new PointerEvent('pointerenter', Object.assign({}, opts, {bubbles: false})));
+            el.dispatchEvent(new PointerEvent('pointerdown', opts));
             el.dispatchEvent(new MouseEvent('mousedown', opts));
-            el.dispatchEvent(new MouseEvent('pointerup', opts));
+            el.dispatchEvent(new PointerEvent('pointerup', opts));
             el.dispatchEvent(new MouseEvent('mouseup', opts));
             el.dispatchEvent(new MouseEvent('click', opts));
+            // Also fire .click() as backup for simple onclick handlers
+            el.click();
+            return { x: Math.round(x), y: Math.round(y) };
           }
 
           // Strategy 1: Direct CSS selector
           try {
             var el = document.querySelector(target);
-            if (el) { realClick(el); return { found: true, strategy: 'css', detail: el.tagName + ':' + (el.textContent || '').trim().slice(0, 50) }; }
+            if (el && isVisible(el)) {
+              var coords = realClick(el);
+              return { found: true, strategy: 'css', detail: el.tagName + ':' + (el.textContent || '').trim().slice(0, 50), coords: coords };
+            }
           } catch(e) { /* selector might not be valid CSS, continue */ }
 
-          // Strategy 2: role="button" with matching text
-          var roleBtns = document.querySelectorAll('[role="button"]');
-          for (var i = 0; i < roleBtns.length; i++) {
-            var btnText = (roleBtns[i].textContent || '').trim();
-            var btnInner = (roleBtns[i].innerText || '').trim();
-            if (btnText === target || btnInner === target) {
-              realClick(roleBtns[i]);
-              return { found: true, strategy: 'role_text', detail: btnText.slice(0, 50) };
+          // Strategy 2: role="button" / role="tab" / role="link" / role="menuitem" with matching text
+          var roleEls = document.querySelectorAll('[role="button"], [role="tab"], [role="link"], [role="menuitem"]');
+          for (var i = 0; i < roleEls.length; i++) {
+            var btnText = (roleEls[i].textContent || '').trim();
+            var btnInner = (roleEls[i].innerText || '').trim();
+            if ((btnText === target || btnInner === target) && isVisible(roleEls[i])) {
+              var coords = realClick(roleEls[i]);
+              return { found: true, strategy: 'role_text', detail: btnText.slice(0, 50), coords: coords };
             }
           }
 
           // Strategy 3: aria-label match (case-insensitive)
           var ariaEls = document.querySelectorAll('[aria-label]');
           for (var j = 0; j < ariaEls.length; j++) {
-            if (ariaEls[j].getAttribute('aria-label').toLowerCase() === target.toLowerCase()) {
-              realClick(ariaEls[j]);
-              return { found: true, strategy: 'aria', detail: ariaEls[j].getAttribute('aria-label') };
+            if (ariaEls[j].getAttribute('aria-label').toLowerCase() === target.toLowerCase() && isVisible(ariaEls[j])) {
+              var coords = realClick(ariaEls[j]);
+              return { found: true, strategy: 'aria', detail: ariaEls[j].getAttribute('aria-label'), coords: coords };
             }
           }
 
@@ -1048,15 +1070,18 @@ function startControlServer() {
           };
           if (testIdMap[target]) {
             el = document.querySelector(testIdMap[target]);
-            if (el) { realClick(el); return { found: true, strategy: 'testid', detail: target }; }
+            if (el && isVisible(el)) {
+              var coords = realClick(el);
+              return { found: true, strategy: 'testid', detail: target, coords: coords };
+            }
           }
 
-          // Strategy 5: Button/submit with matching text
-          var allBtns = document.querySelectorAll('button, [type="submit"]');
+          // Strategy 5: Button/submit/anchor with matching text
+          var allBtns = document.querySelectorAll('button, [type="submit"], a');
           for (var k = 0; k < allBtns.length; k++) {
-            if ((allBtns[k].textContent || '').trim() === target) {
-              realClick(allBtns[k]);
-              return { found: true, strategy: 'button_text', detail: allBtns[k].tagName + ':' + target };
+            if ((allBtns[k].textContent || '').trim() === target && isVisible(allBtns[k])) {
+              var coords = realClick(allBtns[k]);
+              return { found: true, strategy: 'button_text', detail: allBtns[k].tagName + ':' + target, coords: coords };
             }
           }
 
@@ -1065,25 +1090,36 @@ function startControlServer() {
           while (walker.nextNode()) {
             if ((walker.currentNode.textContent || '').trim() === target) {
               var clickTarget = walker.currentNode.parentElement;
-              while (clickTarget && !clickTarget.onclick &&
-                     clickTarget.getAttribute && clickTarget.getAttribute('role') !== 'button' &&
-                     clickTarget.tagName !== 'BUTTON' && clickTarget.tagName !== 'A') {
+              // Walk up to find an interactive ancestor
+              while (clickTarget && clickTarget !== document.body) {
+                if (clickTarget.onclick || clickTarget.tagName === 'BUTTON' ||
+                    clickTarget.tagName === 'A' ||
+                    (clickTarget.getAttribute && (
+                      clickTarget.getAttribute('role') === 'button' ||
+                      clickTarget.getAttribute('role') === 'tab' ||
+                      clickTarget.getAttribute('role') === 'link' ||
+                      clickTarget.getAttribute('role') === 'menuitem' ||
+                      clickTarget.getAttribute('tabindex') !== null
+                    ))) {
+                  break;
+                }
                 clickTarget = clickTarget.parentElement;
               }
-              if (clickTarget && clickTarget !== document.body) {
-                realClick(clickTarget);
-                return { found: true, strategy: 'text_walk', detail: clickTarget.tagName + ':' + target };
+              if (clickTarget && clickTarget !== document.body && isVisible(clickTarget)) {
+                var coords = realClick(clickTarget);
+                return { found: true, strategy: 'text_walk', detail: clickTarget.tagName + ':' + target, coords: coords };
               }
             }
           }
 
-          // Strategy 7: Partial text match on buttons/role=button (fallback)
+          // Strategy 7: Partial text match on interactive elements (fallback)
           var searchLower = target.toLowerCase();
-          var partialCandidates = document.querySelectorAll('button, [role="button"], a, input[type="submit"], [tabindex]');
+          var partialCandidates = document.querySelectorAll('button, [role="button"], [role="tab"], [role="link"], a, input[type="submit"], [tabindex]');
           for (var m = 0; m < partialCandidates.length; m++) {
-            if (partialCandidates[m].textContent && partialCandidates[m].textContent.trim().toLowerCase().includes(searchLower)) {
-              realClick(partialCandidates[m]);
-              return { found: true, strategy: 'partial_text', detail: partialCandidates[m].textContent.trim().slice(0, 50) };
+            var pText = (partialCandidates[m].textContent || '').trim();
+            if (pText.toLowerCase().includes(searchLower) && isVisible(partialCandidates[m])) {
+              var coords = realClick(partialCandidates[m]);
+              return { found: true, strategy: 'partial_text', detail: pText.slice(0, 50), coords: coords };
             }
           }
 
@@ -1096,8 +1132,58 @@ function startControlServer() {
         return
       }
 
-      console.log(`[CHROMADON] Click: "${target}" → ${result.strategy} (${result.detail})`)
-      res.json({ success: true, result: `clicked_${result.strategy}:${result.detail}`, strategy: result.strategy })
+      // Wait for any DOM/navigation effects from the dispatchEvent click
+      await new Promise(resolve => setTimeout(resolve, 300))
+
+      // Check if page changed after the JS dispatchEvent click
+      const postUrl1 = view.webContents.getURL()
+      const postTitle1 = await view.webContents.executeJavaScript('document.title').catch(() => '')
+      const pageChangedAfterDispatch = preUrl !== postUrl1 || preTitle !== postTitle1
+
+      // If dispatchEvent click didn't cause page change and we have coordinates,
+      // try sendInputEvent as nuclear fallback (real OS-level mouse events)
+      let usedNativeFallback = false
+      if (!pageChangedAfterDispatch && result.coords) {
+        try {
+          view.webContents.sendInputEvent({
+            type: 'mouseDown',
+            x: result.coords.x,
+            y: result.coords.y,
+            button: 'left',
+            clickCount: 1,
+          })
+          await new Promise(resolve => setTimeout(resolve, 50))
+          view.webContents.sendInputEvent({
+            type: 'mouseUp',
+            x: result.coords.x,
+            y: result.coords.y,
+            button: 'left',
+            clickCount: 1,
+          })
+          usedNativeFallback = true
+          // Wait for native click effects
+          await new Promise(resolve => setTimeout(resolve, 300))
+        } catch {
+          // Non-fatal — dispatchEvent click may have worked silently
+        }
+      }
+
+      // Final verification
+      const postUrl = view.webContents.getURL()
+      const postTitle = await view.webContents.executeJavaScript('document.title').catch(() => '')
+      const pageChanged = preUrl !== postUrl || preTitle !== postTitle
+
+      const strategy = usedNativeFallback ? `${result.strategy}+native` : result.strategy
+      const warning = !pageChanged ? 'Page did not change after click — element may not be interactive or action may be in-page (dialog, dropdown)' : undefined
+
+      console.log(`[CHROMADON] Click: "${target}" → ${strategy} (${result.detail})${pageChanged ? ' [PAGE CHANGED]' : ''}${usedNativeFallback ? ' [NATIVE FALLBACK]' : ''}`)
+      res.json({
+        success: true,
+        result: `clicked_${strategy}:${result.detail}`,
+        strategy,
+        pageChanged,
+        warning,
+      })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
     }
