@@ -3145,11 +3145,14 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
   console.log(`[CHROMADON] Opening OAuth popup for ${platform}`)
 
-  // Create popup window with platform-specific partition
-  // Use settings that make it look like a real browser
+  // Create popup window with platform-specific partition.
+  // contextIsolation MUST be false so login-preload.js patches the page's
+  // real navigator/window objects (not an isolated copy). nodeIntegration
+  // stays false for security — login windows only load trusted URLs.
+  const loginPreloadPath = path.join(__dirname, 'login-preload.js')
   const oauthWindow = new BrowserWindow({
-    width: 500,
-    height: 700,
+    width: 520,
+    height: 750,
     center: true,
     parent: mainWindow,
     modal: false,
@@ -3159,16 +3162,14 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     title: `Sign in to ${platform}`,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true,
+      contextIsolation: false,
+      sandbox: false,
+      preload: loginPreloadPath,
       partition: `persist:platform-${platform}`,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      // Make it look more like a real browser
-      sandbox: false, // Allow more native behavior
       webgl: true,
-      enableWebSQL: true,
       spellcheck: true,
-      experimentalFeatures: false,
     }
   })
 
@@ -3178,58 +3179,8 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
     oauthWindow.focus()
   })
 
-  // Anti-detection: Inject scripts after page starts loading
-  oauthWindow.webContents.on('dom-ready', () => {
-    oauthWindow.webContents.executeJavaScript(`
-      try {
-        // Remove webdriver flag
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-
-        // Add chrome object
-        if (!window.chrome) {
-          window.chrome = {
-            app: { isInstalled: false },
-            runtime: { connect: function(){}, sendMessage: function(){} },
-            csi: function() { return {}; },
-            loadTimes: function() { return {}; }
-          };
-        }
-
-        // Plugins
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => [
-            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
-            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
-            { name: 'Native Client', filename: 'internal-nacl-plugin' }
-          ]
-        });
-
-        // Languages
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-
-        // Hardware
-        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
-
-        // WebGL spoofing
-        if (typeof WebGLRenderingContext !== 'undefined') {
-          const getParam = WebGLRenderingContext.prototype.getParameter;
-          WebGLRenderingContext.prototype.getParameter = function(p) {
-            if (p === 37445) return 'Google Inc. (NVIDIA)';
-            if (p === 37446) return 'ANGLE (NVIDIA GeForce GTX 1660 Ti)';
-            return getParam.call(this, p);
-          };
-        }
-
-        // Remove Electron indicators
-        delete window.process;
-        delete window.require;
-        delete window.module;
-
-        console.log('[CHROMADON] Anti-detection injected');
-      } catch(e) { console.error('[CHROMADON] Anti-detection error:', e); }
-    `).catch(() => {});
-  });
+  // Anti-detection is now handled by login-preload.js (runs BEFORE page JS).
+  // No dom-ready executeJavaScript needed — preload patches are in the page context.
 
   // Handle "Sign in with Google" or other OAuth provider clicks within the popup
   // Allow OAuth provider popups to open as real child windows so OAuth flows work
@@ -3255,7 +3206,9 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
             webPreferences: {
               partition: `persist:platform-${platform}`,
               nodeIntegration: false,
-              contextIsolation: true,
+              contextIsolation: false,
+              sandbox: false,
+              preload: loginPreloadPath,
             },
           },
         }
@@ -3326,9 +3279,12 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
 // App lifecycle
 app.whenReady().then(() => {
-  // Spoof user-agent on ALL platform session partitions so sites
-  // don't detect Electron as an embedded/insecure browser
+  // Spoof User-Agent AND Sec-CH-UA Client Hints headers on ALL platform
+  // session partitions. Sec-CH-UA is the #1 detection vector — Chromium
+  // sends "Electron" in these headers by default, independent of setUserAgent().
   const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+  const SEC_CH_UA = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"'
+  const SEC_CH_UA_FULL = '"Google Chrome";v="131.0.6778.86", "Chromium";v="131.0.6778.86", "Not_A Brand";v="24.0.0.0"'
   const platformPartitions = ['google', 'twitter', 'linkedin', 'facebook', 'instagram', 'tiktok']
   for (const plat of platformPartitions) {
     const ses = session.fromPartition(`persist:platform-${plat}`)
@@ -3336,12 +3292,29 @@ app.whenReady().then(() => {
     ses.webRequest.onBeforeSendHeaders(
       { urls: ['*://*/*'] },
       (details, callback) => {
-        details.requestHeaders['User-Agent'] = CHROME_UA
-        callback({ requestHeaders: details.requestHeaders })
+        const headers = { ...details.requestHeaders }
+        headers['User-Agent'] = CHROME_UA
+        headers['Sec-CH-UA'] = SEC_CH_UA
+        headers['Sec-CH-UA-Full-Version-List'] = SEC_CH_UA_FULL
+        headers['Sec-CH-UA-Platform'] = '"Windows"'
+        headers['Sec-CH-UA-Platform-Version'] = '"15.0.0"'
+        headers['Sec-CH-UA-Mobile'] = '?0'
+        delete headers['Sec-CH-UA-Model']
+        callback({ requestHeaders: headers })
       }
     )
   }
-  console.log(`[CHROMADON] UA spoofed to Chrome on ${platformPartitions.length} platform sessions`)
+  // Also apply to default session
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['*://*/*'] },
+    (details, callback) => {
+      const headers = { ...details.requestHeaders }
+      headers['Sec-CH-UA'] = SEC_CH_UA
+      headers['Sec-CH-UA-Full-Version-List'] = SEC_CH_UA_FULL
+      callback({ requestHeaders: headers })
+    }
+  )
+  console.log(`[CHROMADON] UA + Sec-CH-UA spoofed on ${platformPartitions.length} platform sessions`)
 
   createWindow()
   startControlServer()

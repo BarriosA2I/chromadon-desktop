@@ -42,6 +42,19 @@ export default defineConfig({
           },
         },
       },
+      {
+        entry: 'electron/login-preload.js',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              output: {
+                format: 'iife',
+              },
+            },
+          },
+        },
+      },
     ]),
     renderer(),
   ],
