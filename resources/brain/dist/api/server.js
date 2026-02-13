@@ -3360,15 +3360,22 @@ app.post('/api/client-context/interview/start', async (req, res) => {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
-        const { state, greeting } = await interview.startInterview(client.id);
         res.write(`data: ${JSON.stringify({ type: 'client_created', clientId: client.id })}\n\n`);
+        const { state, greeting } = await interview.startInterview(client.id);
         res.write(`data: ${JSON.stringify({ type: 'phase', phase: state.currentPhase })}\n\n`);
         res.write(`data: ${JSON.stringify({ type: 'message', role: 'assistant', content: greeting })}\n\n`);
         res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
         res.end();
     }
     catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error('[Interview] start error:', error.message);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+        else {
+            res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+            res.end();
+        }
     }
 });
 app.post('/api/client-context/interview/chat', async (req, res) => {
@@ -3396,7 +3403,14 @@ app.post('/api/client-context/interview/chat', async (req, res) => {
         res.end();
     }
     catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error('[Interview] chat error:', error.message);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+        else {
+            res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+            res.end();
+        }
     }
 });
 app.post('/api/client-context/interview/skip', async (req, res) => {
