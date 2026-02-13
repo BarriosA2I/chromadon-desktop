@@ -83,6 +83,11 @@ export declare class AgenticOrchestrator {
      */
     private isPageBlank;
     /**
+     * Check if the current page is an error page (permission denied, YouTube error, rate limited).
+     * These pages have content so isPageBlank() passes — this catches them.
+     */
+    private isPageErrored;
+    /**
      * Silently ensure page is loaded after navigate/click.
      * Auto-refreshes blank pages up to 3 times with escalating waits.
      * Returns null if healthy, or a message if page is dead after all retries.

@@ -108,6 +108,7 @@ class AgenticOrchestrator {
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
         let lastNavigatedUrl = ''; // Track last URL for blank page recovery
+        const urlAttemptCounts = {}; // Track repeated URL navigations
         let sessionInputTokens = 0;
         let sessionOutputTokens = 0;
         const noOpDetector = new NoOpDetector();
@@ -321,6 +322,15 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                         if (toolName === 'click' && result.success && /erase song/i.test(JSON.stringify(toolInput))) {
                             tracker.claimsErased++;
                         }
+                        // URL retry counter — detect infinite loops on broken URLs
+                        if (toolName === 'navigate' && result.success) {
+                            const navUrlKey = toolInput.url;
+                            urlAttemptCounts[navUrlKey] = (urlAttemptCounts[navUrlKey] || 0) + 1;
+                            if (urlAttemptCounts[navUrlKey] >= 3) {
+                                console.log(`[LOOP GUARD] URL attempted ${urlAttemptCounts[navUrlKey]} times: ${navUrlKey}`);
+                                result = { ...result, result: `LOOP DETECTED: You have tried this URL ${urlAttemptCounts[navUrlKey]} times. It will NEVER work. Navigate to https://studio.youtube.com directly and go to Content > Live manually. DO NOT use filter URLs. Try a completely different approach.` };
+                            }
+                        }
                         // Silent page health guard — auto-refresh blank pages BEFORE AI sees them
                         if (['navigate', 'click', 'click_table_row'].includes(toolName) && result.success && context.useDesktop) {
                             if (toolName === 'navigate')
@@ -330,6 +340,24 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                                 const healthMsg = await this.ensurePageHealthy(context, recoveryUrl);
                                 if (healthMsg) {
                                     result = { ...result, result: `${result.result}\n\n${healthMsg}` };
+                                }
+                            }
+                            // Error page detection — permission denied, YouTube error, rate limited
+                            const pageError = await this.isPageErrored(context);
+                            if (pageError) {
+                                console.log(`[PAGE HEALTH] Error page detected: ${pageError}`);
+                                if (pageError === 'PERMISSION_DENIED') {
+                                    result = { ...result, result: 'PERMISSION DENIED — this URL has the wrong channel ID or session expired. DO NOT retry this URL. Navigate to https://studio.youtube.com and go to Content > Live manually.' };
+                                }
+                                else if (pageError === 'YOUTUBE_ERROR') {
+                                    result = { ...result, result: 'YouTube error page. DO NOT retry this URL. Navigate to https://studio.youtube.com directly.' };
+                                }
+                                else if (pageError === 'RATE_LIMITED') {
+                                    result = { ...result, result: 'Rate limited by YouTube. Wait 30 seconds before trying again.' };
+                                    await new Promise(r => setTimeout(r, 30000));
+                                }
+                                else if (pageError === 'NOT_FOUND') {
+                                    result = { ...result, result: 'Page not found (404). DO NOT retry this URL. Navigate to https://studio.youtube.com directly.' };
                                 }
                             }
                         }
@@ -844,6 +872,37 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
         }
         catch {
             return false; // Can't check — assume OK
+        }
+    }
+    /**
+     * Check if the current page is an error page (permission denied, YouTube error, rate limited).
+     * These pages have content so isPageBlank() passes — this catches them.
+     */
+    async isPageErrored(context) {
+        if (!context.useDesktop || context.desktopTabId === null)
+            return null;
+        try {
+            const desktopUrl = context.desktopUrl || 'http://127.0.0.1:3002';
+            const resp = await fetch(`${desktopUrl}/tabs/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: context.desktopTabId,
+                    script: `(function(){
+            var t = (document.body && document.body.innerText) || '';
+            if (t.includes("don't have permission")) return "PERMISSION_DENIED";
+            if (t.includes("Oops") && t.includes("something went wrong")) return "YOUTUBE_ERROR";
+            if (t.includes("try again later")) return "RATE_LIMITED";
+            if (t.includes("404") && t.includes("page not found")) return "NOT_FOUND";
+            return null;
+          })()`,
+                }),
+            });
+            const data = await resp.json();
+            return data.result || null;
+        }
+        catch {
+            return null;
         }
     }
     /**
