@@ -26,7 +26,7 @@ const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 1024,
     maxLoops: 50,
-    maxSessionMessages: 15,
+    maxSessionMessages: 8,
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
 };
 // ============================================================================
@@ -100,6 +100,8 @@ class AgenticOrchestrator {
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
         let lastNavigatedUrl = ''; // Track last URL for blank page recovery
+        let sessionInputTokens = 0;
+        let sessionOutputTokens = 0;
         const noOpDetector = new NoOpDetector();
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
@@ -192,6 +194,14 @@ class AgenticOrchestrator {
                     }
                 }
                 stopReason = finalMessage.stop_reason || '';
+                // Cost tracking — log token usage per API call
+                if (finalMessage.usage) {
+                    sessionInputTokens += finalMessage.usage.input_tokens || 0;
+                    sessionOutputTokens += finalMessage.usage.output_tokens || 0;
+                    const callCost = ((finalMessage.usage.input_tokens || 0) / 1_000_000) * 1 +
+                        ((finalMessage.usage.output_tokens || 0) / 1_000_000) * 5;
+                    console.log(`[COST] Call ${loopCount}: ${finalMessage.usage.input_tokens}in/${finalMessage.usage.output_tokens}out ($${callCost.toFixed(4)}) | Session total: ${sessionInputTokens}in/${sessionOutputTokens}out ($${(sessionInputTokens / 1_000_000 * 1 + sessionOutputTokens / 1_000_000 * 5).toFixed(4)})`);
+                }
                 // 7. Push assistant message to session history
                 session.messages.push({ role: 'assistant', content: finalMessage.content });
                 // 8. Check if we need to execute tools
@@ -322,7 +332,16 @@ class AgenticOrchestrator {
                                 hasScreenshot: !!verificationBase64,
                             });
                         }
-                        // Build tool_result for Claude
+                        // Build tool_result for Claude — TRUNCATE to save tokens
+                        // Tool results and verification text are capped to prevent message bloat
+                        const MAX_RESULT = 500;
+                        const MAX_CONTEXT = 300;
+                        const truncResult = result.result.length > MAX_RESULT
+                            ? result.result.slice(0, MAX_RESULT) + '...'
+                            : result.result;
+                        const truncVerification = verificationText.length > MAX_CONTEXT
+                            ? verificationText.slice(0, MAX_CONTEXT) + '...'
+                            : verificationText;
                         // CRITICAL: Anthropic API requires ALL content to be type "text" when is_error is true.
                         // Sending image blocks with is_error:true causes a 400 crash.
                         if (!result.success) {
@@ -341,7 +360,7 @@ class AgenticOrchestrator {
                                 content: [
                                     {
                                         type: 'text',
-                                        text: `${result.result}\n\n[SCREENSHOT — verify action succeeded before proceeding]${verificationText ? `\n\nPage context:\n${verificationText}` : ''}`,
+                                        text: `${truncResult}${truncVerification ? `\n\n${truncVerification}` : ''}`,
                                     },
                                     {
                                         type: 'image',
@@ -355,7 +374,7 @@ class AgenticOrchestrator {
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
-                                content: `${result.result} [Verified via DOM — visual check skipped]`,
+                                content: truncResult,
                             });
                         }
                         else {
@@ -363,7 +382,7 @@ class AgenticOrchestrator {
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
-                                content: `${result.result}${verificationText ? `\n\n[AUTO-CONTEXT]\n${verificationText}` : ''}`,
+                                content: `${truncResult}${truncVerification ? `\n\n${truncVerification}` : ''}`,
                             });
                         }
                         prevToolName = toolName;
@@ -510,9 +529,16 @@ class AgenticOrchestrator {
                 message: `Reached maximum tool-use loops (${this.config.maxLoops}). Stopping.`,
             });
         }
-        // 10. Done
+        // 10. Done — include cost summary
+        const totalCostUSD = (sessionInputTokens / 1_000_000) * 1 + (sessionOutputTokens / 1_000_000) * 5;
+        console.log(`[COST] Session complete: ${loopCount} API calls, ${sessionInputTokens}in/${sessionOutputTokens}out, $${totalCostUSD.toFixed(4)}`);
         if (!writer.isClosed()) {
-            writer.writeEvent('done', {});
+            writer.writeEvent('done', {
+                apiCalls: loopCount,
+                inputTokens: sessionInputTokens,
+                outputTokens: sessionOutputTokens,
+                costUSD: totalCostUSD,
+            });
         }
         // 11. Prune session messages if needed
         this.pruneSessionMessages(session);
