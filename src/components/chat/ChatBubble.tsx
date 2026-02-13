@@ -33,7 +33,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   if (isStatus) {
     return (
       <div className="flex justify-center px-3 py-1">
-        <span className="text-[10px] text-chroma-muted font-mono uppercase tracking-wider">
+        <span className="text-[10px] text-chroma-muted font-ui uppercase tracking-[0.2em]">
           {message.content}
         </span>
       </div>
@@ -47,9 +47,9 @@ export function ChatBubble({ message }: ChatBubbleProps) {
           onClick={() => setThinkingExpanded(!thinkingExpanded)}
           className="flex items-center gap-1.5 text-[10px] text-chroma-purple/70 hover:text-chroma-purple font-mono transition-colors"
         >
-          <span className={`transform transition-transform ${thinkingExpanded ? 'rotate-90' : ''}`}>
-            &#9654;
-          </span>
+          <svg className={`w-3 h-3 transform transition-transform ${thinkingExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
           AI reasoning
         </button>
         {thinkingExpanded && (
@@ -69,17 +69,17 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} px-3 py-1`}>
       {!isUser && (
-        <div className="w-7 h-7 rounded-lg bg-chroma-teal/10 border border-chroma-teal/20 flex items-center justify-center flex-shrink-0 mr-2 mt-0.5">
+        <div className="w-7 h-7 rounded-lg bg-chroma-teal/10 border border-chroma-teal/20 shadow-crystal flex items-center justify-center flex-shrink-0 mr-2 mt-0.5" style={{ animation: 'crystal-breathe 3s ease-in-out infinite' }}>
           <span className="text-[9px] font-display text-chroma-teal">C</span>
         </div>
       )}
       <div
         className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed select-text group/bubble ${
           isUser
-            ? 'bg-chroma-teal/15 border border-chroma-teal/25 text-chroma-cyan font-mono'
+            ? 'bg-gradient-to-br from-chroma-teal/15 to-chroma-teal/8 border border-chroma-teal/25 text-chroma-cyan font-mono user-bubble-accent'
             : isError
               ? 'bg-chroma-error/10 border border-chroma-error/25 text-chroma-error/90'
-              : 'bg-white/[0.03] border border-white/[0.06] text-gray-300'
+              : 'bg-chroma-surface/80 border border-chroma-teal/8 border-l-2 border-l-chroma-teal/30 text-gray-300'
         }`}
       >
         {isUser ? (

@@ -27,9 +27,9 @@ function StatusIcon({ status }: { status: ToolCallInfo['status'] }) {
         <span className="inline-block w-3 h-3 rounded-full bg-chroma-teal animate-pulse" />
       )
     case 'done':
-      return <span className="text-chroma-success text-xs font-mono">OK</span>
+      return <span className="text-chroma-success text-xs font-mono" style={{ textShadow: '0 0 8px rgba(16, 185, 129, 0.5)' }}>OK</span>
     case 'error':
-      return <span className="text-chroma-error text-xs font-mono">ERR</span>
+      return <span className="text-chroma-error text-xs font-mono" style={{ textShadow: '0 0 8px rgba(239, 68, 68, 0.5)' }}>ERR</span>
   }
 }
 
@@ -43,13 +43,13 @@ export default function ToolCallCard({ toolCall }: { toolCall: ToolCallInfo }) {
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`my-1 rounded border ${isActive ? 'border-chroma-teal/30 bg-chroma-teal/5' : 'border-white/5 bg-white/[0.02]'}`}
+      className={`my-1 rounded-lg border ${isActive ? 'border-chroma-teal/30 bg-chroma-teal/5 shadow-crystal energy-line' : 'border-white/[0.06] bg-chroma-surface/40'}`}
     >
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-2 py-1 text-left"
       >
-        <span className={`px-1.5 py-0.5 text-[10px] font-mono font-bold rounded border ${badge.color}`}>
+        <span className={`px-1.5 py-0.5 text-[10px] font-ui font-bold uppercase tracking-wider rounded border ${badge.color}`}>
           {badge.label}
         </span>
         <span className="flex-1 text-xs text-chroma-muted font-mono truncate">
@@ -65,13 +65,13 @@ export default function ToolCallCard({ toolCall }: { toolCall: ToolCallInfo }) {
         </span>
         <StatusIcon status={toolCall.status} />
         {toolCall.durationMs !== undefined && (
-          <span className="text-[10px] text-white/20 font-mono">{toolCall.durationMs}ms</span>
+          <span className="text-[10px] text-white/20 font-mono">{toolCall.durationMs >= 1000 ? `${(toolCall.durationMs / 1000).toFixed(1)}s` : `${toolCall.durationMs}ms`}</span>
         )}
         <span className="text-white/20 text-xs">{expanded ? '▲' : '▼'}</span>
       </button>
 
       {expanded && (toolCall.result || toolCall.error) && (
-        <div className="px-2 pb-1.5 border-t border-white/5">
+        <div className="px-2 pb-1.5 border-t border-chroma-teal/10">
           <pre className="text-[10px] font-mono text-chroma-muted whitespace-pre-wrap max-h-32 overflow-y-auto mt-1">
             {toolCall.error ? `Error: ${toolCall.error}` : toolCall.result}
           </pre>

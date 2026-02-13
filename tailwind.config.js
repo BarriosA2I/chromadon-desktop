@@ -10,6 +10,8 @@ module.exports = {
         'chroma-black': '#0a0a0f',
         'chroma-dark': '#0B1220',
         'chroma-panel': '#111116',
+        'chroma-obsidian': '#060810',
+        'chroma-surface': '#0F1520',
         'chroma-teal': '#00CED1',
         'chroma-cyan': '#00FFFF',
         'chroma-purple': '#8B5CF6',
@@ -24,7 +26,7 @@ module.exports = {
         'display': ['Orbitron', 'sans-serif'],
         'ui': ['Rajdhani', 'sans-serif'],
         'mono': ['JetBrains Mono', 'monospace'],
-        'body': ['Inter', 'sans-serif'],
+        'body': ['Rajdhani', 'sans-serif'],
       },
       boxShadow: {
         'neon-teal': '0 0 5px #00CED1, 0 0 20px rgba(0, 206, 209, 0.3)',
@@ -35,6 +37,9 @@ module.exports = {
         'glass-premium': '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
         'inner-glow-teal': 'inset 0 0 30px rgba(0, 206, 209, 0.1)',
         'glow-lg': '0 0 40px rgba(0, 206, 209, 0.4)',
+        'crystal': '0 0 15px rgba(0, 206, 209, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.05)',
+        'crystal-hover': '0 0 30px rgba(0, 206, 209, 0.2), 0 0 60px rgba(0, 206, 209, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
+        'crystal-active': '0 0 40px rgba(0, 206, 209, 0.3), 0 4px 20px rgba(0, 0, 0, 0.5)',
       },
       animation: {
         'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',

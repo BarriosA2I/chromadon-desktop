@@ -66,13 +66,13 @@ export default function StreamingMessage({ message }: { message: ChatMessage }) 
         animate={{ opacity: 1 }}
         className="flex gap-2 px-3 py-2"
       >
-        <div className="w-6 h-6 rounded bg-chroma-teal/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <span className="text-chroma-teal text-xs font-bold">C</span>
+        <div className="w-7 h-7 rounded-lg bg-chroma-teal/10 border border-chroma-teal/20 shadow-crystal flex items-center justify-center flex-shrink-0 mt-0.5" style={{ animation: 'crystal-breathe 3s ease-in-out infinite' }}>
+          <span className="text-[9px] font-display text-chroma-teal">C</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-chroma-teal animate-pulse" style={{ animationDelay: '0ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-chroma-teal animate-pulse" style={{ animationDelay: '200ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-chroma-teal animate-pulse" style={{ animationDelay: '400ms' }} />
+          <motion.span className="w-1.5 h-1.5 rounded-full bg-chroma-teal" animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0, ease: 'easeInOut' }} />
+          <motion.span className="w-1.5 h-1.5 rounded-full bg-chroma-teal" animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.2, ease: 'easeInOut' }} />
+          <motion.span className="w-1.5 h-1.5 rounded-full bg-chroma-teal" animate={{ scale: [1, 1.4, 1], opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.2, delay: 0.4, ease: 'easeInOut' }} />
         </div>
       </motion.div>
     )
@@ -85,8 +85,8 @@ export default function StreamingMessage({ message }: { message: ChatMessage }) 
       className="flex gap-2 px-3 py-2"
     >
       {/* Avatar */}
-      <div className="w-6 h-6 rounded bg-chroma-teal/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <span className="text-chroma-teal text-xs font-bold">C</span>
+      <div className="w-7 h-7 rounded-lg bg-chroma-teal/10 border border-chroma-teal/20 shadow-crystal flex items-center justify-center flex-shrink-0 mt-0.5" style={{ animation: 'crystal-breathe 3s ease-in-out infinite' }}>
+        <span className="text-[9px] font-display text-chroma-teal">C</span>
       </div>
 
       {/* Content */}
@@ -98,7 +98,7 @@ export default function StreamingMessage({ message }: { message: ChatMessage }) 
                 {renderMarkdown(part.content)}
                 {/* Blinking cursor on the last text part while streaming */}
                 {isStreaming && idx === parts.length - 1 && (
-                  <span className="inline-block w-2 h-4 bg-chroma-teal ml-0.5 animate-pulse" />
+                  <span className="inline-block w-[3px] h-[18px] bg-chroma-teal rounded-full ml-0.5 animate-blink" />
                 )}
               </div>
             )

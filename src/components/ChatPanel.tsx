@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
 import { useChromadonStore } from '../store/chromadonStore'
 import { ChatMessages } from './chat/ChatMessages'
 import { MediaUploadButton } from './chat/MediaUploadButton'
@@ -138,16 +139,16 @@ export function ChatPanel() {
 
   return (
     <div
-      className={`cyber-panel flex-1 flex flex-col min-h-0 overflow-hidden ${isDragOver ? 'ring-2 ring-chroma-teal/50 ring-inset' : ''}`}
+      className={`cyber-panel flex-1 flex flex-col min-h-0 overflow-hidden crystal-grid ${isDragOver ? 'ring-2 ring-chroma-teal/50 ring-inset' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/[0.06]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-chroma-teal/10 relative">
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-chroma-success animate-pulse' : 'bg-chroma-error'}`} />
-          <span className="text-[10px] font-display text-chroma-teal uppercase tracking-[0.15em]">
+          <span className="text-[10px] font-display text-chroma-teal uppercase tracking-[0.2em]">
             AI Assistant
           </span>
         </div>
@@ -165,10 +166,12 @@ export function ChatPanel() {
             </button>
           )}
         </div>
+        {/* Energy line accent */}
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-chroma-teal/25 to-transparent" />
       </div>
 
       {/* Messages */}
-      <ChatMessages messages={chatMessages} showThinking={showThinkingIndicator} />
+      <ChatMessages messages={chatMessages} showThinking={showThinkingIndicator} onHintClick={setChatInput} />
 
       {/* Drag overlay */}
       {isDragOver && (
@@ -197,7 +200,7 @@ export function ChatPanel() {
           </div>
         )}
 
-        <div className="p-2">
+        <div className="p-3">
           <div className="flex gap-1.5 items-end">
             {/* Upload button */}
             <MediaUploadButton
@@ -218,14 +221,14 @@ export function ChatPanel() {
               placeholder={isConnected ? 'Tell CHROMADON what to do...' : 'Connecting...'}
               disabled={!isConnected || isProcessing}
               rows={1}
-              className="flex-1 bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-gray-200 font-mono placeholder-chroma-muted/40 resize-none focus:outline-none focus:border-chroma-teal/30 focus:bg-white/[0.05] transition-colors disabled:opacity-40"
+              className="flex-1 bg-chroma-obsidian/80 border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-gray-200 font-mono placeholder-chroma-muted/40 resize-none hover:border-chroma-teal/20 focus:outline-none focus:border-chroma-teal/40 focus:bg-chroma-surface/50 focus:shadow-[0_0_20px_rgba(0,206,209,0.08)] transition-all disabled:opacity-40"
               style={{ minHeight: '36px', maxHeight: '96px' }}
             />
             {isProcessing ? (
               <button
                 type="button"
                 onClick={handleStop}
-                className="flex-shrink-0 h-9 px-3 rounded-lg font-display text-[10px] uppercase tracking-wider transition-all duration-200 bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 hover:border-red-500/60 hover:shadow-[0_0_12px_rgba(239,68,68,0.3)] animate-pulse"
+                className="flex-shrink-0 h-9 px-3 rounded-lg font-display text-[10px] uppercase tracking-wider transition-all duration-200 bg-red-500/20 border border-red-500/40 text-red-400 ring-1 ring-red-500/20 hover:bg-red-500/30 hover:border-red-500/60 hover:shadow-[0_0_12px_rgba(239,68,68,0.3)] animate-pulse"
                 title="Stop execution (Esc)"
               >
                 <span className="flex items-center gap-1.5">
@@ -234,17 +237,19 @@ export function ChatPanel() {
                 </span>
               </button>
             ) : (
-              <button
+              <motion.button
                 type="submit"
                 disabled={(!chatInput.trim() && attachedMedia.length === 0) || !isConnected}
-                className="flex-shrink-0 h-9 px-3 rounded-lg font-display text-[10px] uppercase tracking-wider transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed bg-gradient-to-r from-chroma-teal/20 to-chroma-purple/20 border border-chroma-teal/25 text-chroma-teal hover:from-chroma-teal/30 hover:to-chroma-purple/30 hover:border-chroma-teal/40 hover:shadow-neon-teal"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="flex-shrink-0 h-9 px-3 rounded-lg font-display text-[10px] uppercase tracking-wider transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed bg-chroma-teal/20 border border-chroma-teal/30 text-chroma-teal shadow-crystal hover:bg-chroma-teal/30 hover:border-chroma-teal/50 hover:shadow-crystal-hover"
               >
                 Send
-              </button>
+              </motion.button>
             )}
           </div>
           <div className="flex items-center justify-between mt-1.5 px-1">
-            <span className="text-[9px] text-chroma-muted/30 font-mono">
+            <span className="text-[9px] text-chroma-muted/50 font-mono">
               {isProcessing ? 'Esc to stop' : 'Enter to send \u00B7 Shift+Enter for newline'}
             </span>
           </div>

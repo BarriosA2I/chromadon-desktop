@@ -42,7 +42,7 @@ export default function ClientSwitcher({ onNewClient }: Props) {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg hover:border-chroma-teal/30 transition-colors no-drag"
+        className="flex items-center gap-2 px-3 py-1.5 bg-chroma-obsidian/60 border border-white/[0.08] rounded-lg hover:border-chroma-teal/30 hover:shadow-crystal transition-all no-drag"
       >
         <div className="w-4 h-4 rounded bg-chroma-teal/30 flex items-center justify-center text-[8px] text-chroma-teal font-bold">
           {activeClient?.name?.charAt(0)?.toUpperCase() || '?'}
@@ -58,14 +58,14 @@ export default function ClientSwitcher({ onNewClient }: Props) {
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-1 w-64 bg-chroma-panel border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50"
+            initial={{ opacity: 0, scale: 0.95, y: -8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -8 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+            className="absolute right-0 top-full mt-1.5 w-64 bg-chroma-obsidian/95 backdrop-blur-2xl border border-chroma-teal/15 rounded-xl shadow-crystal-active overflow-hidden z-50"
           >
-            <div className="p-2 border-b border-white/5">
-              <span className="text-[10px] uppercase tracking-wider text-white/30 px-2">Clients</span>
+            <div className="p-2 border-b border-chroma-teal/10">
+              <span className="text-[10px] font-display uppercase tracking-[0.3em] text-chroma-teal/50 px-2">Clients</span>
             </div>
 
             <div className="max-h-48 overflow-y-auto p-1">
@@ -74,7 +74,7 @@ export default function ClientSwitcher({ onNewClient }: Props) {
                   key={client.id}
                   onClick={() => handleSwitch(client.id)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors group ${
-                    activeClient?.id === client.id ? 'bg-chroma-teal/10 border border-chroma-teal/20' : 'hover:bg-white/5'
+                    activeClient?.id === client.id ? 'bg-chroma-teal/10 border border-chroma-teal/20 shadow-[inset_0_0_30px_rgba(0,206,209,0.06)]' : 'hover:bg-white/5'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
@@ -106,7 +106,7 @@ export default function ClientSwitcher({ onNewClient }: Props) {
             <div className="p-1 border-t border-white/5">
               <button
                 onClick={() => { setIsOpen(false); onNewClient() }}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-chroma-teal border border-dashed border-chroma-teal/20 hover:border-solid hover:border-chroma-teal/40 hover:bg-chroma-teal/10 hover:shadow-crystal transition-all"
               >
                 <span className="text-lg">+</span>
                 New Client

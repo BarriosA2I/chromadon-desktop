@@ -653,114 +653,117 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
         </div>
 
         {/* Right Column - AI Assistant Chat */}
-        <div className="w-96 flex flex-col gap-2 p-2">
+        <div className="w-96 flex flex-col gap-2 p-2 energy-line">
           {/* Vault Quick Access */}
-          <div className="cyber-panel p-3 flex items-center justify-between relative z-10">
-            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${vaultStatus.isLocked ? 'bg-chroma-error' : 'bg-chroma-success'}`} />
-              <span className="text-sm font-mono text-chroma-muted">
-                {vaultStatus.isLocked ? 'Vault Locked' : currentProfile?.name || 'Default'}
+          <div className="crystal-panel p-2.5 flex items-center justify-between relative z-10 overflow-hidden">
+            <div className="flex items-center gap-2 min-w-0 mr-2">
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${vaultStatus.isLocked ? 'bg-chroma-error' : 'bg-chroma-success'}`} />
+              <span className="text-xs font-mono text-chroma-muted truncate">
+                {vaultStatus.isLocked ? 'Locked' : currentProfile?.name || 'Default'}
               </span>
             </div>
-            <div className="flex items-center gap-1 flex-wrap">
-              {/* Profile Switcher */}
-              <div className="relative">
+            <div className="flex items-center flex-nowrap">
+              {/* Group A — Identity/Security */}
+              <div className="flex items-center">
+                <div className="relative">
+                  <button
+                    onClick={() => setShowProfileManager(!showProfileManager)}
+                    className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                    title="Switch Profile"
+                  >
+                    <UserIcon />
+                  </button>
+                  <AnimatePresence>
+                    {showProfileManager && (
+                      <ProfileManager
+                        profiles={profiles}
+                        currentProfileId={currentProfile?.id || null}
+                        onSelect={handleSelectProfile}
+                        onCreate={handleCreateProfile}
+                        onDelete={handleDeleteProfile}
+                        onClose={() => setShowProfileManager(false)}
+                      />
+                    )}
+                  </AnimatePresence>
+                </div>
                 <button
-                  onClick={() => setShowProfileManager(!showProfileManager)}
-                  className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
-                  title="Switch Profile"
+                  onClick={() => setShowCredentialVault(true)}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-purple hover:bg-chroma-purple/10 transition-colors"
+                  title="Credential Vault"
                 >
-                  <UserIcon />
+                  <KeyIcon />
                 </button>
-                <AnimatePresence>
-                  {showProfileManager && (
-                    <ProfileManager
-                      profiles={profiles}
-                      currentProfileId={currentProfile?.id || null}
-                      onSelect={handleSelectProfile}
-                      onCreate={handleCreateProfile}
-                      onDelete={handleDeleteProfile}
-                      onClose={() => setShowProfileManager(false)}
-                    />
-                  )}
-                </AnimatePresence>
+                <button
+                  onClick={handleLockVault}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
+                  title="Lock Vault"
+                >
+                  <LockIcon />
+                </button>
               </div>
 
-              {/* Credential Vault */}
-              <button
-                onClick={() => setShowCredentialVault(true)}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-purple hover:bg-chroma-purple/10 transition-colors"
-                title="Credential Vault"
-              >
-                <KeyIcon />
-              </button>
+              <div className="w-px h-5 bg-white/10 mx-1" />
 
-              {/* Lock Vault */}
-              <button
-                onClick={handleLockVault}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
-                title="Lock Vault"
-              >
-                <LockIcon />
-              </button>
-              {/* Session Setup - always visible */}
-              <button
-                onClick={() => setShowSessionSetup(true)}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
-                title="Platform Sessions"
-              >
-                <SessionIcon />
-              </button>
-              {/* Marketing Queue */}
-              <button
-                onClick={() => setShowMarketingQueue(true)}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-purple hover:bg-chroma-purple/10 transition-colors"
-                title="Marketing Queue"
-              >
-                <QueueIcon />
-              </button>
-              {/* Client Onboarding */}
-              <button
-                onClick={() => setShowInterviewScreen(true)}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
-                title="Client Onboarding"
-              >
-                <span className="text-sm">🧠</span>
-              </button>
-              {/* Document Vault */}
-              <button
-                onClick={() => setShowDocumentVault(true)}
-                disabled={!activeClient}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors disabled:opacity-30"
-                title="Document Vault"
-              >
-                <span className="text-sm">📄</span>
-              </button>
-              {/* Strategy Dashboard */}
-              <button
-                onClick={() => setShowStrategyDashboard(true)}
-                disabled={!activeClient}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors disabled:opacity-30"
-                title="Growth Strategy"
-              >
-                <span className="text-sm">🎯</span>
-              </button>
-              {/* Analytics Dashboard */}
-              <button
-                onClick={() => setShowAnalyticsDashboard(true)}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
-                title="Analytics Dashboard"
-              >
-                <AnalyticsIcon />
-              </button>
-              {/* Settings */}
-              <button
-                onClick={() => setShowSettings(true)}
-                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
-                title="Settings"
-              >
-                <GearIcon />
-              </button>
+              {/* Group B — Client Operations */}
+              <div className="flex items-center">
+                <button
+                  onClick={() => setShowSessionSetup(true)}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                  title="Platform Sessions"
+                >
+                  <SessionIcon />
+                </button>
+                <button
+                  onClick={() => setShowMarketingQueue(true)}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-purple hover:bg-chroma-purple/10 transition-colors"
+                  title="Marketing Queue"
+                >
+                  <QueueIcon />
+                </button>
+                <button
+                  onClick={() => setShowInterviewScreen(true)}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                  title="Client Onboarding"
+                >
+                  <span className="text-sm">🧠</span>
+                </button>
+                <button
+                  onClick={() => setShowDocumentVault(true)}
+                  disabled={!activeClient}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors disabled:opacity-30"
+                  title="Document Vault"
+                >
+                  <span className="text-sm">📄</span>
+                </button>
+                <button
+                  onClick={() => setShowStrategyDashboard(true)}
+                  disabled={!activeClient}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors disabled:opacity-30"
+                  title="Growth Strategy"
+                >
+                  <span className="text-sm">🎯</span>
+                </button>
+              </div>
+
+              <div className="w-px h-5 bg-white/10 mx-1" />
+
+              {/* Group C — Insights/Config */}
+              <div className="flex items-center">
+                <button
+                  onClick={() => setShowAnalyticsDashboard(true)}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
+                  title="Analytics Dashboard"
+                >
+                  <AnalyticsIcon />
+                </button>
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                  title="Settings"
+                >
+                  <GearIcon />
+                </button>
+              </div>
             </div>
           </div>
 

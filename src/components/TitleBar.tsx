@@ -13,11 +13,12 @@ export default function TitleBar() {
     <motion.header
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="h-10 flex items-center justify-between px-4 bg-gradient-to-r from-chroma-panel/80 via-chroma-dark/60 to-chroma-panel/80 border-b border-chroma-teal/20 drag-region backdrop-blur-sm"
+      className="h-10 flex items-center px-4 bg-gradient-to-r from-chroma-panel/80 via-chroma-dark/60 to-chroma-panel/80 border-b border-chroma-teal/10 drag-region backdrop-blur-sm relative"
     >
-      {/* Logo */}
-      <div className="flex items-center gap-3 no-drag">
+      {/* Left — Logo */}
+      <div className="flex-1 flex items-center gap-3 no-drag min-w-0">
         <motion.div
+          className="flex-shrink-0"
           animate={{
             filter: [
               'drop-shadow(0 0 3px #00CED1)',
@@ -29,45 +30,45 @@ export default function TitleBar() {
         >
           <ChromadonLogo />
         </motion.div>
-        <span className="heading-cyber text-lg">
+        <span className="heading-cyber text-lg hidden sm:inline">
           CHROMADON
         </span>
-        <span className="px-2 py-0.5 text-xs font-mono text-chroma-gold bg-chroma-gold/10 rounded border border-chroma-gold/30">
+        <span className="px-2 py-0.5 text-xs font-mono text-chroma-gold bg-chroma-gold/10 rounded border border-chroma-gold/30 flex-shrink-0">
           v4.0
         </span>
       </div>
 
-      {/* Center - Connection Status */}
-      <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-1 rounded-full bg-chroma-black/40 border border-chroma-teal/10">
+      {/* Center — Connection Status */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-1 mx-3 rounded-full bg-chroma-black/40 border border-chroma-teal/10">
         <div className="relative">
           <div className={`led ${isConnected ? 'led-green' : 'led-red'}`} />
-          {/* Pulse ring */}
           <motion.div
             className={`absolute inset-0 rounded-full ${isConnected ? 'bg-chroma-success' : 'bg-chroma-error'}`}
             animate={{ scale: [1, 2.5], opacity: [0.6, 0] }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
           />
         </div>
-        <span className={`text-sm font-ui font-semibold tracking-wide ${isConnected ? 'text-chroma-teal' : 'text-chroma-error'}`}>
-          {isConnected ? `${connectionMode}` : 'DISCONNECTED'}
+        <span className={`text-sm font-ui font-semibold tracking-wider ${isConnected ? 'text-chroma-teal' : 'text-chroma-error'}`}>
+          {isConnected ? connectionMode : 'DISCONNECTED'}
         </span>
       </div>
 
-      {/* Client Switcher + Window Controls */}
-      <div className="flex items-center gap-2 no-drag">
+      {/* Right — Client Switcher + Window Controls */}
+      <div className="flex-1 flex items-center justify-end gap-2 no-drag min-w-0">
         <ClientSwitcher onNewClient={() => setShowInterviewScreen(true)} />
-      </div>
-      <div className="flex items-center gap-1 no-drag">
-        <WindowButton onClick={handleMinimize} hoverColor="chroma-cyan">
+        <div className="w-px h-5 bg-white/10 mx-0.5" />
+        <WindowButton onClick={handleMinimize} isClose={false}>
           <MinimizeIcon />
         </WindowButton>
-        <WindowButton onClick={handleMaximize} hoverColor="chroma-cyan">
+        <WindowButton onClick={handleMaximize} isClose={false}>
           <MaximizeIcon />
         </WindowButton>
-        <WindowButton onClick={handleClose} hoverColor="red-500" isClose>
+        <WindowButton onClick={handleClose} isClose>
           <CloseIcon />
         </WindowButton>
       </div>
+      {/* Bottom energy line */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-chroma-teal/30 to-transparent" />
     </motion.header>
   )
 }
@@ -75,12 +76,10 @@ export default function TitleBar() {
 function WindowButton({
   onClick,
   children,
-  hoverColor,
   isClose = false,
 }: {
   onClick: () => void
   children: React.ReactNode
-  hoverColor: string
   isClose?: boolean
 }) {
   return (
@@ -93,7 +92,7 @@ function WindowButton({
         transition-all duration-200 backdrop-blur-sm
         ${isClose
           ? 'hover:bg-red-500/80 hover:text-white'
-          : `hover:bg-${hoverColor}/20 hover:text-${hoverColor}`
+          : 'hover:bg-chroma-cyan/20 hover:text-chroma-cyan'
         }
       `}
     >
