@@ -38,9 +38,12 @@ if ($env:GITHUB_TOKEN) {
     Write-Host "  Cleared stale GITHUB_TOKEN" -ForegroundColor Yellow
 }
 
-# Step 5: Delete old release if exists
+# Step 5: Delete old release if exists (ignore error if release doesn't exist)
 Write-Host "  Cleaning old release for $tag..." -NoNewline
+$prevPref = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 gh release delete $tag --repo BarriosA2I/chromadon-desktop --yes --cleanup-tag 2>$null
+$ErrorActionPreference = $prevPref
 Write-Host " Done" -ForegroundColor Green
 
 # Step 6: Create release and upload
