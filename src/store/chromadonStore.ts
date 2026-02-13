@@ -551,3 +551,8 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
     }),
   })),
 }))
+
+// Expose store for external test access (e.g. Desktop Control Server /execute)
+if (typeof window !== 'undefined') {
+  (window as any).__CHROMADON_STORE__ = useChromadonStore
+}

@@ -4,6 +4,14 @@ import { useChromadonStore, ActionType } from '../store/chromadonStore'
 
 const API_BASE = 'http://localhost:3001'
 
+// Circuit breaker for Brain API health polling — prevents hammering when Brain is down
+const healthCircuitBreaker = {
+  consecutiveFailures: 0,
+  openUntil: 0,
+  threshold: 3,
+  cooldownMs: 30000,
+}
+
 export function useChromadonAPI() {
   const {
     setConnected,
@@ -26,6 +34,18 @@ export function useChromadonAPI() {
   const activeCommandRef = useRef<CancelTokenSource | null>(null)
 
   const connect = async (): Promise<boolean> => {
+    // Circuit breaker — back off when Brain is repeatedly unreachable
+    const cb = healthCircuitBreaker
+    if (cb.openUntil > 0 && Date.now() < cb.openUntil) {
+      // Still in cooldown — skip this poll cycle
+      return false
+    }
+    if (cb.openUntil > 0 && Date.now() >= cb.openUntil) {
+      // Cooldown elapsed — try again (half-open)
+      cb.openUntil = 0
+      cb.consecutiveFailures = 0
+    }
+
     try {
       const response = await axios.get(`${API_BASE}/health`, { timeout: 5000 })
       const data = response.data
@@ -38,16 +58,20 @@ export function useChromadonAPI() {
           description: `Connected to CHROMADON Brain (${data.mode} mode)`,
           success: true,
         })
-        brainApiWarnedRef.current = false // Reset warning flag on successful connection
+        brainApiWarnedRef.current = false
+        cb.consecutiveFailures = 0
+        cb.openUntil = 0
         return true
       }
       setBrainAvailable(false)
       return false
     } catch (error) {
-      // Only warn once about Brain API being unavailable
-      // Don't override connection state - embedded mode still works
-      // Don't add action log - this is expected when Brain isn't running
       setBrainAvailable(false)
+      cb.consecutiveFailures++
+      if (cb.consecutiveFailures >= cb.threshold) {
+        cb.openUntil = Date.now() + cb.cooldownMs
+        console.warn(`[CHROMADON] Brain API unreachable after ${cb.consecutiveFailures} attempts — backing off for ${cb.cooldownMs / 1000}s`)
+      }
       if (!brainApiWarnedRef.current) {
         console.warn('[CHROMADON] Brain API not available at', API_BASE, '- AI features disabled')
         brainApiWarnedRef.current = true

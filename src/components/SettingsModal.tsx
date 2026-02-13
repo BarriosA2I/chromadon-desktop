@@ -156,6 +156,11 @@ export default function SettingsModal({
     setUpdateError('')
     const result = await window.electronAPI?.updaterCheckForUpdates?.()
     if (result && !result.success) {
+      // Dev mode — not a real error, just show as up-to-date with note
+      if (result.error?.includes('dev mode')) {
+        setUpdateStatus('up-to-date')
+        return
+      }
       setUpdateStatus('error')
       setUpdateError(result.error || 'Check failed')
     }
