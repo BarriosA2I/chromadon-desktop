@@ -284,18 +284,42 @@ async function extractDesktopPageContext(tabId, desktopUrl) {
     const titleResult = await desktopExecuteScript(tabId, 'document.title', desktopUrl);
     const elements = await desktopExecuteScript(tabId, `
     (function() {
-      var selectors = 'a, button, input, select, textarea, [role="button"], [onclick], [contenteditable="true"]';
+      var selectors = 'a, button, input, select, textarea, [role="button"], [role="tab"], [role="link"], [role="menuitem"], [onclick], [contenteditable="true"], [tabindex], tp-yt-paper-tab, tp-yt-paper-item, ytcp-button';
+      var results = [];
+      // Search light DOM
       var els = document.querySelectorAll(selectors);
-      return Array.from(els).slice(0, 100).map(function(el) {
+      for (var i = 0; i < els.length; i++) results.push(els[i]);
+      // Search shadow DOM recursively
+      function searchShadow(root) {
+        var all = root.querySelectorAll('*');
+        for (var j = 0; j < all.length; j++) {
+          if (all[j].shadowRoot) {
+            var shadowEls = all[j].shadowRoot.querySelectorAll(selectors);
+            for (var k = 0; k < shadowEls.length; k++) results.push(shadowEls[k]);
+            searchShadow(all[j].shadowRoot);
+          }
+        }
+      }
+      searchShadow(document);
+      // Deduplicate and map
+      var seen = new Set();
+      return results.filter(function(el) {
+        if (seen.has(el)) return false;
+        seen.add(el);
+        var rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }).slice(0, 100).map(function(el) {
         return {
           tag: el.tagName.toLowerCase(),
           text: (el.textContent || '').trim().slice(0, 100),
           id: el.id || undefined,
-          className: el.className || undefined,
-          href: el.getAttribute('href') || undefined,
-          type: el.getAttribute('type') || undefined,
-          placeholder: el.getAttribute('placeholder') || undefined,
-          ariaLabel: el.getAttribute('aria-label') || undefined,
+          className: (typeof el.className === 'string' ? el.className : '') || undefined,
+          href: el.getAttribute ? el.getAttribute('href') || undefined : undefined,
+          type: el.getAttribute ? el.getAttribute('type') || undefined : undefined,
+          role: el.getAttribute ? el.getAttribute('role') || undefined : undefined,
+          placeholder: el.getAttribute ? el.getAttribute('placeholder') || undefined : undefined,
+          ariaLabel: el.getAttribute ? el.getAttribute('aria-label') || undefined : undefined,
+          inShadowDOM: el.getRootNode() !== document,
         };
       });
     })()
@@ -314,6 +338,8 @@ function formatPageContext(ctx) {
             const parts = [el.tag];
             if (el.id)
                 parts.push(`#${el.id}`);
+            if (el.role)
+                parts.push(`role="${el.role}"`);
             if (el.type)
                 parts.push(`type="${el.type}"`);
             if (el.ariaLabel)
@@ -324,6 +350,8 @@ function formatPageContext(ctx) {
                 parts.push(`href="${el.href.slice(0, 80)}"`);
             if (el.text && el.text.length > 0)
                 parts.push(`"${el.text.slice(0, 60)}"`);
+            if (el.inShadowDOM)
+                parts.push('[shadow-dom]');
             result += `\n  - ${parts.join(' ')}`;
         }
         if (ctx.interactiveElements.length > 50) {

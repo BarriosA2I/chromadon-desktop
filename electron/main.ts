@@ -1004,23 +1004,89 @@ function startControlServer() {
         (function() {
           var target = ${JSON.stringify(target)};
 
-          // Visibility check: element must have non-zero dimensions and be in viewport
+          // ── Shadow DOM piercing utilities ──
+
+          // Recursively search shadow roots for a CSS selector
+          function deepQuery(sel, root) {
+            if (!root) root = document;
+            try {
+              var result = root.querySelector(sel);
+              if (result) return result;
+            } catch(e) { return null; }
+            var all = root.querySelectorAll('*');
+            for (var i = 0; i < all.length; i++) {
+              if (all[i].shadowRoot) {
+                var found = deepQuery(sel, all[i].shadowRoot);
+                if (found) return found;
+              }
+            }
+            return null;
+          }
+
+          // Recursively search shadow roots, collecting ALL matches
+          function deepQueryAll(sel, root) {
+            if (!root) root = document;
+            var results = [];
+            try { results = Array.from(root.querySelectorAll(sel)); } catch(e) {}
+            var all = root.querySelectorAll('*');
+            for (var i = 0; i < all.length; i++) {
+              if (all[i].shadowRoot) {
+                results = results.concat(deepQueryAll(sel, all[i].shadowRoot));
+              }
+            }
+            return results;
+          }
+
+          // Find visible elements by text, piercing shadow roots
+          function deepFindByText(searchText, root) {
+            if (!root) root = document;
+            var results = [];
+            function search(node) {
+              var els = node.querySelectorAll('a, button, [role="tab"], [role="button"], [role="link"], [role="menuitem"], [tabindex], span, div, li, tp-yt-paper-tab, tp-yt-paper-item, ytcp-button');
+              for (var i = 0; i < els.length; i++) {
+                var t = (els[i].textContent || '').trim();
+                var inner = (els[i].innerText || '').trim();
+                if (t === searchText || inner === searchText ||
+                    t.toLowerCase() === searchText.toLowerCase() ||
+                    inner.toLowerCase() === searchText.toLowerCase()) {
+                  if (isVisible(els[i])) {
+                    results.push(els[i]);
+                  }
+                }
+                if (els[i].shadowRoot) search(els[i].shadowRoot);
+              }
+              // Also check shadow roots of non-matched elements
+              var allEls = node.querySelectorAll('*');
+              for (var j = 0; j < allEls.length; j++) {
+                if (allEls[j].shadowRoot && !results.includes(allEls[j])) {
+                  search(allEls[j].shadowRoot);
+                }
+              }
+            }
+            search(root);
+            return results;
+          }
+
+          // ── Visibility check ──
           function isVisible(el) {
             if (!el || !el.getBoundingClientRect) return false;
             var rect = el.getBoundingClientRect();
             if (rect.width === 0 && rect.height === 0) return false;
-            var style = window.getComputedStyle(el);
-            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+            try {
+              var style = window.getComputedStyle(el);
+              if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+            } catch(e) {}
             return true;
           }
 
-          // Real click helper: fires full pointer + mouse event sequence
+          // ── Real click helper: full pointer + mouse event sequence ──
+          // composed: true allows events to cross shadow DOM boundaries
           function realClick(el) {
             el.scrollIntoView({block:'center'});
             var rect = el.getBoundingClientRect();
             var x = rect.left + rect.width / 2;
             var y = rect.top + rect.height / 2;
-            var opts = {bubbles: true, cancelable: true, view: window, clientX: x, clientY: y};
+            var opts = {bubbles: true, cancelable: true, composed: true, view: window, clientX: x, clientY: y};
             el.dispatchEvent(new PointerEvent('pointerover', opts));
             el.dispatchEvent(new PointerEvent('pointerenter', Object.assign({}, opts, {bubbles: false})));
             el.dispatchEvent(new PointerEvent('pointerdown', opts));
@@ -1028,69 +1094,94 @@ function startControlServer() {
             el.dispatchEvent(new PointerEvent('pointerup', opts));
             el.dispatchEvent(new MouseEvent('mouseup', opts));
             el.dispatchEvent(new MouseEvent('click', opts));
-            // Also fire .click() as backup for simple onclick handlers
             el.click();
             return { x: Math.round(x), y: Math.round(y) };
           }
 
-          // Strategy 1: Direct CSS selector
+          // Helper: check if element is inside a shadow root
+          function inShadow(el) {
+            try { return el.getRootNode() !== document; } catch(e) { return false; }
+          }
+
+          // ── Strategy 1: CSS selector (light DOM, then shadow DOM) ──
           try {
             var el = document.querySelector(target);
+            if (!el) el = deepQuery(target);
             if (el && isVisible(el)) {
               var coords = realClick(el);
-              return { found: true, strategy: 'css', detail: el.tagName + ':' + (el.textContent || '').trim().slice(0, 50), coords: coords };
+              return { found: true, strategy: inShadow(el) ? 'css_shadow' : 'css', detail: el.tagName + ':' + (el.textContent || '').trim().slice(0, 50), coords: coords };
             }
           } catch(e) { /* selector might not be valid CSS, continue */ }
 
-          // Strategy 2: role="button" / role="tab" / role="link" / role="menuitem" with matching text
-          var roleEls = document.querySelectorAll('[role="button"], [role="tab"], [role="link"], [role="menuitem"]');
+          // ── Strategy 2: role-based text match (light + shadow DOM) ──
+          var roleEls = deepQueryAll('[role="button"], [role="tab"], [role="link"], [role="menuitem"]');
           for (var i = 0; i < roleEls.length; i++) {
             var btnText = (roleEls[i].textContent || '').trim();
             var btnInner = (roleEls[i].innerText || '').trim();
             if ((btnText === target || btnInner === target) && isVisible(roleEls[i])) {
               var coords = realClick(roleEls[i]);
-              return { found: true, strategy: 'role_text', detail: btnText.slice(0, 50), coords: coords };
+              return { found: true, strategy: inShadow(roleEls[i]) ? 'role_text_shadow' : 'role_text', detail: btnText.slice(0, 50), coords: coords };
             }
           }
 
-          // Strategy 3: aria-label match (case-insensitive)
-          var ariaEls = document.querySelectorAll('[aria-label]');
+          // ── Strategy 3: aria-label match (light + shadow DOM) ──
+          var ariaEls = deepQueryAll('[aria-label]');
           for (var j = 0; j < ariaEls.length; j++) {
-            if (ariaEls[j].getAttribute('aria-label').toLowerCase() === target.toLowerCase() && isVisible(ariaEls[j])) {
+            var ariaVal = ariaEls[j].getAttribute('aria-label') || '';
+            if (ariaVal.toLowerCase() === target.toLowerCase() && isVisible(ariaEls[j])) {
               var coords = realClick(ariaEls[j]);
-              return { found: true, strategy: 'aria', detail: ariaEls[j].getAttribute('aria-label'), coords: coords };
+              return { found: true, strategy: inShadow(ariaEls[j]) ? 'aria_shadow' : 'aria', detail: ariaVal, coords: coords };
             }
           }
 
-          // Strategy 4: data-testid (Twitter/X uses these)
+          // ── Strategy 4: data-testid (Twitter/X) ──
           var testIdMap = {
             'Post': '[data-testid="tweetButton"], [data-testid="tweetButtonInline"]',
             'Reply': '[data-testid="tweetReplyButton"]',
             'Tweet': '[data-testid="tweetButton"]'
           };
           if (testIdMap[target]) {
-            el = document.querySelector(testIdMap[target]);
-            if (el && isVisible(el)) {
-              var coords = realClick(el);
-              return { found: true, strategy: 'testid', detail: target, coords: coords };
+            var selectors = testIdMap[target].split(', ');
+            for (var t = 0; t < selectors.length; t++) {
+              el = deepQuery(selectors[t]);
+              if (el && isVisible(el)) {
+                var coords = realClick(el);
+                return { found: true, strategy: 'testid', detail: target, coords: coords };
+              }
             }
           }
 
-          // Strategy 5: Button/submit/anchor with matching text
-          var allBtns = document.querySelectorAll('button, [type="submit"], a');
+          // ── Strategy 5: Button/submit/anchor text match (light + shadow DOM) ──
+          var allBtns = deepQueryAll('button, [type="submit"], a');
           for (var k = 0; k < allBtns.length; k++) {
             if ((allBtns[k].textContent || '').trim() === target && isVisible(allBtns[k])) {
               var coords = realClick(allBtns[k]);
-              return { found: true, strategy: 'button_text', detail: allBtns[k].tagName + ':' + target, coords: coords };
+              return { found: true, strategy: inShadow(allBtns[k]) ? 'button_text_shadow' : 'button_text', detail: allBtns[k].tagName + ':' + target, coords: coords };
             }
           }
 
-          // Strategy 6: Deepest text node walk — find exact text, walk up to clickable ancestor
+          // ── Strategy 6: Deep text search with shadow DOM piercing ──
+          var textMatches = deepFindByText(target);
+          if (textMatches.length > 0) {
+            // Sort: prefer interactive elements (a, button, role=tab), then shortest text
+            textMatches.sort(function(a, b) {
+              var interactiveTags = ['A','BUTTON','TP-YT-PAPER-TAB','TP-YT-PAPER-ITEM','YTCP-BUTTON'];
+              var aInt = interactiveTags.indexOf(a.tagName) >= 0 || a.getAttribute && a.getAttribute('role');
+              var bInt = interactiveTags.indexOf(b.tagName) >= 0 || b.getAttribute && b.getAttribute('role');
+              if (aInt && !bInt) return -1;
+              if (bInt && !aInt) return 1;
+              return (a.textContent || '').length - (b.textContent || '').length;
+            });
+            var best = textMatches[0];
+            var coords = realClick(best);
+            return { found: true, strategy: inShadow(best) ? 'deep_text_shadow' : 'deep_text', detail: best.tagName + ':' + (best.textContent || '').trim().slice(0, 50), coords: coords, candidatesFound: textMatches.length };
+          }
+
+          // ── Strategy 7: Text node walk (light DOM) ──
           var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
           while (walker.nextNode()) {
             if ((walker.currentNode.textContent || '').trim() === target) {
               var clickTarget = walker.currentNode.parentElement;
-              // Walk up to find an interactive ancestor
               while (clickTarget && clickTarget !== document.body) {
                 if (clickTarget.onclick || clickTarget.tagName === 'BUTTON' ||
                     clickTarget.tagName === 'A' ||
@@ -1112,14 +1203,14 @@ function startControlServer() {
             }
           }
 
-          // Strategy 7: Partial text match on interactive elements (fallback)
+          // ── Strategy 8: Partial text match on interactive elements (light + shadow DOM) ──
           var searchLower = target.toLowerCase();
-          var partialCandidates = document.querySelectorAll('button, [role="button"], [role="tab"], [role="link"], a, input[type="submit"], [tabindex]');
+          var partialCandidates = deepQueryAll('button, [role="button"], [role="tab"], [role="link"], a, input[type="submit"], [tabindex], tp-yt-paper-tab, tp-yt-paper-item, ytcp-button');
           for (var m = 0; m < partialCandidates.length; m++) {
             var pText = (partialCandidates[m].textContent || '').trim();
             if (pText.toLowerCase().includes(searchLower) && isVisible(partialCandidates[m])) {
               var coords = realClick(partialCandidates[m]);
-              return { found: true, strategy: 'partial_text', detail: pText.slice(0, 50), coords: coords };
+              return { found: true, strategy: inShadow(partialCandidates[m]) ? 'partial_text_shadow' : 'partial_text', detail: pText.slice(0, 50), coords: coords };
             }
           }
 
@@ -1128,7 +1219,7 @@ function startControlServer() {
       `)
 
       if (!result.found) {
-        res.status(404).json({ success: false, error: `Element not found: ${target}`, strategies_tried: 7 })
+        res.status(404).json({ success: false, error: `Element not found (searched light DOM + shadow DOM): ${target}`, strategies_tried: 8 })
         return
       }
 
