@@ -209,19 +209,19 @@ class AgenticOrchestrator {
                                 context.desktopTabId = parseInt(match[1], 10);
                             }
                         }
-                        // Tiered verification — screenshot only when it matters (cost optimization)
-                        const LOW_STAKES = ['scroll', 'wait', 'hover', 'list_tabs', 'switch_tab', 'press_key'];
-                        const MEDIUM_STAKES = ['type_text', 'select_option', 'extract_text'];
-                        const HIGH_STAKES = ['click', 'navigate', 'create_tab', 'upload_file'];
+                        // Tiered verification — screenshot + auto-context (ACT → VERIFY → DECIDE)
+                        const LOW_STAKES = ['scroll', 'wait', 'list_tabs', 'switch_tab'];
+                        const MEDIUM_STAKES = ['type_text', 'select_option', 'extract_text', 'hover', 'press_key'];
+                        const HIGH_STAKES = ['click', 'navigate', 'create_tab', 'upload_file', 'hover_and_click'];
                         let verificationBase64 = null;
                         let verificationText = '';
                         const isDesktop = context.useDesktop && context.desktopTabId !== null;
                         const isLow = LOW_STAKES.includes(toolName);
                         const isMedium = MEDIUM_STAKES.includes(toolName);
                         const isHigh = HIGH_STAKES.includes(toolName);
-                        // HIGH_STAKES: always screenshot on success
-                        // MEDIUM_STAKES: screenshot only on failure (so AI can see what went wrong)
-                        // LOW_STAKES: never screenshot
+                        // HIGH_STAKES: always screenshot + page context on success
+                        // MEDIUM_STAKES: page context on success, screenshot on failure
+                        // LOW_STAKES: no verification
                         const needsScreenshot = isDesktop && ((isHigh && result.success) || ((isHigh || isMedium) && !result.success));
                         if (needsScreenshot) {
                             try {
@@ -245,16 +245,16 @@ class AgenticOrchestrator {
                             catch {
                                 // Non-fatal — fall back to text-only verification
                             }
-                            // Page context only for high-stakes actions (not medium failures)
-                            if (isHigh) {
-                                try {
-                                    const pageCtx = await this.toolExecutor('get_page_context', {}, context);
-                                    if (pageCtx.success) {
-                                        verificationText = pageCtx.result;
-                                    }
+                        }
+                        // Auto-capture page context for ALL state-changing tools on success (not just HIGH)
+                        if (isDesktop && result.success && (isHigh || isMedium)) {
+                            try {
+                                const pageCtx = await this.toolExecutor('get_page_context', {}, context);
+                                if (pageCtx.success) {
+                                    verificationText = pageCtx.result;
                                 }
-                                catch { /* non-fatal */ }
                             }
+                            catch { /* non-fatal */ }
                         }
                         // Notify client of tool result
                         if (!writer.isClosed()) {
@@ -305,11 +305,11 @@ class AgenticOrchestrator {
                             });
                         }
                         else {
-                            // MEDIUM_STAKES success — text only
+                            // MEDIUM_STAKES success — text + auto-context
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
-                                content: result.result,
+                                content: `${result.result}${verificationText ? `\n\n[AUTO-CONTEXT]\n${verificationText}` : ''}`,
                             });
                         }
                     }
