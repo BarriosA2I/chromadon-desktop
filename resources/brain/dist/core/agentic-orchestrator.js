@@ -40,7 +40,7 @@ class AgenticOrchestrator {
     additionalToolNames;
     getSkillsForPrompt;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt) {
-        this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 1 });
+        this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 2 });
         this.toolExecutor = toolExecutor;
         this.config = { ...DEFAULT_CONFIG, ...config };
         this.additionalTools = additionalTools || [];
@@ -399,6 +399,7 @@ class AgenticOrchestrator {
                     }
                 }
                 // User-friendly error messages (raw error preserved in console.error above)
+                console.error(`[CHROMADON Orchestrator] Raw error for classification — status: ${error?.status}, message: ${errorMsg}`);
                 let userMsg;
                 if (error?.status === 401) {
                     userMsg = 'Authentication failed. Please check your API key in settings.';
@@ -409,9 +410,9 @@ class AgenticOrchestrator {
                 else if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('ETIMEDOUT')) {
                     userMsg = 'The AI service timed out. Please try again.';
                 }
-                else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network') || errorMsg.includes('fetch failed') ||
-                    errorMsg.includes('Connection error') || errorMsg.includes('ENOTFOUND') || errorMsg.includes('ECONNRESET') ||
-                    errorMsg.includes('socket hang up') || errorMsg.includes('EHOSTUNREACH')) {
+                else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network error') || errorMsg.includes('NetworkError') ||
+                    errorMsg.includes('fetch failed') || errorMsg.includes('Connection error') || errorMsg.includes('ENOTFOUND') ||
+                    errorMsg.includes('ECONNRESET') || errorMsg.includes('socket hang up') || errorMsg.includes('EHOSTUNREACH')) {
                     userMsg = 'Cannot reach the AI service. Please check your internet connection.';
                 }
                 else {

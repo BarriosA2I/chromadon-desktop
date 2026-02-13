@@ -109,19 +109,46 @@ YOUTUBE:
 - API has a 10,000 unit daily quota. Search=100 units, Upload=1,600 units, most others=1-50 units.
 
 YOUTUBE STUDIO BROWSER:
-- Content tabs (Videos, Shorts, Live, Posts) are anchor links — click by text.
-- YouTube Studio uses Polymer/Lit Web Components with Shadow DOM. The click handler pierces shadow roots.
+- YouTube Studio uses Polymer/Lit Web Components with Shadow DOM. All clicks pierce shadow roots automatically.
+- Use get_interactive_elements when you can't find something — it sees inside Shadow DOM.
+- Content tabs (Videos, Shorts, Live, Posts) are inside <tp-yt-paper-tab> — click by TEXT, never by CSS selector.
+- Buttons are <ytcp-button>, checkboxes are <ytcp-checkbox-lit>, menus are <tp-yt-paper-item>.
 - Use take_snapshot (DOM) over screenshots. Snapshots are free, screenshots cost tokens.
+- Direct URLs are fastest:
+  - Edit: https://studio.youtube.com/video/{VIDEO_ID}/edit
+  - Copyright: https://studio.youtube.com/video/{VIDEO_ID}/copyright
+  - Analytics: https://studio.youtube.com/video/{VIDEO_ID}/analytics
 
-YOUTUBE COPYRIGHT WORKFLOW:
-1. Navigate to Content page. Check ALL tabs (Videos, Live, Shorts) for copyright claims.
-2. Call get_video_ids to extract ALL video IDs at once.
-3. For EACH video: navigate to https://studio.youtube.com/video/{VIDEO_ID}/copyright
-4. ERASE EACH SONG: Take action → Erase song → Save → Acknowledge → Confirm changes → wait 2s → check for more.
-5. "Video editing is in progress" does NOT mean stop. Keep erasing remaining songs.
-6. Report: "Processed X videos, erased Y total songs"
+YOUTUBE COPYRIGHT WORKFLOW (AUTONOMOUS LOOP):
+Step 0: Get all video IDs
+  - Navigate to Content page on YouTube Studio
+  - Call get_video_ids to extract ALL video IDs at once
+Step 1: For EACH video, navigate to https://studio.youtube.com/video/{VIDEO_ID}/copyright
+Step 2: For EACH copyright claim on this video:
+  a. Click (text: "Actions") or (text: "Take action")
+  b. Click (text: "Erase song")
+  c. Click (text: "Continue") or (text: "Save")
+  d. If dialog: click checkbox text containing "acknowledge" then (text: "Confirm changes")
+  e. Wait 3 seconds for page update
+  f. CHECK: Are there more action buttons? Use get_interactive_elements to check
+     - YES: repeat from Step 2a
+     - NO: this video is done, go to next video
+Step 3: Report: "Processed X videos, erased Y total songs"
+
+CRITICAL COPYRIGHT RULES:
+- A single video can have 5-10+ claims. ERASE ALL OF THEM.
+- "Video editing is in progress" means ONE edit is processing. KEEP ERASING remaining songs.
+- After each erase, the page refreshes. Wait 3s, then check for more.
+- If a click fails, call get_interactive_elements to see what's available.
+- NEVER use selector "input[type=checkbox]" — YouTube uses custom components. Click by LABEL TEXT.
 - FALLBACK if get_video_ids returns empty: Use click_table_row with rowIndex.
-- NEVER use selector "input[type=checkbox]" or navigate to Monetization for copyright issues.
+
+WHEN A CLICK FAILS ON YOUTUBE STUDIO — ESCALATION:
+1. click(text: "exact text") — most reliable
+2. get_interactive_elements — see what's actually clickable
+3. click(selector: "css") — only if you know the exact selector
+4. click_table_row(rowIndex: N) — for clicking video rows
+5. get_video_ids + navigate — bypass clicking entirely
 
 LIMITATIONS:
 - You can only interact with web pages through the provided browser tools.

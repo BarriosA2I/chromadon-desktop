@@ -26,12 +26,12 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'click',
-        description: 'Click on an element on the page. Provide either a CSS selector or visible text to identify the element. The element will be scrolled into view before clicking.',
+        description: 'Click on an element. You MUST provide at least one of: selector or text. Without either, the call will fail.',
         input_schema: {
             type: 'object',
             properties: {
-                selector: { type: 'string', description: 'CSS selector for the element to click (e.g. #btn, .submit, button[type="submit"])' },
-                text: { type: 'string', description: 'Visible text of the element to click (alternative to selector, for links and buttons)' },
+                selector: { type: 'string', description: 'CSS selector (e.g. #btn, [data-testid="submit"]). Preferred when available.' },
+                text: { type: 'string', description: 'Visible text to click (e.g. "Submit", "Log in"). Use when no good selector exists.' },
             },
         },
     },
@@ -209,6 +209,14 @@ exports.BROWSER_TOOLS = [
             required: ['rowIndex'],
         },
     },
+    {
+        name: 'get_interactive_elements',
+        description: 'List all clickable/interactive elements on the current page INCLUDING inside Shadow DOM. Returns text, tag, role, and position of every button, link, tab, checkbox visible on screen. Use this to see what you CAN click before attempting clicks. Essential for YouTube Studio and Polymer/Shadow DOM sites.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+        },
+    },
 ];
 // ============================================================================
 // DESKTOP HELPER FUNCTIONS
@@ -256,6 +264,31 @@ async function desktopHoverAndClick(tabId, hoverSelector, hoverText, clickText, 
     if (!data.success)
         throw new Error(data.error || 'Hover and click failed');
     return data.result;
+}
+async function desktopGetInteractiveElements(tabId, desktopUrl) {
+    const response = await fetch(`${desktopUrl}/tabs/get-interactive-elements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tabId }),
+    });
+    const data = await response.json();
+    if (!data.success)
+        throw new Error(data.error || 'Failed to get interactive elements');
+    if (data.count === 0)
+        return 'No interactive elements found on this page.';
+    const lines = data.elements.map((e, i) => {
+        const parts = [`${i + 1}. "${e.text}"`];
+        if (e.tag)
+            parts.push(`<${e.tag}>`);
+        if (e.role)
+            parts.push(`role="${e.role}"`);
+        if (e.ariaLabel)
+            parts.push(`aria-label="${e.ariaLabel}"`);
+        if (e.href)
+            parts.push(`href="${e.href}"`);
+        return parts.join(' ');
+    });
+    return `Found ${data.count} interactive elements:\n${lines.join('\n')}`;
 }
 async function desktopGetVideoIds(tabId, desktopUrl) {
     const response = await fetch(`${desktopUrl}/tabs/get-video-ids`, {
@@ -735,6 +768,10 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
         case 'click_table_row': {
             const rowIndex = input.rowIndex || 0;
             const result = await desktopClickTableRow(tabId, rowIndex, desktopUrl);
+            return { success: true, result };
+        }
+        case 'get_interactive_elements': {
+            const result = await desktopGetInteractiveElements(tabId, desktopUrl);
             return { success: true, result };
         }
         default:

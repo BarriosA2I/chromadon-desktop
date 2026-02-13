@@ -252,6 +252,31 @@
             { "order": 1, "action": "hover_and_click", "params": { "hoverText": "Copyright", "clickText": "See details", "waitMs": 800 }, "waitAfter": 3000, "note": "Hovers over Copyright in Restrictions column, waits for tooltip, clicks See details" }
           ],
           "rules": ["ALWAYS use hover_and_click — NEVER try separate hover + click", "If this fails, use direct URL navigation to /video/{VIDEO_ID}/copyright instead"]
+        },
+        "erase_copyright": {
+          "description": "Erase all copyright-claimed songs from a video using the copyright page",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://studio.youtube.com/video/{VIDEO_ID}/copyright" }, "waitAfter": 3000, "note": "Navigate directly to the copyright page for this video" },
+            { "order": 2, "action": "get_interactive_elements", "waitAfter": 0, "note": "Scan for action buttons on copyright claims" },
+            { "order": 3, "action": "click", "selectors": ["text:Actions", "text:Take action"], "waitAfter": 2000, "note": "Click the Actions or Take action button for the first claim" },
+            { "order": 4, "action": "click", "selectors": ["text:Erase song"], "waitAfter": 2000, "note": "Select Erase song option" },
+            { "order": 5, "action": "click", "selectors": ["text:Continue", "text:Save"], "waitAfter": 2000, "note": "Confirm the erase action" },
+            { "order": 6, "action": "click", "selectors": ["text:acknowledge"], "waitAfter": 1000, "note": "Check the acknowledgment checkbox if dialog appears (click label text)" },
+            { "order": 7, "action": "click", "selectors": ["text:Confirm changes"], "waitAfter": 3000, "note": "Final confirm if acknowledgment dialog was shown" },
+            { "order": 8, "action": "get_interactive_elements", "waitAfter": 0, "note": "Check for more claims — if Actions/Take action buttons exist, repeat from step 3" }
+          ],
+          "rules": [
+            "A single video can have 5-10+ copyright claims. ERASE ALL OF THEM by repeating steps 3-8.",
+            "After each erase, the page refreshes. Wait 3s then check for more claims.",
+            "'Video editing is in progress' means ONE edit is processing. Keep erasing remaining songs.",
+            "NEVER use input[type=checkbox] — YouTube uses custom components. Click by LABEL TEXT containing 'acknowledge'.",
+            "If a click fails, call get_interactive_elements to see what's available.",
+            "If get_interactive_elements shows no more action buttons, this video is done."
+          ]
         }
       },
       "siteRules": ["YouTube Studio uses Polymer/Lit Web Components with Shadow DOM", "Many elements are inside shadow roots — click handler pierces them automatically", "For copyright workflows, prefer direct URL navigation over hover tooltips"],
