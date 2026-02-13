@@ -7,12 +7,16 @@
 
 ---
 
-## Recent Changes (v1.13.0 — 2026-02-13)
+## Recent Changes (v1.13.1 — 2026-02-13)
 
 | Change | File |
 |--------|------|
-| Fixed: `/tabs/scroll/:id` uses `behavior: 'instant'` + verifies scrollTop changed; keyboard fallback triggers when JS scroll fails | `electron/main.ts` |
-| Fixed: Interview panel scroll (added `h-0` to chat container + `flex-shrink-0` to input bar) | `src/components/interview/InterviewChat.tsx`, `InterviewScreen.tsx` |
+| Fixed: Deprecated `claude-3-5-haiku-latest` → `claude-haiku-4-5-20251001` across all agent tiers | Brain: `interview-engine.ts`, `tier0/1/4`, `vision-client.ts` |
+| Fixed: JSON parse crash from control characters in AI responses | Brain: `ai-engine-v3.ts` |
+| Fixed: RAG/RAG-powered terminology banned from ALL responses (was only social posts) | Brain: `orchestrator-system-prompt.ts` |
+| Added: YouTube test suite (12 prompts, 3 phases: API tools, Studio nav, content) | Brain: `test-youtube.mjs` |
+| Fixed: `/tabs/scroll/:id` uses `behavior: 'instant'` + verifies scrollTop; keyboard fallback | `electron/main.ts` |
+| Fixed: Interview panel scroll (`h-0` + `flex-shrink-0`) | `src/components/interview/InterviewChat.tsx`, `InterviewScreen.tsx` |
 
 ---
 
@@ -246,5 +250,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.13.0 (Phase 2 Quality Overhaul + Scroll Fix)
+**Version:** 1.13.1 (Bug fixes + YouTube test suite)
 **Author:** Barrios A2I (Gary Barrios)
