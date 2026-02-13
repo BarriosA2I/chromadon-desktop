@@ -15,7 +15,7 @@ exports.createToolExecutor = exports.BROWSER_TOOLS = void 0;
 exports.BROWSER_TOOLS = [
     {
         name: 'navigate',
-        description: 'Navigate the browser to a URL. Use this to go to websites. The page will load and you can then interact with it.',
+        description: 'Navigate to a URL.',
         input_schema: {
             type: 'object',
             properties: {
@@ -26,7 +26,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'click',
-        description: 'Click on an element. You MUST provide at least one of: selector or text. Without either, the call will fail.',
+        description: 'Click an element by CSS selector or visible text. Pierces Shadow DOM.',
         input_schema: {
             type: 'object',
             properties: {
@@ -37,7 +37,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'type_text',
-        description: 'Type text into an input field, textarea, or contenteditable element. The field will be focused and existing text cleared by default before typing.',
+        description: 'Type text into an input/textarea. Clears existing text by default.',
         input_schema: {
             type: 'object',
             properties: {
@@ -50,7 +50,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'scroll',
-        description: 'Scroll the page in a direction. Use to reveal more content or navigate long pages.',
+        description: 'Scroll the page or a scrollable container.',
         input_schema: {
             type: 'object',
             properties: {
@@ -63,7 +63,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'press_key',
-        description: 'Press a keyboard key. Use for Enter to submit forms, Tab to move between fields, Escape to close dialogs, arrow keys for navigation.',
+        description: 'Press a keyboard key (Enter, Tab, Escape, Backspace, arrow keys, etc.).',
         input_schema: {
             type: 'object',
             properties: {
@@ -74,7 +74,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'wait',
-        description: 'Wait for a specified number of seconds. Use after navigation or actions that trigger page updates.',
+        description: 'Wait for a specified number of seconds.',
         input_schema: {
             type: 'object',
             properties: {
@@ -85,7 +85,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'take_screenshot',
-        description: 'Take a screenshot of the current page. Returns a text description of what is visible. Use to verify actions or understand the page state.',
+        description: 'Screenshot the current page. Returns an image of what is visible.',
         input_schema: {
             type: 'object',
             properties: {
@@ -95,7 +95,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'extract_text',
-        description: 'Extract text content from the page or a specific element. Use to read page content, verify actions, or gather information.',
+        description: 'Extract text from the page or a specific element.',
         input_schema: {
             type: 'object',
             properties: {
@@ -105,7 +105,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'select_option',
-        description: 'Select an option from a dropdown/select element by its value or visible text.',
+        description: 'Select a dropdown option by value or visible text.',
         input_schema: {
             type: 'object',
             properties: {
@@ -117,7 +117,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'hover',
-        description: 'Hover the mouse over an element using real mouse events. Triggers tooltips, dropdowns, and hover effects. Searches Shadow DOM.',
+        description: 'Hover over an element. Triggers tooltips, dropdowns, hover effects. Pierces Shadow DOM.',
         input_schema: {
             type: 'object',
             properties: {
@@ -128,7 +128,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'hover_and_click',
-        description: 'Hover over an element, wait for a tooltip/popup to appear, then click a button inside the tooltip. Single atomic action — prevents rate limiting from multiple round trips. Use for YouTube Studio copyright "See details", dropdown menus, and any hover-triggered UI.',
+        description: 'Hover then click inside the tooltip/popup. Atomic action for dropdown menus.',
         input_schema: {
             type: 'object',
             properties: {
@@ -142,7 +142,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'get_page_context',
-        description: 'Get the current page URL, title, and a list of interactive elements (links, buttons, inputs, etc.). Always use this before interacting with a page you haven\'t seen yet.',
+        description: 'Get page URL, title, and interactive elements.',
         input_schema: {
             type: 'object',
             properties: {},
@@ -150,7 +150,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'list_tabs',
-        description: 'List all open browser tabs with their URLs, titles, and which one is active.',
+        description: 'List all open browser tabs.',
         input_schema: {
             type: 'object',
             properties: {},
@@ -158,7 +158,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'switch_tab',
-        description: 'Switch to a different browser tab by its ID number.',
+        description: 'Switch to a different browser tab by ID.',
         input_schema: {
             type: 'object',
             properties: {
@@ -169,7 +169,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'create_tab',
-        description: 'Open a new browser tab. If a URL is provided, navigates to it. Social media URLs (Twitter, LinkedIn, Google) will use authenticated sessions if available.',
+        description: 'Open a new browser tab, optionally navigating to a URL. Uses authenticated sessions.',
         input_schema: {
             type: 'object',
             properties: {
@@ -179,7 +179,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'upload_file',
-        description: 'Upload a file (image, video, document) to a file input on the page. Use this for attaching media to social media posts, uploading profile pictures, or any file upload. First click the upload/media button to reveal the file input, then call this tool.',
+        description: 'Upload a file to a file input. Provide absolute filePath.',
         input_schema: {
             type: 'object',
             properties: {
@@ -191,7 +191,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'get_video_ids',
-        description: 'Extract all video IDs from a YouTube Studio content page. Returns array of video IDs for direct URL navigation to /video/{id}/copyright or /video/{id}/edit. Use this instead of clicking individual video titles.',
+        description: 'Extract all video IDs from YouTube Studio content page for direct URL navigation.',
         input_schema: {
             type: 'object',
             properties: {},
@@ -200,7 +200,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'click_table_row',
-        description: 'Click the Nth visible video row in a YouTube Studio content list. rowIndex is 0-based. Use this when clicking by text fails on table/list rows.',
+        description: 'Click the Nth video row in YouTube Studio. 0-based index. Use when text click fails.',
         input_schema: {
             type: 'object',
             properties: {
@@ -211,7 +211,7 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'get_interactive_elements',
-        description: 'List all clickable/interactive elements on the current page INCLUDING inside Shadow DOM. Returns text, tag, role, and position of every button, link, tab, checkbox visible on screen. Use this to see what you CAN click before attempting clicks. Essential for YouTube Studio and Polymer/Shadow DOM sites.',
+        description: 'List all clickable elements INCLUDING Shadow DOM. Use when a click fails.',
         input_schema: {
             type: 'object',
             properties: {},

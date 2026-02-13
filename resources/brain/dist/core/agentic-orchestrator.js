@@ -26,7 +26,7 @@ const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 2048,
     maxLoops: 50,
-    maxSessionMessages: 20,
+    maxSessionMessages: 15,
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
 };
 class AgenticOrchestrator {
@@ -362,11 +362,11 @@ class AgenticOrchestrator {
                 if (error?.status === 429) {
                     const retryAfterHeader = error?.headers?.get?.('retry-after') || error?.headers?.['retry-after'];
                     const retryAfterMs = retryAfterHeader
-                        ? parseInt(String(retryAfterHeader), 10) * 1000
+                        ? Math.min(parseInt(String(retryAfterHeader), 10) * 1000, 30000)
                         : Math.min(1000 * Math.pow(2, loopCount), 30000);
                     console.warn(`[CHROMADON Orchestrator] Rate limited (429) — waiting ${retryAfterMs}ms before retry`);
                     if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: `\n\nRate limited. Retrying in ${Math.ceil(retryAfterMs / 1000)}s...\n` });
+                        writer.writeEvent('text_delta', { text: `\n\nBrief pause... resuming in ${Math.ceil(retryAfterMs / 1000)}s.\n` });
                     }
                     await new Promise(resolve => setTimeout(resolve, retryAfterMs));
                     continue;
