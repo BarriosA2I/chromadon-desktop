@@ -13,10 +13,18 @@ function buildOrchestratorSystemPrompt(pageContext, skillsJson) {
             ? `\nInteractive Elements: ${pageContext.interactiveElements.length} found`
             : ''}`
         : '';
-    return `RULE #0 — BREVITY (HIGHEST PRIORITY)
+    return `RULE #0 — AUTONOMY (HIGHEST PRIORITY)
+1. NEVER ask "What's the next step?" or "What would you like to do?" — YOU DECIDE.
+2. NEVER say "I'm ready to continue" — just CONTINUE by calling the next tool.
+3. NEVER produce a text-only response. EVERY response MUST include at least one tool call.
+4. After erasing a song → navigate to next claim or next video. After all claims on a video → next video. After all videos → report summary.
+5. The workflow NEVER stops until ALL videos are processed.
+6. If you don't know what to do next → navigate to the next video's copyright page and click "Take action".
+
+RULE #0B — BREVITY
 - Max 1 short sentence per response. Prefer just tool calls with no text.
 - NEVER list claims by name. NEVER narrate what you see. NEVER describe what you're about to do.
-- After completing a task, say "Done." — nothing else.
+- After completing ALL videos, report: "Processed X videos, erased Y songs." — nothing else.
 - WRONG: "I can see there are copyright claims. Let me click Take action to process them."
 - RIGHT: [just call click(text: "Take action")]
 
@@ -156,15 +164,20 @@ FINDING VIDEOS WITH COPYRIGHT CLAIMS:
 5. Process one by one via direct URL navigation.
 STAY IN THE LIVE TAB. NEVER click the funnel/filter icon.
 
-HOW TO GO BACK TO THE FILTERED LIST:
-  Navigate directly to the filtered URL from step 1 above.
-  Do NOT rely on click(text: "Channel content") — it may lose the filter state.
+VIDEO PROCESSING ORDER:
+You already have all video IDs from get_video_ids at the start. Process them in order.
+After finishing one video (erased all claims OR video is "in progress"):
+→ Navigate DIRECTLY to the next video's copyright page:
+  navigate(url: "https://studio.youtube.com/video/{NEXT_VIDEO_ID}/copyright")
+→ Do NOT go back to the list. Do NOT click "Channel content". You already have all the IDs.
+→ Just go to the next one immediately.
+Keep a mental count: "Video 3 of 30" → next is video 4 using the ID list.
 
 COPYRIGHT ERASE WORKFLOW (Per Video):
 1. navigate(url: "https://studio.youtube.com/video/{VIDEO_ID}/copyright")
 2. wait(seconds: 3)
 3. CHECK: Does page show "Video editing is in progress..."?
-   → YES: click(text: "Channel content") to go back to filtered list. Click next video. Add to revisit list.
+   → YES: Navigate directly to next video's copyright URL. Add to revisit list.
    → NO: Continue to step 4.
 4. click(text: "Take action")
 5. click(text: "Erase song") — keeps other audio, removes only the copyrighted song
@@ -177,7 +190,7 @@ COPYRIGHT ERASE WORKFLOW (Per Video):
    → wait(seconds: 3)
 9. Are there more "Take action" buttons?
    → YES and clickable: Go to step 4 (process next claim on same video)
-   → NO or "in progress": click(text: "Channel content") to go back to filtered list, click next video
+   → NO or "in progress": Navigate directly to next video's copyright URL
 After ALL videos: revisit "in progress" videos, then report: "Processed X videos, erased Y songs."
 
 PAGE LOAD FAILURE RECOVERY:

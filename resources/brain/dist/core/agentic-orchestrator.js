@@ -365,8 +365,40 @@ class AgenticOrchestrator {
                     // Continue the loop - Claude will process tool results
                     continue;
                 }
-                // 9. stop_reason is "end_turn" or "max_tokens" - we're done
+                // 9. stop_reason is "end_turn" or "max_tokens"
                 transientRetryCount = 0; // Reset on success
+                // Auto-continue logic — NEVER wait for user input mid-task
+                const responseText = finalMessage.content
+                    .filter((b) => b.type === 'text')
+                    .map((b) => b.text)
+                    .join('');
+                const hasToolCall = finalMessage.content.some((b) => b.type === 'tool_use');
+                // If the AI produced a tool call, the loop already `continue`d above via stop_reason === 'tool_use'.
+                // If we're here, it's a text-only end_turn or max_tokens.
+                // Final summary — truly done, stop the loop
+                if (/processed \d+ video|erased \d+ song|all.*done|all.*complete|finished processing/i.test(responseText)) {
+                    break;
+                }
+                // AI is asking what to do / saying it's ready — force continuation
+                const isAskingForInput = /what.*next|what.*do|ready to continue|shall I|would you like|what's the next step|how.*proceed|let me know/i.test(responseText);
+                if (isAskingForInput && !hasToolCall) {
+                    session.messages.push({
+                        role: 'user',
+                        content: 'Continue. Do not ask what to do next. Process the next video. Never stop until all videos are processed.',
+                    });
+                    continue;
+                }
+                // max_tokens truncation — AI ran out of space, keep going
+                if (stopReason === 'max_tokens') {
+                    session.messages.push({ role: 'user', content: 'Continue.' });
+                    continue;
+                }
+                // Default for end_turn with no tool call and no summary: auto-continue
+                // (catches edge cases like "Okay." or empty responses)
+                if (!hasToolCall && responseText.trim().length < 200) {
+                    session.messages.push({ role: 'user', content: 'Continue.' });
+                    continue;
+                }
                 break;
             }
             catch (error) {
