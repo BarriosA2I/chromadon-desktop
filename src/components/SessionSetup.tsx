@@ -80,6 +80,8 @@ export default function SessionSetup({
 }: SessionSetupProps) {
   const { platformSessions, setPlatformSessions } = useChromadonStore()
   const [verifyingPlatform, setVerifyingPlatform] = useState<Platform | null>(null)
+  const [verifyResult, setVerifyResult] = useState<Record<string, 'verified' | 'expired'>>({})
+
 
   // Load sessions on mount
   useEffect(() => {
@@ -99,8 +101,16 @@ export default function SessionSetup({
     setVerifyingPlatform(platform)
     try {
       const result = await window.electronAPI.sessionVerify(platform)
+      // Show verification result feedback
+      const status = result.isAuthenticated ? 'verified' : 'expired'
+      setVerifyResult(prev => ({ ...prev, [platform]: status }))
+      setTimeout(() => setVerifyResult(prev => {
+        const next = { ...prev }
+        delete next[platform]
+        return next
+      }), 3000)
+      // Refresh the full session list with verified data
       if (result.success) {
-        // Refresh the full session list with verified data
         const res = await window.electronAPI.sessionList()
         if (res.success && res.sessions) {
           setPlatformSessions(res.sessions)
@@ -108,6 +118,12 @@ export default function SessionSetup({
       }
     } catch (err) {
       console.error('Failed to verify platform:', err)
+      setVerifyResult(prev => ({ ...prev, [platform]: 'expired' }))
+      setTimeout(() => setVerifyResult(prev => {
+        const next = { ...prev }
+        delete next[platform]
+        return next
+      }), 3000)
     }
     setVerifyingPlatform(null)
   }
@@ -290,6 +306,7 @@ export default function SessionSetup({
                     const session = getSessionStatus(platform.id)
                     const isAuthenticated = session?.isAuthenticated ?? false
                     const isVerifying = verifyingPlatform === platform.id
+                    const vResult = verifyResult[platform.id]
 
                     return (
                       <motion.div
@@ -346,10 +363,14 @@ export default function SessionSetup({
                                     e.stopPropagation()
                                     verifyPlatform(platform.id)
                                   }}
-                                  className="text-xs text-chroma-muted hover:text-chroma-teal transition-colors"
-                                  disabled={isVerifying}
+                                  className={`text-xs transition-colors ${
+                                    vResult === 'verified' ? 'text-chroma-teal font-semibold' :
+                                    vResult === 'expired' ? 'text-red-400 font-semibold' :
+                                    'text-chroma-muted hover:text-chroma-teal'
+                                  }`}
+                                  disabled={isVerifying || !!vResult}
                                 >
-                                  {isVerifying ? 'Checking...' : 'Verify'}
+                                  {isVerifying ? 'Checking...' : vResult === 'verified' ? 'Verified ✓' : vResult === 'expired' ? 'Expired!' : 'Verify'}
                                 </button>
                                 <button
                                   onClick={(e) => {

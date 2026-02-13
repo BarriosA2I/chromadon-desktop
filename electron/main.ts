@@ -2637,8 +2637,54 @@ ipcMain.handle('session:get', (_event, platform: Platform) => {
 
 // Verify platform authentication
 ipcMain.handle('session:verify', async (_event, platform: Platform) => {
-  const isAuthenticated = await browserViewManager.verifyPlatformAuth(platform)
-  return { success: true, platform, isAuthenticated }
+  // First: quick cookie check
+  const hasCookies = await browserViewManager.verifyPlatformAuth(platform)
+  if (!hasCookies) {
+    return { success: true, platform, isAuthenticated: false }
+  }
+
+  // Second: real auth check — make a request using the platform's session
+  // and check if we get redirected to a login page
+  const authPlatform = platform === 'youtube' ? 'google' : platform
+  const partition = `persist:platform-${authPlatform}`
+  const ses = session.fromPartition(partition)
+
+  const verifyUrls: Record<string, { url: string; loginPatterns: string[] }> = {
+    google:    { url: 'https://myaccount.google.com/', loginPatterns: ['/signin', '/ServiceLogin', 'accounts.google.com/v3'] },
+    twitter:   { url: 'https://x.com/home', loginPatterns: ['/login', '/i/flow/login'] },
+    linkedin:  { url: 'https://www.linkedin.com/feed/', loginPatterns: ['/login', '/authwall', '/checkpoint'] },
+    facebook:  { url: 'https://www.facebook.com/me', loginPatterns: ['/login', 'checkpoint'] },
+    instagram: { url: 'https://www.instagram.com/accounts/edit/', loginPatterns: ['/accounts/login'] },
+    tiktok:    { url: 'https://www.tiktok.com/setting', loginPatterns: ['/login'] },
+  }
+
+  const check = verifyUrls[authPlatform]
+  if (!check) {
+    return { success: true, platform, isAuthenticated: hasCookies }
+  }
+
+  try {
+    const response = await ses.fetch(check.url, { redirect: 'follow' })
+    const finalUrl = response.url
+    const redirectedToLogin = check.loginPatterns.some(p => finalUrl.includes(p))
+    const isAuthenticated = !redirectedToLogin && response.ok
+    if (!isAuthenticated) {
+      browserViewManager.updatePlatformSession(platform, {
+        isAuthenticated: false,
+        lastVerified: Date.now(),
+      })
+    } else {
+      browserViewManager.updatePlatformSession(platform, {
+        isAuthenticated: true,
+        lastVerified: Date.now(),
+      })
+    }
+    return { success: true, platform, isAuthenticated }
+  } catch (err) {
+    console.error(`[Verify] ${platform} network check failed:`, err)
+    // Fall back to cookie check result
+    return { success: true, platform, isAuthenticated: hasCookies }
+  }
 })
 
 // Update platform session
