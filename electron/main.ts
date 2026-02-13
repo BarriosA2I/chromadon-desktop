@@ -180,6 +180,7 @@ function startBrainServer(apiKey?: string): void {
         ELECTRON_RUN_AS_NODE: '1',
         CHROMADON_PORT: '3001',
         CHROMADON_DESKTOP_URL: 'http://127.0.0.1:3002',
+        CHROMADON_DATA_DIR: app.getPath('userData'),
         PREFER_DESKTOP: 'true',
         NODE_ENV: 'production',
         ...(resolvedKey ? { ANTHROPIC_API_KEY: resolvedKey } : {}),

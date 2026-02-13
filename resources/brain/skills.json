@@ -1,0 +1,190 @@
+{
+  "version": "2.0",
+  "skills": {
+    "www.facebook.com": {
+      "domain": "www.facebook.com",
+      "siteName": "Facebook",
+      "tasks": {
+        "create_post_with_media": {
+          "description": "Create a Facebook post with text and image/video",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.facebook.com/" }, "waitAfter": 3000, "note": "Go to Facebook home feed" },
+            { "order": 2, "action": "click", "selectors": ["div[aria-label*='on your mind']", "div[role='button'] span:text('What')", "div[data-pagelet='FeedComposer'] div[role='button']"], "waitAfter": 2000, "note": "Open the Create Post dialog" },
+            { "order": 3, "action": "upload_file", "selectors": ["input[type='file'][accept*='image']"], "waitAfter": 3000, "note": "UPLOAD MEDIA FIRST - before typing text. React re-render will wipe any existing text." },
+            { "order": 4, "action": "wait", "params": { "seconds": 3 }, "note": "Wait for media upload to process and re-render to complete" },
+            { "order": 5, "action": "type_text", "selectors": ["div[contenteditable='true'][role='textbox']", "div[aria-label*='on your mind']", "div[data-contents='true']"], "note": "Type post text AFTER media upload", "waitAfter": 1000 },
+            { "order": 6, "action": "click", "selectors": ["div[aria-label='Post'][role='button']", "div[role='button'] span:text('Post')", "div[role='button'] span:text('Next')"], "waitAfter": 3000, "note": "Click Post (or Next then Post for multi-step flows)" }
+          ],
+          "rules": [
+            "ALWAYS upload media before typing text - React re-render erases text",
+            "Facebook uses div[role='button'], NOT <button> elements",
+            "If 'Next' appears instead of 'Post', click Next then look for Post"
+          ]
+        },
+        "create_post_text_only": {
+          "description": "Create a Facebook post with text only",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.facebook.com/" }, "waitAfter": 3000 },
+            { "order": 2, "action": "click", "selectors": ["div[aria-label*='on your mind']", "div[role='button'] span:text('What')"], "waitAfter": 2000 },
+            { "order": 3, "action": "type_text", "selectors": ["div[contenteditable='true'][role='textbox']"], "waitAfter": 1000 },
+            { "order": 4, "action": "click", "selectors": ["div[aria-label='Post'][role='button']", "div[role='button'] span:text('Post')"], "waitAfter": 3000 }
+          ],
+          "rules": []
+        }
+      },
+      "siteRules": [
+        "Facebook uses React - all contenteditable divs re-render on state changes",
+        "Buttons are div[role='button'], not <button>",
+        "Upload media before typing text to avoid re-render text wipe"
+      ],
+      "knownSelectors": {
+        "composer_trigger": ["div[aria-label*='on your mind']"],
+        "text_input": ["div[contenteditable='true'][role='textbox']"],
+        "post_button": ["div[aria-label='Post'][role='button']"],
+        "file_input": ["input[type='file'][accept*='image']"],
+        "next_button": ["div[role='button'] span:text('Next')"]
+      }
+    },
+    "x.com": {
+      "domain": "x.com",
+      "siteName": "Twitter/X",
+      "tasks": {
+        "create_post_with_media": {
+          "description": "Create a tweet with text and image",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://x.com/home" }, "waitAfter": 3000 },
+            { "order": 2, "action": "click", "selectors": ["div[data-testid='tweetTextarea_0']", "div[role='textbox']"], "waitAfter": 1000 },
+            { "order": 3, "action": "upload_file", "selectors": ["input[data-testid='fileInput']", "input[type='file']"], "waitAfter": 3000, "note": "Upload image FIRST" },
+            { "order": 4, "action": "wait", "params": { "seconds": 2 } },
+            { "order": 5, "action": "type_text", "selectors": ["div[data-testid='tweetTextarea_0']", "div[role='textbox']"], "waitAfter": 1000, "note": "Type AFTER upload" },
+            { "order": 6, "action": "click", "selectors": ["button[data-testid='tweetButton']", "button[data-testid='tweetButtonInline']"], "waitAfter": 3000 }
+          ],
+          "rules": ["Upload media before text - same React re-render issue as Facebook"]
+        }
+      },
+      "siteRules": ["Twitter/X uses data-testid attributes for most interactive elements"],
+      "knownSelectors": {
+        "composer": ["div[data-testid='tweetTextarea_0']"],
+        "post_button": ["button[data-testid='tweetButton']"],
+        "file_input": ["input[data-testid='fileInput']"]
+      }
+    },
+    "www.linkedin.com": {
+      "domain": "www.linkedin.com",
+      "siteName": "LinkedIn",
+      "tasks": {
+        "create_post_with_media": {
+          "description": "Create a LinkedIn post with text and image",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.linkedin.com/feed/" }, "waitAfter": 3000 },
+            { "order": 2, "action": "click", "selectors": ["button:has-text('Start a post')", "button[aria-label*='Start a post']"], "waitAfter": 2000 },
+            { "order": 3, "action": "upload_file", "selectors": ["input[type='file']"], "waitAfter": 3000, "note": "Upload media FIRST" },
+            { "order": 4, "action": "wait", "params": { "seconds": 3 } },
+            { "order": 5, "action": "type_text", "selectors": ["div[role='textbox'][contenteditable='true']", "div.ql-editor", "div[aria-label='Text editor for creating content']"], "waitAfter": 1000 },
+            { "order": 6, "action": "click", "selectors": ["button:has-text('Post')", "button.share-actions__primary-action"], "waitAfter": 3000 }
+          ],
+          "rules": ["Upload media before text - LinkedIn uses React with same re-render behavior"]
+        }
+      },
+      "siteRules": ["LinkedIn uses aria-labels and Quill editor (ql-editor class)"],
+      "knownSelectors": {}
+    },
+    "www.instagram.com": {
+      "domain": "www.instagram.com",
+      "siteName": "Instagram",
+      "tasks": {
+        "create_post_with_media": {
+          "description": "Create an Instagram post with image and caption",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.instagram.com/" }, "waitAfter": 3000 },
+            { "order": 2, "action": "click", "selectors": ["svg[aria-label='New post']", "a[href*='create']", "span:text('Create')"], "waitAfter": 2000 },
+            { "order": 3, "action": "upload_file", "selectors": ["input[type='file']"], "waitAfter": 3000 },
+            { "order": 4, "action": "click", "selectors": ["button:has-text('Next')", "div[role='button']:has-text('Next')"], "waitAfter": 2000, "note": "Click through crop screen" },
+            { "order": 5, "action": "click", "selectors": ["button:has-text('Next')", "div[role='button']:has-text('Next')"], "waitAfter": 2000, "note": "Click through filter screen" },
+            { "order": 6, "action": "type_text", "selectors": ["textarea[aria-label*='caption']", "div[aria-label*='caption']"], "waitAfter": 1000 },
+            { "order": 7, "action": "click", "selectors": ["button:has-text('Share')", "div[role='button']:has-text('Share')"], "waitAfter": 5000 }
+          ],
+          "rules": ["Instagram web flow naturally puts media first - follow the flow"]
+        }
+      },
+      "siteRules": [],
+      "knownSelectors": {}
+    },
+    "www.tiktok.com": {
+      "domain": "www.tiktok.com",
+      "siteName": "TikTok",
+      "tasks": {
+        "upload_video": {
+          "description": "Upload a video to TikTok with caption",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.tiktok.com/upload" }, "waitAfter": 3000 },
+            { "order": 2, "action": "upload_file", "selectors": ["input[type='file']"], "waitAfter": 10000 },
+            { "order": 3, "action": "wait", "params": { "seconds": 10 }, "note": "Video processing takes time" },
+            { "order": 4, "action": "type_text", "selectors": ["div[contenteditable='true']", "div.public-DraftEditor-content"], "waitAfter": 1000 },
+            { "order": 5, "action": "click", "selectors": ["button:has-text('Post')", "button[data-e2e='post-button']"], "waitAfter": 5000 }
+          ],
+          "rules": []
+        }
+      },
+      "siteRules": [],
+      "knownSelectors": {}
+    },
+    "studio.youtube.com": {
+      "domain": "studio.youtube.com",
+      "siteName": "YouTube Studio",
+      "tasks": {
+        "upload_video": {
+          "description": "Upload a video to YouTube",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://studio.youtube.com/" }, "waitAfter": 3000 },
+            { "order": 2, "action": "click", "selectors": ["button#create-icon", "button:has-text('CREATE')"], "waitAfter": 2000 },
+            { "order": 3, "action": "click", "selectors": ["tp-yt-paper-item:has-text('Upload videos')"], "waitAfter": 2000 },
+            { "order": 4, "action": "upload_file", "selectors": ["input[type='file']"], "waitAfter": 5000 },
+            { "order": 5, "action": "type_text", "target": "title", "selectors": ["textbox#title-textarea", "div#textbox"], "waitAfter": 1000 },
+            { "order": 6, "action": "type_text", "target": "description", "selectors": ["textbox#description-textarea"], "waitAfter": 1000 },
+            { "order": 7, "action": "click", "selectors": ["button:has-text('Next')"], "repeat": 3, "waitAfter": 2000 },
+            { "order": 8, "action": "click", "selectors": ["button:has-text('Publish')", "ytcp-button#done-button"], "waitAfter": 5000 }
+          ],
+          "rules": []
+        }
+      },
+      "siteRules": ["YouTube Studio uses Polymer/Lit components, not React"],
+      "knownSelectors": {}
+    }
+  },
+  "globalRules": [
+    "On ANY website: if the task involves media AND text, ALWAYS upload/attach media FIRST, then type text. Modern web frameworks re-render on media attachment and wipe previously typed text.",
+    "When a skill selector fails, try the next one in the array. If ALL fail, use get_page_context to discover the correct selector.",
+    "When you discover a new working selector, call skills_record_success to save it for next time.",
+    "Wait times are minimums - if the page is still loading, wait longer.",
+    "div[role='button'] is used by Facebook, Instagram, and other React apps instead of <button> elements."
+  ]
+}
