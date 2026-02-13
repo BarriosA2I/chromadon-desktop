@@ -12,7 +12,7 @@
           "successCount": 0,
           "failCount": 0,
           "steps": [
-            { "order": 1, "action": "navigate", "params": { "url": "https://www.facebook.com/" }, "waitAfter": 3000, "note": "Go to Facebook home feed" },
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.facebook.com/" }, "waitAfter": 3000, "note": "ALWAYS navigate to facebook.com (the NEWS FEED). NEVER navigate to profile.php or /pages/ URLs - those are Page profiles without a composer." },
             { "order": 2, "action": "click", "selectors": ["div[aria-label*='on your mind']", "div[role='button'] span:text('What')", "div[data-pagelet='FeedComposer'] div[role='button']"], "waitAfter": 2000, "note": "Open the Create Post dialog" },
             { "order": 3, "action": "upload_file", "selectors": ["input[type='file'][accept*='image']"], "waitAfter": 3000, "note": "UPLOAD MEDIA FIRST - before typing text. React re-render will wipe any existing text." },
             { "order": 4, "action": "wait", "params": { "seconds": 3 }, "note": "Wait for media upload to process and re-render to complete" },
@@ -26,31 +26,57 @@
           ]
         },
         "create_post_text_only": {
-          "description": "Create a Facebook post with text only",
+          "description": "Create a Facebook post with text only (from news feed, NOT a Page profile)",
           "learned": "2026-02-12T00:00:00Z",
           "lastUsed": null,
           "successCount": 0,
           "failCount": 0,
           "steps": [
-            { "order": 1, "action": "navigate", "params": { "url": "https://www.facebook.com/" }, "waitAfter": 3000 },
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.facebook.com/" }, "waitAfter": 3000, "note": "ALWAYS navigate to facebook.com (the NEWS FEED). NEVER to profile.php." },
             { "order": 2, "action": "click", "selectors": ["div[aria-label*='on your mind']", "div[role='button'] span:text('What')"], "waitAfter": 2000 },
             { "order": 3, "action": "type_text", "selectors": ["div[contenteditable='true'][role='textbox']"], "waitAfter": 1000 },
             { "order": 4, "action": "click", "selectors": ["div[aria-label='Post'][role='button']", "div[role='button'] span:text('Post')"], "waitAfter": 3000 }
           ],
           "rules": []
+        },
+        "post_as_page": {
+          "description": "Post content as a Facebook Business Page (requires switching into the page first)",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.facebook.com/" }, "waitAfter": 3000, "note": "Start at the news feed, NOT a page profile URL" },
+            { "order": 2, "action": "click", "selectors": ["div[aria-label='Your profile']", "svg[aria-label='Your profile']", "image[data-testid='royal_photo']"], "waitAfter": 1000, "note": "Open profile menu (top-right avatar)" },
+            { "order": 3, "action": "click", "selectors": ["div[role='menuitem'] span:text('See all profiles')", "a[href*='/profiles/switch']", "div[role='button'] span:text('Switch')"], "waitAfter": 2000, "note": "Click See all profiles to view available pages" },
+            { "order": 4, "action": "click", "selectors": ["div[role='menuitem'] span:text('Barrios')", "div[role='button'] span:text('Barrios A2I')"], "waitAfter": 3000, "note": "Select the page - Facebook reloads as the page" },
+            { "order": 5, "action": "click", "selectors": ["div[aria-label*='on your mind']", "div[role='button'] span:text('What')", "div[data-pagelet='FeedComposer'] div[role='button']"], "waitAfter": 2000, "note": "Open the composer - now posting AS the page" },
+            { "order": 6, "action": "type_text", "selectors": ["div[contenteditable='true'][role='textbox']", "div[data-lexical-editor='true']"], "waitAfter": 1000, "note": "Type post content" },
+            { "order": 7, "action": "click", "selectors": ["div[aria-label='Post'][role='button']", "div[role='button'] span:text('Post')"], "waitAfter": 3000, "note": "Click Post" }
+          ],
+          "rules": [
+            "Must switch into the Page BEFORE opening the composer",
+            "After switching, verify top-right avatar changed to the Page icon",
+            "For media posts, upload AFTER opening composer but BEFORE typing text"
+          ]
         }
       },
       "siteRules": [
         "Facebook uses React - all contenteditable divs re-render on state changes",
         "Buttons are div[role='button'], not <button>",
-        "Upload media before typing text to avoid re-render text wipe"
+        "Upload media before typing text to avoid re-render text wipe",
+        "ALWAYS navigate to facebook.com (news feed) to post. NEVER navigate to profile.php or /pages/ URLs.",
+        "The 'What's on your mind' composer ONLY exists on the news feed, NOT on Page profile views.",
+        "NEVER upload files unless a composer dialog is open (contenteditable area + Post button visible)."
       ],
       "knownSelectors": {
         "composer_trigger": ["div[aria-label*='on your mind']"],
         "text_input": ["div[contenteditable='true'][role='textbox']"],
         "post_button": ["div[aria-label='Post'][role='button']"],
         "file_input": ["input[type='file'][accept*='image']"],
-        "next_button": ["div[role='button'] span:text('Next')"]
+        "next_button": ["div[role='button'] span:text('Next')"],
+        "profile_menu": ["div[aria-label='Your profile']"],
+        "see_all_profiles": ["div[role='menuitem'] span:text('See all profiles')"]
       }
     },
     "x.com": {
