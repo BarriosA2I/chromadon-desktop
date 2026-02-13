@@ -1,6 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { InterviewMessage } from '../../store/clientContextTypes'
+
+const PHASE_LABELS: Record<string, { label: string; icon: string }> = {
+  greeting: { label: 'Welcome', icon: '👋' },
+  discovery: { label: 'Discovery', icon: '🔍' },
+  products: { label: 'Products', icon: '📦' },
+  audience: { label: 'Audience', icon: '👥' },
+  competitors: { label: 'Competitors', icon: '⚔️' },
+  voice_capture: { label: 'Brand Voice', icon: '🎙️' },
+  document_upload: { label: 'Documents', icon: '📄' },
+  strategy_mapping: { label: 'Strategy', icon: '🎯' },
+  complete: { label: 'Complete', icon: '✅' },
+}
 
 interface Props {
   messages: InterviewMessage[]
@@ -9,14 +21,24 @@ interface Props {
   onRetry?: () => void
   currentPhase?: string
   onUpload?: () => void
+  onSkip?: () => void
 }
 
-export default function InterviewChat({ messages, isLoading, error, onRetry, currentPhase, onUpload }: Props) {
+export default function InterviewChat({ messages, isLoading, error, onRetry, currentPhase, onUpload, onSkip }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const prevPhaseRef = useRef<string | undefined>(currentPhase)
+  const [phaseTransitions, setPhaseTransitions] = useState<string[]>([])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages])
+  }, [messages, phaseTransitions])
+
+  useEffect(() => {
+    if (currentPhase && currentPhase !== prevPhaseRef.current && currentPhase !== 'greeting' && currentPhase !== 'complete') {
+      setPhaseTransitions(prev => [...prev, currentPhase])
+    }
+    prevPhaseRef.current = currentPhase
+  }, [currentPhase])
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4 crystal-grid">
@@ -46,31 +68,76 @@ export default function InterviewChat({ messages, isLoading, error, onRetry, cur
       )}
 
       <AnimatePresence initial={false}>
-        {messages.map((msg, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div className={`
-              max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed
-              ${msg.role === 'user'
-                ? 'bg-gradient-to-br from-chroma-teal/15 to-chroma-teal/8 border border-chroma-teal/25 text-white user-bubble-accent'
-                : 'bg-chroma-surface/80 border border-chroma-teal/8 border-l-2 border-l-chroma-teal/30 text-white/90'
-              }
-            `}>
-              {msg.role === 'assistant' && (
-                <div className="flex items-center gap-2 mb-1.5">
-                  <div className="w-5 h-5 rounded-lg bg-chroma-teal/10 border border-chroma-teal/20 shadow-crystal flex items-center justify-center text-[9px] font-display text-chroma-teal">C</div>
-                  <span className="text-chroma-teal text-xs font-display tracking-wider">CHROMADON</span>
-                </div>
+        {messages.map((msg, i) => {
+          // Check if a phase transition should appear before this message
+          const transitionBefore = msg.role === 'assistant' && phaseTransitions.length > 0
+            ? (() => {
+                // Show next unconsumed transition before the first assistant message after it was added
+                const assistantIdx = messages.slice(0, i + 1).filter(m => m.role === 'assistant').length
+                const transition = phaseTransitions[assistantIdx - 1]
+                // Only show if this is the first assistant message for this transition index
+                if (transition && messages.slice(0, i).filter(m => m.role === 'assistant').length === assistantIdx - 1) {
+                  return transition
+                }
+                return null
+              })()
+            : null
+
+          return (
+            <div key={i}>
+              {/* Phase transition divider */}
+              {transitionBefore && PHASE_LABELS[transitionBefore] && (
+                <motion.div
+                  initial={{ opacity: 0, scaleX: 0.8 }}
+                  animate={{ opacity: 1, scaleX: 1 }}
+                  transition={{ duration: 0.4 }}
+                  className="flex items-center gap-3 py-2 my-2"
+                >
+                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-chroma-teal/20 to-transparent" />
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-chroma-surface/50 border border-chroma-teal/15 rounded-full">
+                    <span className="text-sm">{PHASE_LABELS[transitionBefore].icon}</span>
+                    <span className="text-xs font-display uppercase tracking-wider text-chroma-teal/70">{PHASE_LABELS[transitionBefore].label}</span>
+                    {onSkip && (
+                      <>
+                        <span className="text-white/10">|</span>
+                        <button
+                          onClick={onSkip}
+                          className="text-[10px] font-ui text-white/30 hover:text-chroma-teal transition-colors"
+                        >
+                          Don't have this? Skip
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-chroma-teal/20 to-transparent" />
+                </motion.div>
               )}
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div className={`
+                  max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed
+                  ${msg.role === 'user'
+                    ? 'bg-gradient-to-br from-chroma-teal/15 to-chroma-teal/8 border border-chroma-teal/25 text-white user-bubble-accent'
+                    : 'bg-chroma-surface/80 border border-chroma-teal/8 border-l-2 border-l-chroma-teal/30 text-white/90'
+                  }
+                `}>
+                  {msg.role === 'assistant' && (
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className="w-5 h-5 rounded-lg bg-chroma-teal/10 border border-chroma-teal/20 shadow-crystal flex items-center justify-center text-[9px] font-display text-chroma-teal">C</div>
+                      <span className="text-chroma-teal text-xs font-display tracking-wider">CHROMADON</span>
+                    </div>
+                  )}
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </motion.div>
             </div>
-          </motion.div>
-        ))}
+          )
+        })}
       </AnimatePresence>
 
       {/* Upload prompt during document_upload phase */}

@@ -21,6 +21,18 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
+const PHASE_LABELS: Record<string, { label: string; icon: string }> = {
+  greeting: { label: 'Welcome', icon: '👋' },
+  discovery: { label: 'Discovery', icon: '🔍' },
+  products: { label: 'Products', icon: '📦' },
+  audience: { label: 'Audience', icon: '👥' },
+  competitors: { label: 'Competitors', icon: '⚔️' },
+  voice_capture: { label: 'Brand Voice', icon: '🎙️' },
+  document_upload: { label: 'Documents', icon: '📄' },
+  strategy_mapping: { label: 'Strategy', icon: '🎯' },
+  complete: { label: 'Complete', icon: '✅' },
+}
+
 interface Props {
   onComplete: () => void
   onClose: () => void
@@ -170,7 +182,7 @@ export default function InterviewScreen({ onComplete, onClose }: Props) {
               onClick={handleSkip}
               className="text-xs font-ui text-white/30 hover:text-chroma-teal/70 border border-white/[0.08] px-3 py-1 rounded-lg hover:border-chroma-teal/20 transition-all"
             >
-              Skip Phase →
+              Skip {PHASE_LABELS[interviewProgress.currentPhase]?.label || 'Phase'} →
             </button>
           )}
           <button
@@ -263,6 +275,7 @@ export default function InterviewScreen({ onComplete, onClose }: Props) {
               onRetry={handleRetry}
               currentPhase={interviewProgress?.currentPhase}
               onUpload={() => fileInputRef.current?.click()}
+              onSkip={handleSkip}
             />
 
             {/* Hidden file input */}
@@ -293,6 +306,21 @@ export default function InterviewScreen({ onComplete, onClose }: Props) {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+              {/* Inline skip strip */}
+              {interviewProgress && !interviewLoading && !interviewProgress.isComplete && interviewProgress.currentPhase !== 'complete' && (
+                <div className="flex items-center justify-between mb-3 px-3 py-2 bg-chroma-surface/30 border border-white/[0.05] rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{PHASE_LABELS[interviewProgress.currentPhase]?.icon || '📋'}</span>
+                    <span className="text-xs font-display uppercase tracking-wider text-white/40">{PHASE_LABELS[interviewProgress.currentPhase]?.label || 'Phase'}</span>
+                  </div>
+                  <button
+                    onClick={handleSkip}
+                    className="text-xs font-ui text-white/30 hover:text-chroma-teal transition-colors"
+                  >
+                    Don't have this? Skip →
+                  </button>
                 </div>
               )}
               <div className="flex gap-3">
