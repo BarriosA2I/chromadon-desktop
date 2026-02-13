@@ -72,6 +72,20 @@
             { "order": 6, "action": "click", "selectors": ["button[data-testid='tweetButton']", "button[data-testid='tweetButtonInline']"], "waitAfter": 3000 }
           ],
           "rules": ["Upload media before text - same React re-render issue as Facebook"]
+        },
+        "create_post_text_only": {
+          "description": "Create a text-only tweet on Twitter/X",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://x.com/home" }, "waitAfter": 3000 },
+            { "order": 2, "action": "click", "selectors": ["div[data-testid='tweetTextarea_0']", "div[role='textbox']"], "waitAfter": 1000, "note": "Focus the composer" },
+            { "order": 3, "action": "type_text", "selectors": ["div[data-testid='tweetTextarea_0']", "div[role='textbox']"], "waitAfter": 1000, "note": "Type tweet text" },
+            { "order": 4, "action": "click", "selectors": ["button[data-testid='tweetButton']", "button[data-testid='tweetButtonInline']"], "waitAfter": 3000, "note": "Click Post" }
+          ],
+          "rules": ["Count characters BEFORE typing - free accounts limited to 280 chars"]
         }
       },
       "siteRules": ["Twitter/X uses data-testid attributes for most interactive elements"],
@@ -100,6 +114,20 @@
             { "order": 6, "action": "click", "selectors": ["button:has-text('Post')", "button.share-actions__primary-action"], "waitAfter": 3000 }
           ],
           "rules": ["Upload media before text - LinkedIn uses React with same re-render behavior"]
+        },
+        "create_post_text_only": {
+          "description": "Create a text-only LinkedIn post",
+          "learned": "2026-02-12T00:00:00Z",
+          "lastUsed": null,
+          "successCount": 0,
+          "failCount": 0,
+          "steps": [
+            { "order": 1, "action": "navigate", "params": { "url": "https://www.linkedin.com/feed/" }, "waitAfter": 3000 },
+            { "order": 2, "action": "click", "selectors": ["button:has-text('Start a post')", "button[aria-label*='Start a post']"], "waitAfter": 2000, "note": "Open composer" },
+            { "order": 3, "action": "type_text", "selectors": ["div[role='textbox'][contenteditable='true']", "div.ql-editor", "div[aria-label='Text editor for creating content']"], "waitAfter": 1000, "note": "Type post text" },
+            { "order": 4, "action": "click", "selectors": ["button:has-text('Post')", "button.share-actions__primary-action"], "waitAfter": 3000, "note": "Click Post" }
+          ],
+          "rules": ["LinkedIn posts can be up to 3000 chars. Keep hook under 700 chars for visibility."]
         }
       },
       "siteRules": ["LinkedIn uses aria-labels and Quill editor (ql-editor class)"],
