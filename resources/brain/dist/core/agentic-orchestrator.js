@@ -521,7 +521,7 @@ class AgenticOrchestrator {
                 }
                 // 9. stop_reason is "end_turn" or "max_tokens"
                 transientRetryCount = 0; // Reset on success
-                // Auto-continue logic — NEVER wait for user input mid-task
+                // Auto-continue logic — conditional on active workflow
                 const responseText = finalMessage.content
                     .filter((b) => b.type === 'text')
                     .map((b) => b.text)
@@ -529,11 +529,29 @@ class AgenticOrchestrator {
                 const hasToolCall = finalMessage.content.some((b) => b.type === 'tool_use');
                 // If the AI produced a tool call, the loop already `continue`d above via stop_reason === 'tool_use'.
                 // If we're here, it's a text-only end_turn or max_tokens.
+                // Determine if a copyright workflow is active
+                const tracker = session.videoTracker;
+                const doneCount = tracker.processedIds.length + tracker.skippedIds.length + tracker.failedIds.length;
+                const workflowActive = tracker.allVideoIds.length > 0 && doneCount < tracker.allVideoIds.length;
                 // Final summary — truly done, stop the loop
                 if (/processed \d+ video|erased \d+ song|all.*done|all.*complete|finished processing/i.test(responseText)) {
                     break;
                 }
-                // AI is asking what to do / saying it's ready — force continuation
+                // "Done." or simple completion — STOP (don't force continuation)
+                if (/^done\.?$/i.test(responseText.trim())) {
+                    break;
+                }
+                // NO active workflow → NEVER auto-continue. The AI should stop after simple commands.
+                if (!workflowActive) {
+                    // Only auto-continue for max_tokens (truncated response)
+                    if (stopReason === 'max_tokens') {
+                        session.messages.push({ role: 'user', content: 'Continue.' });
+                        continue;
+                    }
+                    break;
+                }
+                // === BELOW: Only runs when workflowActive === true ===
+                // AI is asking what to do / saying it's ready — force continuation (workflow only)
                 const isAskingForInput = /what.*next|what.*do|ready to continue|shall I|would you like|what's the next step|how.*proceed|let me know/i.test(responseText);
                 if (isAskingForInput && !hasToolCall) {
                     session.messages.push({
@@ -542,13 +560,12 @@ class AgenticOrchestrator {
                     });
                     continue;
                 }
-                // max_tokens truncation — AI ran out of space, keep going
+                // max_tokens truncation
                 if (stopReason === 'max_tokens') {
                     session.messages.push({ role: 'user', content: 'Continue.' });
                     continue;
                 }
-                // Default for end_turn with no tool call and no summary: auto-continue
-                // (catches edge cases like "Okay." or empty responses)
+                // Workflow catch-all: short responses without tool calls → auto-continue
                 if (!hasToolCall && responseText.trim().length < 200) {
                     session.messages.push({ role: 'user', content: 'Continue.' });
                     continue;
