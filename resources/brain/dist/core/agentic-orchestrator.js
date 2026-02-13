@@ -26,7 +26,7 @@ const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 1024,
     maxLoops: 50,
-    maxSessionMessages: 8,
+    maxSessionMessages: 15,
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
 };
 // ============================================================================
@@ -103,7 +103,7 @@ class AgenticOrchestrator {
         session.messages.push({ role: 'user', content: userMessage });
         // 3. Build system prompt with current page context + skill memory
         const skillsJson = this.getSkillsForPrompt ? this.getSkillsForPrompt() : '';
-        const baseSystemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson);
+        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson);
         // 4. Agentic loop
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
@@ -139,21 +139,6 @@ class AgenticOrchestrator {
                     sanitizedMessages.push({ role: 'user', content: 'Continue with the current task. Resume where you left off.' });
                 }
                 // 6. Call Claude API with streaming (browser tools + any additional tools)
-                // Inject video tracking summary so AI knows what's done
-                let systemPrompt = baseSystemPrompt;
-                const tracker = session.videoTracker;
-                if (tracker.allVideoIds.length > 0) {
-                    const remaining = tracker.allVideoIds.filter(id => !tracker.processedIds.includes(id) &&
-                        !tracker.skippedIds.includes(id) &&
-                        !tracker.failedIds.includes(id));
-                    const nextVideoId = remaining[0] || null;
-                    systemPrompt += `\n\nVIDEO TRACKING STATE (READ THIS):
-Total: ${tracker.allVideoIds.length} videos | Done: ${tracker.processedIds.length} | Skipped: ${tracker.skippedIds.length} | Failed: ${tracker.failedIds.length} | Claims erased: ${tracker.claimsErased}
-ALREADY PROCESSED (do NOT revisit): ${tracker.processedIds.join(', ') || 'none yet'}
-SKIPPED (in progress): ${tracker.skippedIds.join(', ') || 'none'}
-${nextVideoId ? `NEXT VIDEO: ${nextVideoId} → https://studio.youtube.com/video/${nextVideoId}/copyright` : 'ALL VIDEOS PROCESSED — report summary and stop.'}
-RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always go to NEXT VIDEO.`;
-                }
                 const allTools = [...browser_tools_1.BROWSER_TOOLS, ...this.additionalTools];
                 const stream = this.client.messages.stream({
                     model: this.config.model,
@@ -277,51 +262,6 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                                 context.desktopTabId = parseInt(match[1], 10);
                             }
                         }
-                        // Video tracking — extract IDs and track progress
-                        if (toolName === 'get_video_ids' && result.success) {
-                            const ids = (result.result.match(/([a-zA-Z0-9_-]{11})\s*→/g) || [])
-                                .map((m) => m.replace(/\s*→/, ''));
-                            if (ids.length > 0) {
-                                tracker.allVideoIds = ids;
-                                tracker.processedIds = [];
-                                tracker.skippedIds = [];
-                                tracker.failedIds = [];
-                                tracker.currentVideoId = '';
-                                tracker.claimsErased = 0;
-                                console.log(`[VIDEO TRACKER] Loaded ${ids.length} video IDs`);
-                            }
-                        }
-                        if (toolName === 'navigate' && result.success && tracker.allVideoIds.length > 0) {
-                            const navUrl = toolInput.url;
-                            const videoMatch = navUrl?.match(/\/video\/([a-zA-Z0-9_-]{11})\//);
-                            if (videoMatch) {
-                                const videoId = videoMatch[1];
-                                if (tracker.currentVideoId && tracker.currentVideoId !== videoId &&
-                                    !tracker.processedIds.includes(tracker.currentVideoId) &&
-                                    !tracker.skippedIds.includes(tracker.currentVideoId)) {
-                                    tracker.processedIds.push(tracker.currentVideoId);
-                                    console.log(`[VIDEO TRACKER] Completed: ${tracker.currentVideoId} (${tracker.processedIds.length}/${tracker.allVideoIds.length})`);
-                                }
-                                tracker.currentVideoId = videoId;
-                            }
-                        }
-                        if (result.success && tracker.currentVideoId) {
-                            if (/editing is in progress/i.test(result.result)) {
-                                if (!tracker.skippedIds.includes(tracker.currentVideoId)) {
-                                    tracker.skippedIds.push(tracker.currentVideoId);
-                                    console.log(`[VIDEO TRACKER] Skipped (in progress): ${tracker.currentVideoId}`);
-                                }
-                            }
-                            if (/PAGE DEAD/i.test(result.result)) {
-                                if (!tracker.failedIds.includes(tracker.currentVideoId)) {
-                                    tracker.failedIds.push(tracker.currentVideoId);
-                                    console.log(`[VIDEO TRACKER] Failed: ${tracker.currentVideoId}`);
-                                }
-                            }
-                        }
-                        if (toolName === 'click' && result.success && /erase song/i.test(JSON.stringify(toolInput))) {
-                            tracker.claimsErased++;
-                        }
                         // URL retry counter — detect infinite loops on broken URLs
                         if (toolName === 'navigate' && result.success) {
                             const navUrlKey = toolInput.url;
@@ -428,16 +368,7 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                                 hasScreenshot: !!verificationBase64,
                             });
                         }
-                        // Build tool_result for Claude — TRUNCATE to save tokens
-                        // Tool results and verification text are capped to prevent message bloat
-                        const MAX_RESULT = 500;
-                        const MAX_CONTEXT = 300;
-                        const truncResult = result.result.length > MAX_RESULT
-                            ? result.result.slice(0, MAX_RESULT) + '...'
-                            : result.result;
-                        const truncVerification = verificationText.length > MAX_CONTEXT
-                            ? verificationText.slice(0, MAX_CONTEXT) + '...'
-                            : verificationText;
+                        // Build tool_result for Claude — full results, no truncation
                         // CRITICAL: Anthropic API requires ALL content to be type "text" when is_error is true.
                         // Sending image blocks with is_error:true causes a 400 crash.
                         if (!result.success) {
@@ -456,7 +387,7 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                                 content: [
                                     {
                                         type: 'text',
-                                        text: `${truncResult}${truncVerification ? `\n\n${truncVerification}` : ''}`,
+                                        text: `${result.result}${verificationText ? `\n\n[AUTO-CONTEXT]\n${verificationText}` : ''}`,
                                     },
                                     {
                                         type: 'image',
@@ -470,7 +401,7 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
-                                content: truncResult,
+                                content: result.result,
                             });
                         }
                         else {
@@ -478,7 +409,7 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
-                                content: `${truncResult}${truncVerification ? `\n\n${truncVerification}` : ''}`,
+                                content: `${result.result}${verificationText ? `\n\n[AUTO-CONTEXT]\n${verificationText}` : ''}`,
                             });
                         }
                         prevToolName = toolName;
@@ -503,20 +434,6 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                 const hasToolCall = finalMessage.content.some((b) => b.type === 'tool_use');
                 // If the AI produced a tool call, the loop already `continue`d above via stop_reason === 'tool_use'.
                 // If we're here, it's a text-only end_turn or max_tokens.
-                // Tracker-aware completion — if all videos are handled, stop
-                if (tracker.allVideoIds.length > 0) {
-                    const remaining = tracker.allVideoIds.filter(id => !tracker.processedIds.includes(id) &&
-                        !tracker.skippedIds.includes(id) &&
-                        !tracker.failedIds.includes(id));
-                    if (remaining.length === 0) {
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', {
-                                text: `\n\nProcessed ${tracker.processedIds.length} videos, erased ${tracker.claimsErased} songs. Skipped ${tracker.skippedIds.length} (in progress). Failed: ${tracker.failedIds.length}.`,
-                            });
-                        }
-                        break;
-                    }
-                }
                 // Final summary — truly done, stop the loop
                 if (/processed \d+ video|erased \d+ song|all.*done|all.*complete|finished processing/i.test(responseText)) {
                     break;
@@ -524,17 +441,9 @@ RULE: NEVER navigate to a video in the ALREADY PROCESSED or SKIPPED list. Always
                 // AI is asking what to do / saying it's ready — force continuation
                 const isAskingForInput = /what.*next|what.*do|ready to continue|shall I|would you like|what's the next step|how.*proceed|let me know/i.test(responseText);
                 if (isAskingForInput && !hasToolCall) {
-                    const remaining = tracker.allVideoIds.length > 0
-                        ? tracker.allVideoIds.filter(id => !tracker.processedIds.includes(id) &&
-                            !tracker.skippedIds.includes(id) &&
-                            !tracker.failedIds.includes(id))
-                        : [];
-                    const nextUrl = remaining.length > 0
-                        ? ` Navigate to: https://studio.youtube.com/video/${remaining[0]}/copyright`
-                        : '';
                     session.messages.push({
                         role: 'user',
-                        content: `Continue. Do not ask what to do next.${nextUrl}`,
+                        content: 'Continue. Do not ask what to do next. Process the next video. Never stop until all videos are processed.',
                     });
                     continue;
                 }
