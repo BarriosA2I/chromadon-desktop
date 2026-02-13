@@ -69,6 +69,16 @@ export declare class AgenticOrchestrator {
      * replaces older ones with "[screenshot pruned]".
      */
     private pruneOldScreenshots;
+    /**
+     * Check if the current page is blank/black via Desktop Control Server.
+     */
+    private isPageBlank;
+    /**
+     * Silently ensure page is loaded after navigate/click.
+     * Auto-refreshes blank pages up to 3 times with escalating waits.
+     * Returns null if healthy, or a message if page is dead after all retries.
+     */
+    private ensurePageHealthy;
     private detectPlatformFromResult;
     private pruneExpiredSessions;
     destroy(): void;

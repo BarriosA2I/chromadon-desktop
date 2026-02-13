@@ -99,6 +99,7 @@ class AgenticOrchestrator {
         // 4. Agentic loop
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
+        let lastNavigatedUrl = ''; // Track last URL for blank page recovery
         const noOpDetector = new NoOpDetector();
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
@@ -240,6 +241,18 @@ class AgenticOrchestrator {
                             const match = result.result.match(/\[(\d+)\]/);
                             if (match) {
                                 context.desktopTabId = parseInt(match[1], 10);
+                            }
+                        }
+                        // Silent page health guard — auto-refresh blank pages BEFORE AI sees them
+                        if (['navigate', 'click', 'click_table_row'].includes(toolName) && result.success && context.useDesktop) {
+                            if (toolName === 'navigate')
+                                lastNavigatedUrl = toolInput.url;
+                            const recoveryUrl = toolName === 'navigate' ? toolInput.url : lastNavigatedUrl;
+                            if (recoveryUrl) {
+                                const healthMsg = await this.ensurePageHealthy(context, recoveryUrl);
+                                if (healthMsg) {
+                                    result = { ...result, result: `${result.result}\n\n${healthMsg}` };
+                                }
                             }
                         }
                         // Tiered verification — screenshot + auto-context (ACT → VERIFY → DECIDE)
@@ -693,6 +706,59 @@ class AgenticOrchestrator {
                 }
             }
         }
+    }
+    /**
+     * Check if the current page is blank/black via Desktop Control Server.
+     */
+    async isPageBlank(context) {
+        if (!context.useDesktop || context.desktopTabId === null)
+            return false;
+        try {
+            const desktopUrl = context.desktopUrl || 'http://127.0.0.1:3002';
+            const resp = await fetch(`${desktopUrl}/tabs/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: context.desktopTabId,
+                    script: `(function(){ var b = document.body; if (!b) return true; return b.children.length < 3 && (b.innerText || '').trim().length < 50; })()`,
+                }),
+            });
+            const data = await resp.json();
+            return data.result === true;
+        }
+        catch {
+            return false; // Can't check — assume OK
+        }
+    }
+    /**
+     * Silently ensure page is loaded after navigate/click.
+     * Auto-refreshes blank pages up to 3 times with escalating waits.
+     * Returns null if healthy, or a message if page is dead after all retries.
+     */
+    async ensurePageHealthy(context, url) {
+        if (!context.useDesktop || context.desktopTabId === null || !url)
+            return null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            const blank = await this.isPageBlank(context);
+            if (!blank)
+                return null; // Page loaded fine
+            console.log(`[PAGE HEALTH] Blank page detected (attempt ${attempt}/3). Re-navigating: ${url}`);
+            try {
+                const desktopUrl = context.desktopUrl || 'http://127.0.0.1:3002';
+                await fetch(`${desktopUrl}/tabs/navigate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: context.desktopTabId, url }),
+                });
+            }
+            catch { /* non-fatal */ }
+            await new Promise(r => setTimeout(r, attempt * 3000)); // 3s, 6s, 9s
+        }
+        // Final check after all retries
+        const stillBlank = await this.isPageBlank(context);
+        if (!stillBlank)
+            return null;
+        return '[PAGE DEAD] Page blank after 3 refresh attempts. Skip this video — navigate to the next video ID.';
     }
     detectPlatformFromResult(result) {
         const lower = result.toLowerCase();
