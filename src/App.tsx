@@ -13,6 +13,11 @@ import ProfileManager from './components/ProfileManager'
 import SessionSetup from './components/SessionSetup'
 import MarketingQueue from './components/MarketingQueue'
 import { AnalyticsDashboard } from './components/analytics/AnalyticsDashboard'
+import InterviewScreen from './components/interview/InterviewScreen'
+import ClientSwitcher from './components/ClientSwitcher'
+import DocumentVault from './components/documents/DocumentVault'
+import StrategyDashboard from './components/strategy/StrategyDashboard'
+import { useClientContext } from './hooks/useClientContext'
 import SettingsModal from './components/SettingsModal'
 import UpdateNotifier from './components/UpdateNotifier'
 
@@ -329,6 +334,12 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setShowMarketingQueue,
     showAnalyticsDashboard,
     setShowAnalyticsDashboard,
+    showInterviewScreen,
+    setShowInterviewScreen,
+    showDocumentVault,
+    setShowDocumentVault,
+    showStrategyDashboard,
+    setShowStrategyDashboard,
     showSettings,
     setShowSettings,
     apiKeyStatus,
@@ -337,7 +348,13 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setMarketingQueue,
   } = useChromadonStore()
 
+  const { activeClient, fetchActiveClient } = useClientContext()
   const [currentDomain, setCurrentDomain] = useState<string | undefined>()
+
+  // Load active client on mount
+  useEffect(() => {
+    fetchActiveClient()
+  }, [fetchActiveClient])
 
   // Load platform sessions on mount
   useEffect(() => {
@@ -352,9 +369,9 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
   // Hide BrowserViews when any modal is open (BrowserViews are native OS overlays above web content)
   useEffect(() => {
-    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard || showProfileManager || showSettings
+    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard || showProfileManager || showSettings || showInterviewScreen || showDocumentVault || showStrategyDashboard
     window.electronAPI?.viewsSetVisible?.(!anyModalOpen)
-  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showProfileManager, showSettings])
+  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showProfileManager, showSettings, showInterviewScreen, showDocumentVault, showStrategyDashboard])
 
   // Check API key status on mount — auto-open settings if no key set
   useEffect(() => {
@@ -702,6 +719,32 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
               >
                 <QueueIcon />
               </button>
+              {/* Client Onboarding */}
+              <button
+                onClick={() => setShowInterviewScreen(true)}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
+                title="Client Onboarding"
+              >
+                <span className="text-sm">🧠</span>
+              </button>
+              {/* Document Vault */}
+              <button
+                onClick={() => setShowDocumentVault(true)}
+                disabled={!activeClient}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors disabled:opacity-30"
+                title="Document Vault"
+              >
+                <span className="text-sm">📄</span>
+              </button>
+              {/* Strategy Dashboard */}
+              <button
+                onClick={() => setShowStrategyDashboard(true)}
+                disabled={!activeClient}
+                className="p-2 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors disabled:opacity-30"
+                title="Growth Strategy"
+              >
+                <span className="text-sm">🎯</span>
+              </button>
               {/* Analytics Dashboard */}
               <button
                 onClick={() => setShowAnalyticsDashboard(true)}
@@ -751,6 +794,37 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
         isOpen={showMarketingQueue}
         onClose={() => setShowMarketingQueue(false)}
       />
+
+      {/* Interview Screen */}
+      {showInterviewScreen && (
+        <InterviewScreen onComplete={() => { setShowInterviewScreen(false); fetchActiveClient() }} />
+      )}
+
+      {/* Document Vault */}
+      {showDocumentVault && activeClient && (
+        <div className="fixed inset-0 z-40 bg-chroma-dark flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
+            <h2 className="text-sm font-bold text-white">Document Vault — {activeClient.name}</h2>
+            <button onClick={() => setShowDocumentVault(false)} className="text-white/30 hover:text-white/60 text-lg">✕</button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <DocumentVault clientId={activeClient.id} />
+          </div>
+        </div>
+      )}
+
+      {/* Strategy Dashboard */}
+      {showStrategyDashboard && activeClient && (
+        <div className="fixed inset-0 z-40 bg-chroma-dark flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
+            <h2 className="text-sm font-bold text-white">Growth Strategy — {activeClient.name}</h2>
+            <button onClick={() => setShowStrategyDashboard(false)} className="text-white/30 hover:text-white/60 text-lg">✕</button>
+          </div>
+          <div className="flex-1 min-h-0">
+            <StrategyDashboard clientId={activeClient.id} />
+          </div>
+        </div>
+      )}
 
       {/* Analytics Dashboard Modal */}
       <AnalyticsDashboard />

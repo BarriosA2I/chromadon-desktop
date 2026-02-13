@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
 import { useChromadonStore } from '../store/chromadonStore'
+import ClientSwitcher from './ClientSwitcher'
 
 export default function TitleBar() {
-  const { isConnected, connectionMode } = useChromadonStore()
+  const { isConnected, connectionMode, setShowInterviewScreen } = useChromadonStore()
 
   const handleMinimize = () => window.electronAPI?.minimize()
   const handleMaximize = () => window.electronAPI?.maximize()
@@ -52,7 +53,10 @@ export default function TitleBar() {
         </span>
       </div>
 
-      {/* Window Controls */}
+      {/* Client Switcher + Window Controls */}
+      <div className="flex items-center gap-2 no-drag">
+        <ClientSwitcher onNewClient={() => setShowInterviewScreen(true)} />
+      </div>
       <div className="flex items-center gap-1 no-drag">
         <WindowButton onClick={handleMinimize} hoverColor="chroma-cyan">
           <MinimizeIcon />

@@ -172,6 +172,11 @@ interface ChromadonState {
   activeAnalyticsTab: AnalyticsTab
   showAnalyticsDashboard: boolean
 
+  // Client Context state
+  showInterviewScreen: boolean
+  showDocumentVault: boolean
+  showStrategyDashboard: boolean
+
   // Settings state
   showSettings: boolean
   apiKeyStatus: { hasKey: boolean; keyPreview: string | null }
@@ -229,6 +234,11 @@ interface ChromadonState {
   setSelectedPlatforms: (platforms: AnalyticsPlatform[]) => void
   setActiveAnalyticsTab: (tab: AnalyticsTab) => void
   setShowAnalyticsDashboard: (show: boolean) => void
+
+  // Client Context actions
+  setShowInterviewScreen: (show: boolean) => void
+  setShowDocumentVault: (show: boolean) => void
+  setShowStrategyDashboard: (show: boolean) => void
 
   // Settings actions
   setShowSettings: (show: boolean) => void
@@ -311,6 +321,11 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   selectedPlatforms: [],
   activeAnalyticsTab: 'overview',
   showAnalyticsDashboard: false,
+
+  // Client Context initial state
+  showInterviewScreen: false,
+  showDocumentVault: false,
+  showStrategyDashboard: false,
 
   // Settings initial state
   showSettings: false,
@@ -456,6 +471,11 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   setSelectedPlatforms: (platforms) => set({ selectedPlatforms: platforms }),
   setActiveAnalyticsTab: (tab) => set({ activeAnalyticsTab: tab }),
   setShowAnalyticsDashboard: (show) => set({ showAnalyticsDashboard: show }),
+
+  // Client Context actions
+  setShowInterviewScreen: (show) => set({ showInterviewScreen: show }),
+  setShowDocumentVault: (show) => set({ showDocumentVault: show }),
+  setShowStrategyDashboard: (show) => set({ showStrategyDashboard: show }),
 
   // Settings actions
   setShowSettings: (show) => set({ showSettings: show }),

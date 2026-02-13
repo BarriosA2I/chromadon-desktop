@@ -48,6 +48,7 @@ const core_1 = require("../core");
 const agentic_orchestrator_1 = require("../core/agentic-orchestrator");
 const browser_tools_1 = require("../core/browser-tools");
 const social_overlord_1 = require("../core/social-overlord");
+const cortex_router_1 = require("../core/cortex-router");
 // Analytics imports
 const database_1 = require("../analytics/database");
 const analytics_tools_1 = require("../analytics/analytics-tools");
@@ -57,6 +58,12 @@ const data_collector_1 = require("../analytics/data-collector");
 const youtube_token_manager_1 = require("../youtube/youtube-token-manager");
 const youtube_tools_1 = require("../youtube/youtube-tools");
 const youtube_executor_1 = require("../youtube/youtube-executor");
+const youtube_tool_bridge_1 = require("../agents/youtube-tool-bridge");
+const social_tool_bridge_1 = require("../agents/social-tool-bridge");
+// Client Context imports
+const client_context_1 = require("../client-context");
+const multer_1 = __importDefault(require("multer"));
+const document_processor_1 = require("../client-context/document-processor");
 // Skill Memory imports
 const skills_1 = require("../skills");
 // 27-Agent System imports (runtime load to avoid type conflicts)
@@ -94,11 +101,13 @@ let orchestrator = null;
 let socialOverlord = null;
 // 27-Agent System State
 let agentSystem = null;
+let cortexRouter = null;
 // Analytics State
 let analyticsDb = null;
 let dataCollector = null;
 // YouTube State
 let youtubeTokenManager = null;
+let youtubeExec = null;
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -2077,7 +2086,15 @@ app.post('/api/orchestrator/chat', async (req, res) => {
         closed = true;
     });
     try {
-        await orchestrator.chat(sessionId, message, writer, context, pageContext);
+        // CortexRouter: agent-first routing (simple commands → agents, copyright → monolithic, complex → TheCortex)
+        await initializeCortexRouter();
+        if (cortexRouter) {
+            await cortexRouter.chat(sessionId, message, writer, context, pageContext);
+        }
+        else {
+            // Fallback: direct to monolithic orchestrator
+            await orchestrator.chat(sessionId, message, writer, context, pageContext);
+        }
     }
     catch (error) {
         if (!closed) {
@@ -2766,6 +2783,44 @@ class DesktopBrowserAdapter {
         }
     }
 }
+// Initialize CortexRouter (agent-first routing for chat)
+async function initializeCortexRouter() {
+    if (cortexRouter)
+        return;
+    if (!orchestrator)
+        return;
+    try {
+        await initializeAgentSystem();
+        if (!agentSystem) {
+            console.log('[CHROMADON] ⚠️ CortexRouter skipped: agent system not available');
+            return;
+        }
+        // Create YouTube bridge if executor is available
+        let youtubeBridge;
+        if (youtubeExec) {
+            youtubeBridge = new youtube_tool_bridge_1.YouTubeToolBridge(youtubeExec);
+            agentSystem.setYouTubeBridge(youtubeBridge);
+            console.log('[CHROMADON] ✅ YouTube Tool Bridge connected to agent system');
+        }
+        // Create Social Media bridge if SocialOverlord is available
+        let socialBridge;
+        if (socialOverlord) {
+            socialBridge = new social_tool_bridge_1.SocialMediaToolBridge(socialOverlord);
+            console.log('[CHROMADON] ✅ Social Media Tool Bridge connected');
+        }
+        cortexRouter = new cortex_router_1.CortexRouter({
+            cortex: agentSystem.getCortex(),
+            sequencer: agentSystem.getSequencer(),
+            orchestrator,
+            youtubeBridge,
+            socialBridge,
+        });
+        console.log('[CHROMADON] ✅ CortexRouter initialized (agent-first routing)');
+    }
+    catch (error) {
+        console.error('[CHROMADON] ⚠️ CortexRouter init failed:', error.message);
+    }
+}
 // Initialize agent system (called after browser is ready)
 async function initializeAgentSystem() {
     if (!agentSystem) {
@@ -3220,6 +3275,365 @@ app.post('/api/analytics/collect', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ============================================================================
+// CLIENT CONTEXT ENDPOINTS
+// ============================================================================
+// Multer upload handler for document uploads
+const upload = (0, multer_1.default)({ dest: path.join(process.cwd(), 'data', 'uploads') });
+// --- Client Management ---
+app.get('/api/client-context/clients', (_req, res) => {
+    try {
+        const storage = new client_context_1.ClientStorage();
+        const clients = storage.listClients();
+        res.json({ success: true, data: clients });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/client-context/clients/active', (_req, res) => {
+    try {
+        const storage = new client_context_1.ClientStorage();
+        const activeId = storage.getActiveClientId();
+        if (!activeId) {
+            res.json({ success: true, data: null });
+            return;
+        }
+        const client = storage.getClient(activeId);
+        res.json({ success: true, data: client });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/clients/active', (req, res) => {
+    try {
+        const { clientId } = req.body;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const result = storage.setActiveClient(clientId);
+        res.json({ success: result, data: result ? storage.getClient(clientId) : null });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/client-context/clients/:id', (req, res) => {
+    try {
+        const storage = new client_context_1.ClientStorage();
+        const context = storage.getFullContext(req.params.id);
+        if (!context) {
+            res.status(404).json({ success: false, error: 'Client not found' });
+            return;
+        }
+        res.json({ success: true, data: context });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.delete('/api/client-context/clients/:id', (req, res) => {
+    try {
+        const storage = new client_context_1.ClientStorage();
+        const deleted = storage.deleteClient(req.params.id);
+        res.json({ success: deleted });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// --- Interview ---
+app.post('/api/client-context/interview/start', async (req, res) => {
+    try {
+        const { clientName } = req.body;
+        if (!clientName) {
+            res.status(400).json({ success: false, error: 'clientName required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const interview = new client_context_1.InterviewEngine(storage);
+        const client = storage.createClient(clientName);
+        storage.setActiveClient(client.id);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        const { state, greeting } = await interview.startInterview(client.id);
+        res.write(`data: ${JSON.stringify({ type: 'client_created', clientId: client.id })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'phase', phase: state.currentPhase })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'message', role: 'assistant', content: greeting })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        res.end();
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/interview/chat', async (req, res) => {
+    try {
+        const { clientId, message } = req.body;
+        if (!clientId || !message) {
+            res.status(400).json({ success: false, error: 'clientId and message required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const interview = new client_context_1.InterviewEngine(storage);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        const result = await interview.processResponse(clientId, message);
+        if (result.phaseChanged) {
+            res.write(`data: ${JSON.stringify({ type: 'phase_change', phase: result.newPhase, completedPhases: result.state.completedPhases })}\n\n`);
+        }
+        res.write(`data: ${JSON.stringify({ type: 'message', role: 'assistant', content: result.reply })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'progress', ...interview.getProgress(clientId) })}\n\n`);
+        if (result.state.isComplete) {
+            res.write(`data: ${JSON.stringify({ type: 'interview_complete' })}\n\n`);
+        }
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        res.end();
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/interview/skip', async (req, res) => {
+    try {
+        const { clientId, phase } = req.body;
+        if (!clientId || !phase) {
+            res.status(400).json({ success: false, error: 'clientId and phase required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const interview = new client_context_1.InterviewEngine(storage);
+        const state = await interview.skipToPhase(clientId, phase);
+        res.json({ success: true, data: state });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/client-context/interview/state', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const interview = new client_context_1.InterviewEngine(storage);
+        const progress = interview.getProgress(clientId);
+        const state = storage.getInterviewState(clientId);
+        res.json({ success: true, data: { progress, state } });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/interview/resume', async (req, res) => {
+    try {
+        const { clientId } = req.body;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const interview = new client_context_1.InterviewEngine(storage);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        const { state, greeting } = await interview.resumeInterview(clientId);
+        res.write(`data: ${JSON.stringify({ type: 'phase', phase: state.currentPhase })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'message', role: 'assistant', content: greeting })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        res.end();
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// --- Document Knowledge Vault ---
+app.post('/api/client-context/documents/upload', upload.single('file'), async (req, res) => {
+    try {
+        const clientId = req.body?.clientId;
+        const file = req.file;
+        if (!clientId || !file) {
+            res.status(400).json({ success: false, error: 'clientId and file required' });
+            return;
+        }
+        if (!document_processor_1.DocumentProcessor.isSupported(file.originalname)) {
+            res.status(400).json({ success: false, error: `Unsupported file type: ${file.originalname}` });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const result = await vault.uploadDocument(clientId, file.path, file.originalname, file.mimetype);
+        res.json({ success: true, data: result });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/client-context/documents/list', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const docs = vault.listDocuments(clientId);
+        res.json({ success: true, data: docs });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/client-context/documents/:id/status', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const doc = vault.getDocument(clientId, req.params.id);
+        if (!doc) {
+            res.status(404).json({ success: false, error: 'Document not found' });
+            return;
+        }
+        res.json({ success: true, data: { id: doc.id, status: doc.status, chunkCount: doc.chunkCount, errorMessage: doc.errorMessage } });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.delete('/api/client-context/documents/:id', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const deleted = vault.deleteDocument(clientId, req.params.id);
+        res.json({ success: deleted });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/knowledge/search', (req, res) => {
+    try {
+        const { clientId, query, topK } = req.body;
+        if (!clientId || !query) {
+            res.status(400).json({ success: false, error: 'clientId and query required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const results = vault.searchKnowledge(clientId, query, topK || 5);
+        res.json({ success: true, data: results });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+// --- Strategy ---
+app.post('/api/client-context/strategy/generate', async (req, res) => {
+    try {
+        const { clientId } = req.body;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const engine = new client_context_1.StrategyEngine(storage, vault);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.write(`data: ${JSON.stringify({ type: 'status', message: 'Analyzing business profile...' })}\n\n`);
+        const strategy = await engine.generateStrategy(clientId);
+        res.write(`data: ${JSON.stringify({ type: 'strategy', data: strategy })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
+        res.end();
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/strategy/update', async (req, res) => {
+    try {
+        const { clientId, feedback } = req.body;
+        if (!clientId || !feedback) {
+            res.status(400).json({ success: false, error: 'clientId and feedback required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const engine = new client_context_1.StrategyEngine(storage, vault);
+        const strategy = await engine.updateStrategy(clientId, feedback);
+        res.json({ success: true, data: strategy });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/strategy/calendar', async (req, res) => {
+    try {
+        const { clientId, weeks } = req.body;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const engine = new client_context_1.StrategyEngine(storage, vault);
+        const calendar = await engine.generateContentCalendar(clientId, weeks || 4);
+        res.json({ success: true, data: calendar });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/strategy/review', async (req, res) => {
+    try {
+        const { clientId } = req.body;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const vault = new client_context_1.KnowledgeVault(storage);
+        const engine = new client_context_1.StrategyEngine(storage, vault);
+        const review = await engine.weeklyReview(clientId);
+        res.json({ success: true, data: review });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/client-context/strategy', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const strategy = storage.getStrategy(clientId);
+        res.json({ success: true, data: strategy });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // Apply error handler
 app.use(errorHandler);
 // Cleanup on shutdown
@@ -3301,17 +3715,27 @@ async function startServer() {
             console.log('[CHROMADON] ✅ Skill Memory initialized');
             // Initialize Agentic Orchestrator with merged tools (browser + analytics + YouTube + skills)
             const toolExecutor = (0, browser_tools_1.createToolExecutor)();
-            // Merge additional tools: analytics + YouTube + skills
+            // Initialize Client Context Layer
+            const clientStorage = new client_context_1.ClientStorage();
+            const knowledgeVault = new client_context_1.KnowledgeVault(clientStorage);
+            const interviewEngine = new client_context_1.InterviewEngine(clientStorage);
+            const strategyEngine = new client_context_1.StrategyEngine(clientStorage, knowledgeVault);
+            const clientContextExec = new client_context_1.ClientContextExecutor(clientStorage, knowledgeVault);
+            console.log('[CHROMADON] ✅ Client Context Layer initialized');
+            // Merge additional tools: analytics + YouTube + skills + client context
             const additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
                 ...skills_1.SKILL_TOOLS,
+                ...client_context_1.CLIENT_CONTEXT_TOOLS,
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
-            const youtubeExec = youtubeTokenManager ? (0, youtube_executor_1.createYouTubeExecutor)(youtubeTokenManager) : null;
+            youtubeExec = youtubeTokenManager ? (0, youtube_executor_1.createYouTubeExecutor)(youtubeTokenManager) : null;
             const youtubeToolNames = new Set(youtube_tools_1.YOUTUBE_TOOLS.map(t => t.name));
             const combinedExecutor = async (toolName, input) => {
+                if (clientContextExec.canHandle(toolName))
+                    return clientContextExec.execute(toolName, input);
                 if (skillToolNames.has(toolName))
                     return skillExec(toolName, input);
                 if (youtubeExec && youtubeToolNames.has(toolName))
@@ -3327,9 +3751,12 @@ async function startServer() {
             if (youtubeTokenManager)
                 console.log(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube tools registered`);
             console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
+            console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
             // Initialize Social Overlord (queue execution engine)
             socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext);
             console.log('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');
+            // Initialize CortexRouter (agent-first routing for /api/orchestrator/chat)
+            initializeCortexRouter();
             // Initialize Data Collector (analytics scraping)
             if (analyticsDb) {
                 dataCollector = new data_collector_1.DataCollector(orchestrator, buildExecutionContext, analyticsDb);
@@ -3431,6 +3858,27 @@ async function startServer() {
             console.log('  GET  /api/analytics/roi               - ROI metrics');
             console.log('  POST /api/analytics/report            - Generate full report');
             console.log('  POST /api/analytics/collect           - Trigger data collection\n');
+            console.log('[CHROMADON] Client Context Endpoints:');
+            console.log('  GET  /api/client-context/clients           - List all clients');
+            console.log('  GET  /api/client-context/clients/:id       - Get client context');
+            console.log('  POST /api/client-context/clients/active    - Set active client');
+            console.log('  GET  /api/client-context/clients/active    - Get active client');
+            console.log('  DELETE /api/client-context/clients/:id     - Delete client');
+            console.log('  POST /api/client-context/interview/start   - Start interview (SSE)');
+            console.log('  POST /api/client-context/interview/chat    - Interview chat (SSE)');
+            console.log('  POST /api/client-context/interview/skip    - Skip to phase');
+            console.log('  GET  /api/client-context/interview/state   - Get interview state');
+            console.log('  POST /api/client-context/interview/resume  - Resume interview (SSE)');
+            console.log('  POST /api/client-context/documents/upload  - Upload document');
+            console.log('  GET  /api/client-context/documents/list    - List documents');
+            console.log('  GET  /api/client-context/documents/:id/status - Doc status');
+            console.log('  DELETE /api/client-context/documents/:id   - Delete document');
+            console.log('  POST /api/client-context/knowledge/search  - Search knowledge');
+            console.log('  POST /api/client-context/strategy/generate - Generate strategy (SSE)');
+            console.log('  POST /api/client-context/strategy/update   - Update with feedback');
+            console.log('  POST /api/client-context/strategy/calendar - Generate calendar');
+            console.log('  POST /api/client-context/strategy/review   - Weekly review');
+            console.log('  GET  /api/client-context/strategy          - Get strategy\n');
             resolve();
         });
     });
