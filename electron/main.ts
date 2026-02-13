@@ -3226,138 +3226,43 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
         delete window.require;
         delete window.module;
 
-        // Intercept window.open calls - for Google, signal to open in real Chrome
-        const originalOpen = window.open;
-        window.open = function(url, target, features) {
-          console.log('[CHROMADON] Intercepted window.open:', url);
-          if (url && (url.includes('accounts.google.com') || url.includes('google.com/o/oauth'))) {
-            console.log('[CHROMADON] Google detected - signaling to open in Chrome');
-            // Signal to Electron to open in real Chrome
-            window.postMessage({ type: 'CHROMADON_GOOGLE_AUTH', url: url }, '*');
-            return null;
-          }
-          // For other URLs, redirect to same window
-          if (url) {
-            window.location.href = url;
-            return null;
-          }
-          return originalOpen.call(this, url, target, features);
-        };
-
-        // Listen for Google auth signal response
-        window.addEventListener('message', (event) => {
-          if (event.data && event.data.type === 'CHROMADON_GOOGLE_AUTH_COMPLETE') {
-            console.log('[CHROMADON] Google auth complete, reloading...');
-            window.location.reload();
-          }
-        });
-
-        console.log('[CHROMADON] Anti-detection + window.open interceptor injected');
+        console.log('[CHROMADON] Anti-detection injected');
       } catch(e) { console.error('[CHROMADON] Anti-detection error:', e); }
     `).catch(() => {});
   });
 
-  // Listen for Google auth signal from renderer and open real Chrome
-  oauthWindow.webContents.on('console-message', async (_event, _level, message) => {
-    if (message.includes('Google detected - signaling to open in Chrome')) {
-      console.log('[CHROMADON] Detected Google auth request, launching Chrome...')
-
-      const puppeteer = require('puppeteer-core')
-      const fs = require('fs')
-
-      const chromePaths = [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      ]
-
-      let chromePath = ''
-      for (const p of chromePaths) {
-        if (fs.existsSync(p)) {
-          chromePath = p
-          break
-        }
-      }
-
-      if (!chromePath) {
-        console.error('[CHROMADON] Chrome not found')
-        return
-      }
-
-      try {
-        const browser = await puppeteer.launch({
-          executablePath: chromePath,
-          headless: false,
-          args: ['--no-first-run', '--no-default-browser-check', '--disable-blink-features=AutomationControlled'],
-          ignoreDefaultArgs: ['--enable-automation'],
-        })
-
-        const pages = await browser.pages()
-        const page = pages[0] || await browser.newPage()
-        await page.goto('https://accounts.google.com')
-
-        // Wait for sign-in
-        let signedIn = false
-        for (let i = 0; i < 150; i++) {
-          await new Promise(r => setTimeout(r, 2000))
-          try {
-            const currentUrl = page.url()
-            if (currentUrl.includes('myaccount.google.com') ||
-                (currentUrl.includes('google.com') && !currentUrl.includes('signin') && !currentUrl.includes('accounts.google.com'))) {
-              signedIn = true
-              break
-            }
-          } catch (e) {
-            break
-          }
-        }
-
-        if (signedIn) {
-          const cookies = await page.cookies()
-          const googleSession = session.fromPartition(`persist:platform-${platform}`)
-          let imported = 0
-          for (const cookie of cookies) {
-            try {
-              await googleSession.cookies.set({
-                url: `https://${cookie.domain.replace(/^\./, '')}`,
-                name: cookie.name,
-                value: cookie.value,
-                domain: cookie.domain,
-                path: cookie.path,
-                secure: cookie.secure,
-                httpOnly: cookie.httpOnly,
-                expirationDate: cookie.expires,
-              })
-              imported++
-            } catch (e) {}
-          }
-          console.log(`[CHROMADON] Imported ${imported} ${platform} cookies`)
-
-          // Notify renderer
-          oauthWindow.webContents.executeJavaScript(`
-            window.postMessage({ type: 'CHROMADON_GOOGLE_AUTH_COMPLETE' }, '*');
-          `).catch(() => {})
-        }
-
-        await browser.close()
-      } catch (err) {
-        console.error('[CHROMADON] Chrome sign-in error:', err)
-      }
-    }
-  })
-
   // Handle "Sign in with Google" or other OAuth provider clicks within the popup
+  // Allow OAuth provider popups to open as real child windows so OAuth flows work
   oauthWindow.webContents.setWindowOpenHandler(({ url }) => {
     console.log(`[CHROMADON] OAuth popup trying to open: ${url}`)
 
-    // If it's trying to open Google sign-in, open it in the same window
-    if (url.includes('accounts.google.com') || url.includes('google.com/o/oauth')) {
-      oauthWindow.loadURL(url, {
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-      })
-      return { action: 'deny' }
-    }
+    const oauthDomains = [
+      'accounts.google.com', 'www.facebook.com', 'facebook.com',
+      'appleid.apple.com', 'api.twitter.com', 'twitter.com', 'x.com',
+    ]
 
-    // Allow other URLs to open in same window
+    try {
+      const urlObj = new URL(url)
+      if (oauthDomains.some(d => urlObj.hostname.includes(d))) {
+        console.log(`[CHROMADON] Allowing OAuth popup for: ${urlObj.hostname}`)
+        return {
+          action: 'allow',
+          overrideBrowserWindowOptions: {
+            width: 500,
+            height: 700,
+            parent: mainWindow || undefined,
+            autoHideMenuBar: true,
+            webPreferences: {
+              partition: `persist:platform-${platform}`,
+              nodeIntegration: false,
+              contextIsolation: true,
+            },
+          },
+        }
+      }
+    } catch {}
+
+    // For non-OAuth URLs, load in the same window
     oauthWindow.loadURL(url)
     return { action: 'deny' }
   })
@@ -3421,19 +3326,22 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 
 // App lifecycle
 app.whenReady().then(() => {
-  // Spoof user-agent on Google session partition so Google/YouTube
-  // don't detect Electron as "not secure browser"
+  // Spoof user-agent on ALL platform session partitions so sites
+  // don't detect Electron as an embedded/insecure browser
   const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-  const googleSession = session.fromPartition('persist:platform-google')
-  googleSession.setUserAgent(CHROME_UA)
-  googleSession.webRequest.onBeforeSendHeaders(
-    { urls: ['*://*.google.com/*', '*://*.youtube.com/*', '*://*.gstatic.com/*', '*://*.googleapis.com/*'] },
-    (details, callback) => {
-      details.requestHeaders['User-Agent'] = CHROME_UA
-      callback({ requestHeaders: details.requestHeaders })
-    }
-  )
-  console.log('[CHROMADON] Google session UA spoofed to Chrome')
+  const platformPartitions = ['google', 'twitter', 'linkedin', 'facebook', 'instagram', 'tiktok']
+  for (const plat of platformPartitions) {
+    const ses = session.fromPartition(`persist:platform-${plat}`)
+    ses.setUserAgent(CHROME_UA)
+    ses.webRequest.onBeforeSendHeaders(
+      { urls: ['*://*/*'] },
+      (details, callback) => {
+        details.requestHeaders['User-Agent'] = CHROME_UA
+        callback({ requestHeaders: details.requestHeaders })
+      }
+    )
+  }
+  console.log(`[CHROMADON] UA spoofed to Chrome on ${platformPartitions.length} platform sessions`)
 
   createWindow()
   startControlServer()
