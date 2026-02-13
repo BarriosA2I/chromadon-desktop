@@ -2640,17 +2640,45 @@ ipcMain.handle('session:verify', async (_event, platform: Platform) => {
   // First: quick cookie check
   const hasCookies = await browserViewManager.verifyPlatformAuth(platform)
   if (!hasCookies) {
+    browserViewManager.updatePlatformSession(platform, { isAuthenticated: false, lastVerified: Date.now() })
     return { success: true, platform, isAuthenticated: false }
   }
 
-  // Second: real auth check — make a request using the platform's session
-  // and check if we get redirected to a login page
   const authPlatform = platform === 'youtube' ? 'google' : platform
   const partition = `persist:platform-${authPlatform}`
   const ses = session.fromPartition(partition)
 
+  // ─── Google/YouTube: Cookie-based verification (no HTTP request) ───
+  // session.fetch() triggers Google's bot detection, causing valid sessions
+  // to be falsely reported as expired. Use cookie inspection instead.
+  if (authPlatform === 'google') {
+    try {
+      const cookies = await ses.cookies.get({ domain: '.google.com' })
+      const authCookieNames = ['SID', 'HSID', 'SSID', 'APISID', 'SAPISID', '__Secure-1PSID', '__Secure-3PSID']
+      const foundAuthCookies = cookies.filter(c => authCookieNames.includes(c.name))
+
+      if (foundAuthCookies.length === 0) {
+        browserViewManager.updatePlatformSession(platform, { isAuthenticated: false, lastVerified: Date.now() })
+        return { success: true, platform, isAuthenticated: false }
+      }
+
+      // Check if the main auth cookie is expired
+      const mainCookie = foundAuthCookies.find(c => c.name === 'SID' || c.name === '__Secure-1PSID')
+      if (mainCookie?.expirationDate && mainCookie.expirationDate < Date.now() / 1000) {
+        browserViewManager.updatePlatformSession(platform, { isAuthenticated: false, lastVerified: Date.now() })
+        return { success: true, platform, isAuthenticated: false }
+      }
+
+      browserViewManager.updatePlatformSession(platform, { isAuthenticated: true, lastVerified: Date.now() })
+      return { success: true, platform, isAuthenticated: true }
+    } catch (err) {
+      console.error('[Verify] Google cookie check failed:', err)
+      return { success: true, platform, isAuthenticated: hasCookies }
+    }
+  }
+
+  // ─── Other platforms: HTTP navigation check ───
   const verifyUrls: Record<string, { url: string; loginPatterns: string[] }> = {
-    google:    { url: 'https://myaccount.google.com/', loginPatterns: ['/signin', '/ServiceLogin', 'accounts.google.com/v3'] },
     twitter:   { url: 'https://x.com/home', loginPatterns: ['/login', '/i/flow/login'] },
     linkedin:  { url: 'https://www.linkedin.com/feed/', loginPatterns: ['/login', '/authwall', '/checkpoint'] },
     facebook:  { url: 'https://www.facebook.com/me', loginPatterns: ['/login', 'checkpoint'] },
@@ -2668,21 +2696,10 @@ ipcMain.handle('session:verify', async (_event, platform: Platform) => {
     const finalUrl = response.url
     const redirectedToLogin = check.loginPatterns.some(p => finalUrl.includes(p))
     const isAuthenticated = !redirectedToLogin && response.ok
-    if (!isAuthenticated) {
-      browserViewManager.updatePlatformSession(platform, {
-        isAuthenticated: false,
-        lastVerified: Date.now(),
-      })
-    } else {
-      browserViewManager.updatePlatformSession(platform, {
-        isAuthenticated: true,
-        lastVerified: Date.now(),
-      })
-    }
+    browserViewManager.updatePlatformSession(platform, { isAuthenticated, lastVerified: Date.now() })
     return { success: true, platform, isAuthenticated }
   } catch (err) {
     console.error(`[Verify] ${platform} network check failed:`, err)
-    // Fall back to cookie check result
     return { success: true, platform, isAuthenticated: hasCookies }
   }
 })
