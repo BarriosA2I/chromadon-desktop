@@ -1492,6 +1492,114 @@ function startControlServer() {
     }
   })
 
+  // Extract all video IDs from a YouTube Studio content page
+  server.post('/tabs/get-video-ids', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.body
+      const view = tabManager.getViewById(id !== undefined ? id : tabManager.getActiveTabId())
+      if (!view) { res.status(404).json({ success: false, error: 'Tab not found' }); return }
+
+      const result = await view.webContents.executeJavaScript(`
+        (function() {
+          var ids = [];
+          var seen = {};
+          // Extract from links with /video/ pattern
+          var links = document.querySelectorAll('a[href]');
+          for (var i = 0; i < links.length; i++) {
+            var m = links[i].href.match(/\\/video\\/([a-zA-Z0-9_-]{6,})/);
+            if (m && !seen[m[1]]) { seen[m[1]] = true; ids.push(m[1]); }
+          }
+          // Also check data attributes (light + shadow DOM)
+          function searchAttrs(root) {
+            var els = root.querySelectorAll('[data-video-id],[video-id]');
+            for (var j = 0; j < els.length; j++) {
+              var vid = els[j].getAttribute('data-video-id') || els[j].getAttribute('video-id');
+              if (vid && !seen[vid]) { seen[vid] = true; ids.push(vid); }
+            }
+            var all = root.querySelectorAll('*');
+            for (var k = 0; k < all.length; k++) {
+              if (all[k].shadowRoot) searchAttrs(all[k].shadowRoot);
+            }
+          }
+          searchAttrs(document);
+          return ids;
+        })()
+      `).catch(() => [])
+
+      res.json({ success: true, videoIds: result, count: result.length })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // Click the Nth visible video row in a YouTube Studio content list
+  server.post('/tabs/click-table-row', async (req: Request, res: Response) => {
+    try {
+      const { id, rowIndex = 0 } = req.body
+      const view = tabManager.getViewById(id !== undefined ? id : tabManager.getActiveTabId())
+      if (!view) { res.status(404).json({ success: false, error: 'Tab not found' }); return }
+
+      const coords = await view.webContents.executeJavaScript(`
+        (function() {
+          // Find video links by URL pattern (most reliable)
+          var links = [];
+          var allLinks = document.querySelectorAll('a[href]');
+          for (var i = 0; i < allLinks.length; i++) {
+            if (/\\/video\\//.test(allLinks[i].href)) {
+              var rect = allLinks[i].getBoundingClientRect();
+              if (rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top < window.innerHeight) {
+                links.push({ el: allLinks[i], rect: rect, href: allLinks[i].href, text: (allLinks[i].textContent||'').trim().substring(0, 80) });
+              }
+            }
+          }
+          // Also search shadow DOM
+          function searchShadow(root) {
+            var els = root.querySelectorAll('*');
+            for (var j = 0; j < els.length; j++) {
+              if (els[j].shadowRoot) {
+                var sLinks = els[j].shadowRoot.querySelectorAll('a[href]');
+                for (var k = 0; k < sLinks.length; k++) {
+                  if (/\\/video\\//.test(sLinks[k].href)) {
+                    var r = sLinks[k].getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0 && r.top >= 0 && r.top < window.innerHeight) {
+                      links.push({ el: sLinks[k], rect: r, href: sLinks[k].href, text: (sLinks[k].textContent||'').trim().substring(0, 80) });
+                    }
+                  }
+                }
+                searchShadow(els[j].shadowRoot);
+              }
+            }
+          }
+          searchShadow(document);
+          if (links.length === 0) return null;
+          var idx = Math.min(${rowIndex}, links.length - 1);
+          var target = links[idx];
+          return {
+            x: Math.round(target.rect.left + target.rect.width/2),
+            y: Math.round(target.rect.top + target.rect.height/2),
+            href: target.href,
+            text: target.text,
+            totalRows: links.length,
+            clickedIndex: idx
+          };
+        })()
+      `).catch(() => null)
+
+      if (!coords) { res.json({ success: false, error: 'No video rows found on page' }); return }
+
+      // Native click via sendInputEvent
+      view.webContents.sendInputEvent({ type: 'mouseMove', x: coords.x, y: coords.y } as any)
+      await new Promise(r => setTimeout(r, 50))
+      view.webContents.sendInputEvent({ type: 'mouseDown', x: coords.x, y: coords.y, button: 'left', clickCount: 1 } as any)
+      await new Promise(r => setTimeout(r, 50))
+      view.webContents.sendInputEvent({ type: 'mouseUp', x: coords.x, y: coords.y, button: 'left', clickCount: 1 } as any)
+
+      res.json({ success: true, strategy: 'row_by_index', ...coords })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // Upload file to a file input on the page using CDP DOM.setFileInputFiles
   server.post('/tabs/upload', async (req: Request, res: Response) => {
     try {

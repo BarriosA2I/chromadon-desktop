@@ -210,9 +210,9 @@ class AgenticOrchestrator {
                             }
                         }
                         // Tiered verification — screenshot + auto-context (ACT → VERIFY → DECIDE)
-                        const LOW_STAKES = ['scroll', 'wait', 'list_tabs', 'switch_tab'];
+                        const LOW_STAKES = ['scroll', 'wait', 'list_tabs', 'switch_tab', 'get_video_ids'];
                         const MEDIUM_STAKES = ['type_text', 'select_option', 'extract_text', 'hover', 'press_key'];
-                        const HIGH_STAKES = ['click', 'navigate', 'create_tab', 'upload_file', 'hover_and_click'];
+                        const HIGH_STAKES = ['click', 'navigate', 'create_tab', 'upload_file', 'hover_and_click', 'click_table_row'];
                         let verificationBase64 = null;
                         let verificationText = '';
                         const isDesktop = context.useDesktop && context.desktopTabId !== null;

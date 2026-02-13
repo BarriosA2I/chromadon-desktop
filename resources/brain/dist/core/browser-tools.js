@@ -189,6 +189,26 @@ exports.BROWSER_TOOLS = [
             required: ['filePath'],
         },
     },
+    {
+        name: 'get_video_ids',
+        description: 'Extract all video IDs from a YouTube Studio content page. Returns array of video IDs for direct URL navigation to /video/{id}/copyright or /video/{id}/edit. Use this instead of clicking individual video titles.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+            required: [],
+        },
+    },
+    {
+        name: 'click_table_row',
+        description: 'Click the Nth visible video row in a YouTube Studio content list. rowIndex is 0-based. Use this when clicking by text fails on table/list rows.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                rowIndex: { type: 'number', description: '0-based row index to click' },
+            },
+            required: ['rowIndex'],
+        },
+    },
 ];
 // ============================================================================
 // DESKTOP HELPER FUNCTIONS
@@ -236,6 +256,30 @@ async function desktopHoverAndClick(tabId, hoverSelector, hoverText, clickText, 
     if (!data.success)
         throw new Error(data.error || 'Hover and click failed');
     return data.result;
+}
+async function desktopGetVideoIds(tabId, desktopUrl) {
+    const response = await fetch(`${desktopUrl}/tabs/get-video-ids`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tabId }),
+    });
+    const data = await response.json();
+    if (!data.success)
+        throw new Error(data.error || 'Failed to extract video IDs');
+    if (data.count === 0)
+        return 'No video IDs found on page. Make sure you are on the YouTube Studio Content page.';
+    return `Found ${data.count} video IDs:\n${data.videoIds.map((id, i) => `${i + 1}. ${id} → https://studio.youtube.com/video/${id}/copyright`).join('\n')}`;
+}
+async function desktopClickTableRow(tabId, rowIndex, desktopUrl) {
+    const response = await fetch(`${desktopUrl}/tabs/click-table-row`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: tabId, rowIndex }),
+    });
+    const data = await response.json();
+    if (!data.success)
+        throw new Error(data.error || 'Failed to click table row');
+    return `Clicked row ${data.clickedIndex} of ${data.totalRows}: "${data.text}" (${data.href || 'no href'})`;
 }
 async function desktopClick(tabId, selector, text, desktopUrl) {
     const response = await fetch(`${desktopUrl}/tabs/click`, {
@@ -629,6 +673,15 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
                 success: true,
                 result: result + ' IMPORTANT: If you need to type text in the post composer, do it NOW (after the upload). Any text typed BEFORE the upload was likely erased by the platform re-render.',
             };
+        }
+        case 'get_video_ids': {
+            const result = await desktopGetVideoIds(tabId, desktopUrl);
+            return { success: true, result };
+        }
+        case 'click_table_row': {
+            const rowIndex = input.rowIndex || 0;
+            const result = await desktopClickTableRow(tabId, rowIndex, desktopUrl);
+            return { success: true, result };
         }
         default:
             return { success: false, result: '', error: `Unknown tool: ${toolName}` };
