@@ -114,6 +114,7 @@ export interface EmbeddedTab {
 interface ChromadonState {
   // Connection state
   isConnected: boolean
+  brainAvailable: boolean
   connectionMode: 'CDP' | 'FRESH' | 'EMBEDDED' | null
   chromadonUrl: string
 
@@ -183,6 +184,7 @@ interface ChromadonState {
 
   // Actions
   setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
+  setBrainAvailable: (available: boolean) => void
   setAIState: (state: AIState) => void
   setConfidence: (confidence: number) => void
   setCircuitState: (state: CircuitState) => void
@@ -256,6 +258,7 @@ interface ChromadonState {
 export const useChromadonStore = create<ChromadonState>((set) => ({
   // Initial state
   isConnected: false,
+  brainAvailable: false,
   connectionMode: null,
   chromadonUrl: 'http://localhost:3001',
 
@@ -333,6 +336,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
 
   // Actions
   setConnected: (connected, mode) => set({ isConnected: connected, connectionMode: mode ?? null }),
+  setBrainAvailable: (available) => set({ brainAvailable: available }),
   setAIState: (state) => set({ aiState: state }),
   setConfidence: (confidence) => set({ confidence }),
   setCircuitState: (state) => set({ circuitState: state }),

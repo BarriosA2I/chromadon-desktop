@@ -27,6 +27,7 @@ function App() {
     showSplash,
     setShowSplash,
     isConnected,
+    brainAvailable,
     setEmbeddedTabs,
     setConnected,
     addActionLog,
@@ -140,9 +141,9 @@ function App() {
     return () => clearTimeout(timer)
   }, [])
 
-  // Poll for AI status updates when connected to Brain API
+  // Poll for AI status updates only when Brain API is reachable
   useEffect(() => {
-    if (!isConnected) return
+    if (!brainAvailable) return
 
     const pollInterval = setInterval(() => {
       fetchAIStatus()
@@ -152,7 +153,7 @@ function App() {
     fetchAIStatus()
 
     return () => clearInterval(pollInterval)
-  }, [isConnected])
+  }, [brainAvailable])
 
   // Retry connecting to Brain API periodically (silently - logged once in useChromadonAPI)
   useEffect(() => {

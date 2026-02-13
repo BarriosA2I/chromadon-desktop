@@ -35,6 +35,7 @@ export function useClientContext() {
   const [strategyLoading, setStrategyLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const brainWarnedRef = useRef(false)
 
   // =========================================================================
   // CLIENT MANAGEMENT
@@ -44,9 +45,15 @@ export function useClientContext() {
     try {
       const res = await fetch(`${BRAIN_URL}/api/client-context/clients`)
       const data = await res.json()
-      if (data.success) setClients(data.data)
+      if (data.success) {
+        setClients(data.data)
+        brainWarnedRef.current = false
+      }
     } catch (e) {
-      console.error('[useClientContext] fetchClients failed:', e)
+      if (!brainWarnedRef.current) {
+        console.warn('[useClientContext] Brain API not available - client features disabled')
+        brainWarnedRef.current = true
+      }
     }
   }, [])
 
@@ -59,8 +66,12 @@ export function useClientContext() {
       } else {
         setActiveClient(null)
       }
+      brainWarnedRef.current = false
     } catch (e) {
-      console.error('[useClientContext] fetchActiveClient failed:', e)
+      if (!brainWarnedRef.current) {
+        console.warn('[useClientContext] Brain API not available - client features disabled')
+        brainWarnedRef.current = true
+      }
     }
   }, [])
 

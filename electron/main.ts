@@ -340,6 +340,19 @@ let updaterState: {
 } = { status: 'idle' }
 
 function initAutoUpdater() {
+  // Always register IPC handlers (even in dev) so renderer doesn't throw
+  ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('updater:getStatus', () => updaterState)
+  ipcMain.handle('updater:checkForUpdates', async () => {
+    if (!app.isPackaged) return { success: false, error: 'Updates disabled in dev mode' }
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      return { success: true, version: result?.updateInfo?.version }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   if (!app.isPackaged) {
     console.log('[AutoUpdate] Skipping - dev mode')
     return
@@ -389,24 +402,6 @@ function initAutoUpdater() {
     console.error('[AutoUpdate] Error:', err.message)
     updaterState = { status: 'error', error: err.message }
     mainWindow?.webContents.send('updater:error', { message: err.message })
-  })
-
-  // App version — lets renderer display current version
-  ipcMain.handle('app:getVersion', () => app.getVersion())
-
-  // Manual check handler — lets renderer trigger a retry
-  ipcMain.handle('updater:checkForUpdates', async () => {
-    try {
-      const result = await autoUpdater.checkForUpdates()
-      return { success: true, version: result?.updateInfo?.version }
-    } catch (err: any) {
-      return { success: false, error: err.message }
-    }
-  })
-
-  // Renderer queries cached state on mount (fixes race where events fire before React mounts)
-  ipcMain.handle('updater:getStatus', () => {
-    return updaterState
   })
 
   // Wait for renderer to be ready, then check for updates

@@ -7,6 +7,7 @@ const API_BASE = 'http://localhost:3001'
 export function useChromadonAPI() {
   const {
     setConnected,
+    setBrainAvailable,
     setAIState,
     setConfidence,
     setCircuitState,
@@ -31,6 +32,7 @@ export function useChromadonAPI() {
 
       if (data.status === 'healthy') {
         setConnected(true, data.mode)
+        setBrainAvailable(true)
         addActionLog({
           type: 'success',
           description: `Connected to CHROMADON Brain (${data.mode} mode)`,
@@ -39,11 +41,13 @@ export function useChromadonAPI() {
         brainApiWarnedRef.current = false // Reset warning flag on successful connection
         return true
       }
+      setBrainAvailable(false)
       return false
     } catch (error) {
       // Only warn once about Brain API being unavailable
       // Don't override connection state - embedded mode still works
       // Don't add action log - this is expected when Brain isn't running
+      setBrainAvailable(false)
       if (!brainApiWarnedRef.current) {
         console.warn('[CHROMADON] Brain API not available at', API_BASE, '- AI features disabled')
         brainApiWarnedRef.current = true
