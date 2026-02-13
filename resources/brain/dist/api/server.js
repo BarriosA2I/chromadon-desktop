@@ -42,6 +42,7 @@ dotenv.config({ path: '.env.local', override: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const path = __importStar(require("path"));
+const api_1 = require("@opentelemetry/api");
 // Neural RAG Brain v3.0 imports
 const core_1 = require("../core");
 // Agentic Orchestrator imports
@@ -66,6 +67,8 @@ const multer_1 = __importDefault(require("multer"));
 const document_processor_1 = require("../client-context/document-processor");
 // Skill Memory imports
 const skills_1 = require("../skills");
+// Circuit Breaker for Desktop API calls
+const circuit_breaker_1 = require("../core/circuit-breaker");
 // 27-Agent System imports (runtime load to avoid type conflicts)
 // @ts-ignore - Agent types handled at runtime
 const agentModule = require('../../dist/agents/index.js');
@@ -79,6 +82,25 @@ const PREFER_DESKTOP = process.env.PREFER_DESKTOP !== 'false'; // Default true -
 // Middleware
 app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '50mb' }));
+// OpenTelemetry request tracing middleware
+const tracer = api_1.trace.getTracer('chromadon-brain-api');
+app.use((req, res, next) => {
+    const span = tracer.startSpan(`${req.method} ${req.path}`, {
+        attributes: {
+            'http.method': req.method,
+            'http.route': req.path,
+            'http.url': req.originalUrl,
+        },
+    });
+    res.on('finish', () => {
+        span.setAttribute('http.status_code', res.statusCode);
+        if (res.statusCode >= 400) {
+            span.setStatus({ code: api_1.SpanStatusCode.ERROR, message: `HTTP ${res.statusCode}` });
+        }
+        span.end();
+    });
+    next();
+});
 // Serve static files from public directory
 app.use(express_1.default.static(path.join(__dirname, '../../public')));
 // Serve UI at /ui
@@ -116,6 +138,15 @@ const activeAbortControllers = new Map();
 let desktopAvailable = false;
 let desktopTabIds = []; // Maps index -> Desktop tab ID
 let desktopActiveTabId = null;
+// Circuit breaker for Desktop Control Server calls (prevents cascade failures when Desktop is restarting)
+const desktopCircuitBreaker = new circuit_breaker_1.CircuitBreaker({
+    failureThreshold: 3,
+    recoveryTimeoutMs: 10000,
+    successThreshold: 2,
+    halfOpenMaxAttempts: 2,
+    failureWindowMs: 30000,
+    enableLogging: true,
+});
 /**
  * Check if Desktop control server is available (with retries)
  */
@@ -176,80 +207,92 @@ function detectPlatformFromUrl(url) {
  * Create a tab in Desktop (with platform auth if applicable)
  */
 async function desktopCreateTab(url) {
-    const platform = url ? detectPlatformFromUrl(url) : null;
-    const endpoint = platform ? '/tabs/platform' : '/tabs/create';
-    const body = platform ? { url, platform } : { url };
-    const response = await fetch(`${CHROMADON_DESKTOP_URL}${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    const data = await response.json();
-    if (!data.success)
-        throw new Error(data.error || 'Failed to create Desktop tab');
-    desktopActiveTabId = data.id;
-    return { id: data.id, url: url || 'about:blank', title: '' };
+    return desktopCircuitBreaker.execute(async () => {
+        const platform = url ? detectPlatformFromUrl(url) : null;
+        const endpoint = platform ? '/tabs/platform' : '/tabs/create';
+        const body = platform ? { url, platform } : { url };
+        const response = await fetch(`${CHROMADON_DESKTOP_URL}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!data.success)
+            throw new Error(data.error || 'Failed to create Desktop tab');
+        desktopActiveTabId = data.id;
+        return { id: data.id, url: url || 'about:blank', title: '' };
+    }, 'desktop:createTab');
 }
 /**
  * List all tabs from Desktop
  */
 async function desktopListTabs() {
-    const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs`);
-    const data = await response.json();
-    if (!data.success)
-        throw new Error(data.error || 'Failed to list Desktop tabs');
-    desktopTabIds = (data.tabs || []).map((t) => t.id);
-    desktopActiveTabId = data.activeTabId ?? null;
-    return data.tabs || [];
+    return desktopCircuitBreaker.execute(async () => {
+        const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs`);
+        const data = await response.json();
+        if (!data.success)
+            throw new Error(data.error || 'Failed to list Desktop tabs');
+        desktopTabIds = (data.tabs || []).map((t) => t.id);
+        desktopActiveTabId = data.activeTabId ?? null;
+        return data.tabs || [];
+    }, 'desktop:listTabs');
 }
 /**
  * Focus a tab in Desktop by index (maps to tab ID)
  */
 async function desktopFocusTab(tabId) {
-    const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/focus`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: tabId }),
-    });
-    const data = await response.json();
-    if (!data.success)
-        throw new Error(data.error || 'Failed to focus Desktop tab');
-    desktopActiveTabId = tabId;
+    return desktopCircuitBreaker.execute(async () => {
+        const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/focus`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: tabId }),
+        });
+        const data = await response.json();
+        if (!data.success)
+            throw new Error(data.error || 'Failed to focus Desktop tab');
+        desktopActiveTabId = tabId;
+    }, 'desktop:focusTab');
 }
 /**
  * Close a tab in Desktop
  */
 async function desktopCloseTab(tabId) {
-    const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/close`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: tabId }),
-    });
-    const data = await response.json();
-    if (!data.success)
-        throw new Error(data.error || 'Failed to close Desktop tab');
+    return desktopCircuitBreaker.execute(async () => {
+        const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/close`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: tabId }),
+        });
+        const data = await response.json();
+        if (!data.success)
+            throw new Error(data.error || 'Failed to close Desktop tab');
+    }, 'desktop:closeTab');
 }
 /**
  * Execute script in Desktop tab
  */
 async function desktopExecuteScript(tabId, script) {
-    const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/execute`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: tabId, script }),
-    });
-    const data = await response.json();
-    if (!data.success)
-        throw new Error(data.error || 'Script execution failed');
-    return data.result;
+    return desktopCircuitBreaker.execute(async () => {
+        const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/execute`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: tabId, script }),
+        });
+        const data = await response.json();
+        if (!data.success)
+            throw new Error(data.error || 'Script execution failed');
+        return data.result;
+    }, 'desktop:executeScript');
 }
 /**
  * Get screenshot from Desktop tab
  */
 async function desktopScreenshot(tabId) {
-    const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/screenshot/${tabId}`);
-    const buffer = await response.arrayBuffer();
-    return Buffer.from(buffer);
+    return desktopCircuitBreaker.execute(async () => {
+        const response = await fetch(`${CHROMADON_DESKTOP_URL}/tabs/screenshot/${tabId}`);
+        const buffer = await response.arrayBuffer();
+        return Buffer.from(buffer);
+    }, 'desktop:screenshot');
 }
 /**
  * Connect to existing Chrome via CDP (preserves login sessions!)
@@ -567,6 +610,7 @@ app.get('/health', (_req, res) => {
         orchestrator: !!orchestrator,
         orchestratorSessions: orchestrator?.getSessionCount() ?? 0,
         analytics: !!analyticsDb,
+        desktopCircuitBreaker: desktopCircuitBreaker.getMetrics(),
         uptime: Math.round((Date.now() - serverStartTime) / 1000),
         timestamp: new Date().toISOString(),
     });

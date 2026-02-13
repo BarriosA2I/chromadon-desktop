@@ -33,9 +33,9 @@ const MODEL_MAP = {
         accurate: 'gpt-4o',
     },
     anthropic: {
-        fast: 'claude-3-haiku-20240307',
-        balanced: 'claude-3-sonnet-20240229',
-        accurate: 'claude-3-opus-20240229',
+        fast: 'claude-haiku-4-5-20251001',
+        balanced: 'claude-sonnet-4-20250514',
+        accurate: 'claude-opus-4-20250514',
     },
 };
 /**

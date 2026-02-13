@@ -53,7 +53,7 @@ class BaseAgent {
     getModelId() {
         switch (this.config.model) {
             case 'haiku':
-                return 'claude-3-5-haiku-latest';
+                return 'claude-haiku-4-5-20251001';
             case 'sonnet':
                 return 'claude-sonnet-4-20250514';
             case 'opus':

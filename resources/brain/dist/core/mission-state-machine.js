@@ -50,6 +50,7 @@ class MissionStateMachine {
     stepTimings = [];
     history = [];
     checkpoints = new Map();
+    version = 0;
     // Event callbacks
     onStateChangeCallbacks = [];
     onStepCompleteCallbacks = [];
@@ -86,9 +87,10 @@ class MissionStateMachine {
             reason,
             stepIndex: this.currentStepIndex,
         };
-        // Update state
+        // Update state (increment version on every transition)
         const previousState = this.state;
         this.state = newState;
+        this.version++;
         // Record history
         this.history.push(transition);
         if (this.history.length > this.config.maxHistorySize) {
@@ -199,12 +201,20 @@ class MissionStateMachine {
         return this.steps[this.currentStepIndex];
     }
     /**
+     * Replace a step with an immutable clone bearing new properties.
+     */
+    updateStep(index, updates) {
+        const updated = { ...this.steps[index], ...updates };
+        this.steps[index] = updated;
+        this.version++;
+        return updated;
+    }
+    /**
      * Mark current step as executing.
      */
     markStepExecuting() {
-        const step = this.getCurrentStep();
-        if (step) {
-            step.status = 'executing';
+        if (this.currentStepIndex < this.steps.length) {
+            this.updateStep(this.currentStepIndex, { status: 'executing' });
         }
     }
     /**
@@ -213,16 +223,14 @@ class MissionStateMachine {
      * @param result - Action result (optional)
      */
     markStepCompleted(result) {
-        const step = this.getCurrentStep();
-        if (step) {
-            step.status = 'completed';
-            step.result = result;
+        if (this.currentStepIndex < this.steps.length) {
+            const updated = this.updateStep(this.currentStepIndex, { status: 'completed', result });
             // Record timing
             if (this.config.trackTiming && result) {
                 this.stepTimings.push(result.duration);
             }
             // Emit step complete
-            this.emitStepComplete(step);
+            this.emitStepComplete(updated);
             // Advance to next step
             this.currentStepIndex++;
             // Emit progress
@@ -235,23 +243,25 @@ class MissionStateMachine {
      * @param error - Error that occurred
      */
     markStepFailed(error) {
-        const step = this.getCurrentStep();
-        if (step) {
-            step.status = 'failed';
-            step.result = {
-                success: false,
-                action: step.action,
-                duration: 0,
-                error,
-                reflection: {
-                    shouldRetrieve: false,
-                    isRelevant: 0,
-                    isSupported: 0,
-                    isUseful: 1,
+        if (this.currentStepIndex < this.steps.length) {
+            const step = this.steps[this.currentStepIndex];
+            const updated = this.updateStep(this.currentStepIndex, {
+                status: 'failed',
+                result: {
+                    success: false,
+                    action: step.action,
+                    duration: 0,
+                    error,
+                    reflection: {
+                        shouldRetrieve: false,
+                        isRelevant: 0,
+                        isSupported: 0,
+                        isUseful: 1,
+                    },
                 },
-            };
+            });
             // Emit step complete (with failure)
-            this.emitStepComplete(step);
+            this.emitStepComplete(updated);
             // Emit progress
             this.emitProgress();
         }
@@ -262,9 +272,8 @@ class MissionStateMachine {
      * @param reason - Skip reason
      */
     skipStep(reason) {
-        const step = this.getCurrentStep();
-        if (step) {
-            step.status = 'skipped';
+        if (this.currentStepIndex < this.steps.length) {
+            this.updateStep(this.currentStepIndex, { status: 'skipped' });
             this.currentStepIndex++;
             this.emitProgress();
         }
@@ -326,10 +335,9 @@ class MissionStateMachine {
         if (!checkpoint) {
             return false;
         }
-        // Reset steps after checkpoint
+        // Reset steps after checkpoint (immutable clones)
         for (let i = stepIndex; i < this.steps.length; i++) {
-            this.steps[i].status = 'pending';
-            this.steps[i].result = undefined;
+            this.updateStep(i, { status: 'pending', result: undefined });
         }
         // Reset position
         this.currentStepIndex = stepIndex;
@@ -367,6 +375,7 @@ class MissionStateMachine {
         return {
             missionId: this.missionId,
             state: this.state,
+            version: this.version,
             currentStepIndex: this.currentStepIndex,
             totalSteps: this.steps.length,
             completedSteps,
@@ -494,6 +503,12 @@ class MissionStateMachine {
      */
     canCancel() {
         return !this.isTerminal();
+    }
+    /**
+     * Get current state version (increments on every mutation).
+     */
+    getVersion() {
+        return this.version;
     }
 }
 exports.MissionStateMachine = MissionStateMachine;

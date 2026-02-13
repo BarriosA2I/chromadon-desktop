@@ -100,6 +100,12 @@ function generateSocialPrompt(ctx) {
     if (ctx.action === 'custom' && ctx.customInstructions) {
         prompt += `TASK: ${ctx.customInstructions}\n`;
         prompt += `Platform: ${ctx.platform} (${platformUrl})\n`;
+        // Include explicit posting steps so the AI navigates + posts, not just generates text
+        const postTemplate = PLATFORM_ACTIONS[ctx.platform]?.['post'];
+        if (postTemplate) {
+            prompt += `\nAfter generating the content, POST IT using these steps:\n${postTemplate}\n`;
+            prompt += `Use the generated content as the post text.\n`;
+        }
     }
     else if (actionTemplate) {
         prompt += `TASK: ${actionTemplate}\n`;
@@ -122,8 +128,11 @@ function generateSocialPrompt(ctx) {
     if (ctx.mentions && ctx.mentions.length > 0) {
         prompt += `\nMENTIONS: ${ctx.mentions.map((m) => (m.startsWith('@') ? m : `@${m}`)).join(' ')}\n`;
     }
-    // Verification instruction
+    // Verification instruction — includes anti-double-post guard
     prompt += `\nAfter completing the action, verify it succeeded using take_screenshot or extract_text. Report what happened clearly and concisely.`;
+    if (ctx.action === 'post' || ctx.action === 'custom') {
+        prompt += `\nCRITICAL: If you already posted successfully (you see the posted content, a success message, or the composer closed after posting), STOP IMMEDIATELY. Do NOT attempt to post again. Report success and move on.`;
+    }
     return prompt;
 }
 exports.generateSocialPrompt = generateSocialPrompt;

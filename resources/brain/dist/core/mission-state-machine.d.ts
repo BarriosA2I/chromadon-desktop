@@ -30,6 +30,7 @@ export interface StateTransition {
 export interface ProgressSnapshot {
     missionId: string;
     state: MissionState;
+    version: number;
     currentStepIndex: number;
     totalSteps: number;
     completedSteps: number;
@@ -71,6 +72,7 @@ export declare class MissionStateMachine {
     private stepTimings;
     private history;
     private checkpoints;
+    private version;
     private onStateChangeCallbacks;
     private onStepCompleteCallbacks;
     private onProgressCallbacks;
@@ -133,6 +135,10 @@ export declare class MissionStateMachine {
      * Get current step to execute.
      */
     getCurrentStep(): MissionStep | null;
+    /**
+     * Replace a step with an immutable clone bearing new properties.
+     */
+    private updateStep;
     /**
      * Mark current step as executing.
      */
@@ -247,6 +253,10 @@ export declare class MissionStateMachine {
      * Check if mission can be cancelled.
      */
     canCancel(): boolean;
+    /**
+     * Get current state version (increments on every mutation).
+     */
+    getVersion(): number;
 }
 /**
  * Create a mission state machine.

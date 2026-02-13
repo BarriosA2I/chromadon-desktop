@@ -269,7 +269,7 @@ class DualProcessRouter {
                         type: 'simple',
                         complexity: 2,
                         usePRM: false,
-                        model: 'claude-3-5-haiku-latest',
+                        model: 'claude-haiku-4-5-20251001',
                         thinkBudget: 500,
                         cognitiveMode: 'system1',
                     };
@@ -320,7 +320,7 @@ class DualProcessRouter {
                     type: 'simple',
                     complexity: complexityScore,
                     usePRM: false,
-                    model: 'claude-3-5-haiku-latest',
+                    model: 'claude-haiku-4-5-20251001',
                     thinkBudget: 500,
                     cognitiveMode: 'system1',
                 };
@@ -428,7 +428,7 @@ Respond ONLY with valid JSON:
         try {
             const result = await this.circuitBreaker.call(async () => {
                 return this.client.messages.create({
-                    model: 'claude-3-5-haiku-latest',
+                    model: 'claude-haiku-4-5-20251001',
                     max_tokens: 300,
                     messages: [{ role: 'user', content: prompt }],
                 });
@@ -439,7 +439,13 @@ Respond ONLY with valid JSON:
             if (!jsonMatch) {
                 throw new Error('No JSON found in reflection response');
             }
-            const parsed = JSON.parse(jsonMatch[0]);
+            // Sanitize control characters that break JSON.parse
+            const sanitizedReflection = jsonMatch[0].replace(/[\x00-\x1f\x7f]/g, (ch) => {
+                if (ch === '\n' || ch === '\r' || ch === '\t')
+                    return ch;
+                return `\\u${('000' + ch.charCodeAt(0).toString(16)).slice(-4)}`;
+            });
+            const parsed = JSON.parse(sanitizedReflection);
             const reflectionResult = {
                 shouldRetrieve: parsed.shouldRetrieve ?? false,
                 isRelevant: (parsed.relevanceScore ?? 0.5) >= 0.7,
@@ -925,7 +931,13 @@ CRITICAL RULES:
                 console.warn('[NeuralRAGAIEngine] No JSON found in response, attempting text parse');
                 return this.parseTextResponse(text);
             }
-            const parsed = JSON.parse(jsonMatch[0]);
+            // Sanitize control characters that break JSON.parse
+            const sanitized = jsonMatch[0].replace(/[\x00-\x1f\x7f]/g, (ch) => {
+                if (ch === '\n' || ch === '\r' || ch === '\t')
+                    return ch;
+                return `\\u${('000' + ch.charCodeAt(0).toString(16)).slice(-4)}`;
+            });
+            const parsed = JSON.parse(sanitized);
             return {
                 thinking: parsed.thinking || '',
                 actions: (parsed.actions || []).map((a) => ({

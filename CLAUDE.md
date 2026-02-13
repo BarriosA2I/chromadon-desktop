@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.13.1 — 2026-02-13)
+## Recent Changes (v1.13.2 — 2026-02-13)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain bundle had stale dist with deprecated Haiku model — full rebuild + clean copy | `resources/brain/dist/*` |
+| Fixed: 4 additional `claude-3-5-haiku-latest` refs in ai-engine-v3.ts + document-processor.ts | Brain: `ai-engine-v3.ts`, `document-processor.ts` |
+| Fixed: Auto-updater failing for clients — repo was private, now public | GitHub repo visibility |
+
+## Changes (v1.13.1 — 2026-02-13)
 
 | Change | File |
 |--------|------|
@@ -250,5 +258,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.13.1 (Bug fixes + YouTube test suite)
+**Version:** 1.13.2 (Brain bundle fix + auto-updater fix)
 **Author:** Barrios A2I (Gary Barrios)
