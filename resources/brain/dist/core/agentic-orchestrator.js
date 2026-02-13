@@ -26,7 +26,7 @@ const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 4096,
     maxLoops: 50,
-    maxSessionMessages: 100,
+    maxSessionMessages: 40,
     sessionTimeoutMs: 30 * 60 * 1000, // 30 minutes
 };
 class AgenticOrchestrator {
@@ -40,7 +40,7 @@ class AgenticOrchestrator {
     additionalToolNames;
     getSkillsForPrompt;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt) {
-        this.client = new sdk_1.default({ apiKey });
+        this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 1 });
         this.toolExecutor = toolExecutor;
         this.config = { ...DEFAULT_CONFIG, ...config };
         this.additionalTools = additionalTools || [];
@@ -94,8 +94,8 @@ class AgenticOrchestrator {
                 if (session.messages.length > this.config.maxSessionMessages) {
                     session.messages = this.truncateHistory(session.messages, this.config.maxSessionMessages);
                 }
-                // 5b. Prune old screenshots — keep only last 3 to save context tokens
-                this.pruneOldScreenshots(session.messages, 3);
+                // 5b. Prune old screenshots — keep only last 2 to prevent payload bloat
+                this.pruneOldScreenshots(session.messages, 2);
                 // 5c. Sanitize history — ensure all tool_use/tool_result pairs are intact
                 const sanitizedMessages = this.sanitizeHistory(session.messages);
                 // 6. Call Claude API with streaming (browser tools + any additional tools)
@@ -136,10 +136,13 @@ class AgenticOrchestrator {
                         return;
                     console.error(`[CHROMADON Orchestrator] Stream error event:`, error.message || error);
                 });
-                // Wait for the full message
+                // Wait for the full message (with safety timeout to prevent infinite hangs)
                 let finalMessage;
                 try {
-                    finalMessage = await stream.finalMessage();
+                    finalMessage = await Promise.race([
+                        stream.finalMessage(),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Stream timed out after 3 minutes')), 180_000)),
+                    ]);
                 }
                 catch (streamErr) {
                     // If aborted, break cleanly
@@ -369,6 +372,18 @@ class AgenticOrchestrator {
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
+                // Recovery: timeout — retry with backoff (first 2 loops only)
+                if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('ETIMEDOUT')) {
+                    if (loopCount <= 2) {
+                        const waitMs = Math.min(3000 * Math.pow(2, loopCount - 1), 15000);
+                        console.warn(`[CHROMADON Orchestrator] Timeout — waiting ${waitMs}ms before retry`);
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: `\n\nConnection timed out. Retrying in ${Math.ceil(waitMs / 1000)}s...\n` });
+                        }
+                        await new Promise(resolve => setTimeout(resolve, waitMs));
+                        continue;
+                    }
+                }
                 // User-friendly error messages (raw error preserved in console.error above)
                 let userMsg;
                 if (error?.status === 401) {
@@ -377,7 +392,7 @@ class AgenticOrchestrator {
                 else if (error?.status === 413 || errorMsg.includes('request_too_large') || errorMsg.includes('Request too large')) {
                     userMsg = 'The conversation got too long. Starting a fresh chat session may help.';
                 }
-                else if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT')) {
+                else if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('ETIMEDOUT')) {
                     userMsg = 'The AI service timed out. Please try again.';
                 }
                 else if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network') || errorMsg.includes('fetch failed')) {
