@@ -104,6 +104,15 @@ class AgenticOrchestrator {
         // 3. Build system prompt with current page context + skill memory
         const skillsJson = this.getSkillsForPrompt ? this.getSkillsForPrompt() : '';
         const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson);
+        // Inject video tracking blacklist so AI knows what's already done
+        let finalSystemPrompt = systemPrompt;
+        if (session.videoTracker.allVideoIds.length > 0) {
+            const t = session.videoTracker;
+            const doneList = [...t.processedIds, ...t.skippedIds, ...t.failedIds];
+            if (doneList.length > 0) {
+                finalSystemPrompt += `\n\nVIDEO TRACKING (${t.processedIds.length} done, ${t.skippedIds.length} skipped, ${t.failedIds.length} failed of ${t.allVideoIds.length} total):\nDO NOT navigate to these videos: ${doneList.join(', ')}`;
+            }
+        }
         // 4. Agentic loop
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
@@ -144,7 +153,7 @@ class AgenticOrchestrator {
                     model: this.config.model,
                     max_tokens: this.config.maxTokens,
                     temperature: 0,
-                    system: systemPrompt,
+                    system: finalSystemPrompt,
                     tools: allTools,
                     messages: sanitizedMessages,
                 });
@@ -262,6 +271,54 @@ class AgenticOrchestrator {
                                 context.desktopTabId = parseInt(match[1], 10);
                             }
                         }
+                        // --- Video Tracker: populate from tool results ---
+                        const tracker = session.videoTracker;
+                        if (toolName === 'get_video_ids' && result.success) {
+                            const ids = (result.result.match(/([a-zA-Z0-9_-]{11})\s*→/g) || [])
+                                .map((m) => m.replace(/\s*→/, ''));
+                            if (ids.length > 0) {
+                                tracker.allVideoIds = ids;
+                                tracker.processedIds = [];
+                                tracker.skippedIds = [];
+                                tracker.failedIds = [];
+                                tracker.currentVideoId = '';
+                                tracker.claimsErased = 0;
+                                console.log(`[VIDEO TRACKER] Loaded ${ids.length} video IDs`);
+                            }
+                        }
+                        if (toolName === 'navigate' && result.success && tracker.allVideoIds.length > 0) {
+                            const navUrl = toolInput.url;
+                            const vidMatch = navUrl.match(/\/video\/([a-zA-Z0-9_-]{11})\/copyright/);
+                            if (vidMatch) {
+                                const videoId = vidMatch[1];
+                                // REACTIVE: if AI navigates to a video already processed, warn it
+                                if (tracker.processedIds.includes(videoId)) {
+                                    result = { ...result, result: `ALREADY PROCESSED: Video ${videoId} was already handled. Do NOT re-process. Navigate to the next unprocessed video.` };
+                                    console.log(`[VIDEO TRACKER] Blocked re-visit to ${videoId}`);
+                                }
+                                else if (tracker.skippedIds.includes(videoId)) {
+                                    result = { ...result, result: `ALREADY SKIPPED (editing in progress): Video ${videoId}. Navigate to the next unprocessed video.` };
+                                    console.log(`[VIDEO TRACKER] Blocked re-visit to skipped ${videoId}`);
+                                }
+                                else {
+                                    // New video — mark previous as processed (it navigated AWAY, so it's done)
+                                    if (tracker.currentVideoId && tracker.currentVideoId !== videoId &&
+                                        !tracker.processedIds.includes(tracker.currentVideoId) &&
+                                        !tracker.skippedIds.includes(tracker.currentVideoId) &&
+                                        !tracker.failedIds.includes(tracker.currentVideoId)) {
+                                        tracker.processedIds.push(tracker.currentVideoId);
+                                        console.log(`[VIDEO TRACKER] Completed: ${tracker.currentVideoId} (${tracker.processedIds.length}/${tracker.allVideoIds.length})`);
+                                    }
+                                    tracker.currentVideoId = videoId;
+                                }
+                            }
+                        }
+                        if (result.success && /\[PAGE DEAD\]/i.test(result.result) && tracker.currentVideoId) {
+                            if (!tracker.failedIds.includes(tracker.currentVideoId)) {
+                                tracker.failedIds.push(tracker.currentVideoId);
+                                console.log(`[VIDEO TRACKER] Failed (page dead): ${tracker.currentVideoId}`);
+                            }
+                        }
                         // URL retry counter — detect infinite loops on broken URLs
                         if (toolName === 'navigate' && result.success) {
                             const navUrlKey = toolInput.url;
@@ -299,6 +356,32 @@ class AgenticOrchestrator {
                                 else if (pageError === 'NOT_FOUND') {
                                     result = { ...result, result: 'Page not found (404). DO NOT retry this URL. Navigate to https://studio.youtube.com directly.' };
                                 }
+                            }
+                        }
+                        // "Editing in progress" enforcement — auto-skip at code level
+                        if (toolName === 'navigate' && result.success && tracker.allVideoIds.length > 0) {
+                            const navUrl = toolInput.url;
+                            if (navUrl.includes('/copyright') && context.useDesktop && context.desktopTabId !== null) {
+                                try {
+                                    const desktopUrl = context.desktopUrl || 'http://127.0.0.1:3002';
+                                    const editCheckResp = await fetch(`${desktopUrl}/tabs/execute`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            id: context.desktopTabId,
+                                            script: `(function(){ return (document.body && document.body.innerText || '').includes('editing is in progress'); })()`,
+                                        }),
+                                    });
+                                    const editCheckData = await editCheckResp.json();
+                                    if (editCheckData.result === true && tracker.currentVideoId) {
+                                        if (!tracker.skippedIds.includes(tracker.currentVideoId)) {
+                                            tracker.skippedIds.push(tracker.currentVideoId);
+                                            console.log(`[VIDEO TRACKER] Auto-skipped (editing in progress): ${tracker.currentVideoId}`);
+                                        }
+                                        result = { ...result, result: 'EDITING IN PROGRESS — auto-skipped. Navigate to the next unprocessed video immediately.' };
+                                    }
+                                }
+                                catch { /* non-fatal */ }
                             }
                         }
                         // Tiered verification — screenshot + auto-context (ACT → VERIFY → DECIDE)
