@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.14.0 — 2026-02-13)
+## Recent Changes (v1.14.1 — 2026-02-13)
+
+| Change | File |
+|--------|------|
+| Fixed: Logo black backgrounds removed — all PNGs now have transparent backgrounds | `src/assets/*.png`, `public/icon.png` |
+
+## Changes (v1.14.0 — 2026-02-13)
 
 | Change | File |
 |--------|------|
