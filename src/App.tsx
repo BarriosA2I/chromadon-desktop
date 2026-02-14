@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useState, useRef } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { useChromadonStore, EmbeddedTab, VaultStatus, ChromadonProfile, StoredCredential, Platform } from './store/chromadonStore'
 import { useChromadonAPI } from './hooks/useChromadonAPI'
 import { useStreamingChat } from './hooks/useStreamingChat'
@@ -20,6 +20,7 @@ import StrategyDashboard from './components/strategy/StrategyDashboard'
 import { useClientContext } from './hooks/useClientContext'
 import SettingsModal from './components/SettingsModal'
 import UpdateNotifier from './components/UpdateNotifier'
+import babyDragon from '@/assets/baby-dragon.png'
 
 function App() {
   const store = useChromadonStore()
@@ -632,9 +633,26 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
           {/* Placeholder when no tabs */}
           {embeddedTabs.length === 0 && (
             <div className="flex-1 flex items-center justify-center bg-chroma-dark/30 m-2 rounded-lg border border-chroma-teal/20">
-              <div className="text-center">
-                <div className="text-6xl mb-4">🌐</div>
-                <h2 className="text-xl font-bold text-chroma-teal mb-2">Welcome to CHROMADON</h2>
+              <motion.div
+                className="text-center"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <motion.img
+                  src={babyDragon}
+                  alt="CHROMADON Dragon"
+                  className="w-32 h-32 mx-auto mb-4"
+                  animate={{
+                    filter: [
+                      'drop-shadow(0 0 10px rgba(0, 206, 209, 0.2))',
+                      'drop-shadow(0 0 20px rgba(0, 206, 209, 0.4))',
+                      'drop-shadow(0 0 10px rgba(0, 206, 209, 0.2))',
+                    ],
+                  }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                />
+                <h2 className="heading-cyber text-xl mb-2">Welcome to CHROMADON</h2>
                 <p className="text-chroma-muted mb-4">Click + to open a new tab and start browsing</p>
                 <button
                   onClick={handleTabCreate}
@@ -642,7 +660,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
                 >
                   Open New Tab
                 </button>
-              </div>
+              </motion.div>
             </div>
           )}
           {/* BrowserView renders in this space (managed by Electron main process) */}

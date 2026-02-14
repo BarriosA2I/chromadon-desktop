@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { useChromadonStore } from '../store/chromadonStore'
 import ClientSwitcher from './ClientSwitcher'
+import chromadonLogo from '@/assets/chromadon-logo-32.png'
 
 export default function TitleBar() {
   const { isConnected, connectionMode, setShowInterviewScreen } = useChromadonStore()
@@ -103,24 +104,13 @@ function WindowButton({
 
 function ChromadonLogo() {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-      <defs>
-        <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#00CED1" />
-          <stop offset="50%" stopColor="#00FFFF" />
-          <stop offset="100%" stopColor="#8B5CF6" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M12 2L21.5 7.5V16.5L12 22L2.5 16.5V7.5L12 2Z"
-        stroke="url(#logoGradient)"
-        strokeWidth="1.5"
-        fill="none"
-      />
-      <circle cx="12" cy="12" r="4" stroke="url(#logoGradient)" strokeWidth="1.5" fill="none" />
-      <circle cx="12" cy="12" r="1.5" fill="#00CED1" />
-      <path d="M12 8V6M12 18V16M16 12H18M6 12H8" stroke="#00CED1" strokeWidth="1" strokeLinecap="round" />
-    </svg>
+    <img
+      src={chromadonLogo}
+      alt="CHROMADON"
+      width={28}
+      height={28}
+      className="rounded-sm"
+    />
   )
 }
 

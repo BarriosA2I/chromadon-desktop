@@ -7,7 +7,19 @@
 
 ---
 
-## Recent Changes (v1.13.4 — 2026-02-13)
+## Recent Changes (v1.14.0 — 2026-02-13)
+
+| Change | File |
+|--------|------|
+| Added: Real CHROMADON dragon crest logo in TitleBar (replaces generic hexagon SVG) | `src/components/TitleBar.tsx` |
+| Added: Cinematic dragon crest reveal animation on SplashScreen | `src/components/SplashScreen.tsx` |
+| Added: Baby dragon mascot on welcome screen (replaces globe emoji) | `src/App.tsx` |
+| Added: Barrios A2I branding footer in Settings modal | `src/components/SettingsModal.tsx` |
+| Fixed: Electron window icon now uses real dragon crest PNG (256x256) | `public/icon.png`, `electron/main.ts` |
+| Fixed: electron-builder win.icon configured for proper installer branding | `package.json` |
+| Added: 7 logo assets (dragon crest, baby dragon, full dragon, Barrios A2I) | `src/assets/` |
+
+## Changes (v1.13.4 — 2026-02-13)
 
 | Change | File |
 |--------|------|

@@ -1,6 +1,6 @@
 {
   "name": "chromadon-desktop",
-  "version": "1.13.4",
+  "version": "1.14.0",
   "description": "CHROMADON AI Browser Automation Control Panel",
   "main": "dist-electron/main.js",
   "author": "Barrios A2I <gary@barriosa2i.com>",
@@ -104,13 +104,14 @@
       "target": [
         "nsis"
       ],
+      "icon": "public/icon.png",
       "signAndEditExecutable": false
     },
     "mac": {
       "target": [
         "dmg"
       ],
-      "icon": "public/icon.icns"
+      "icon": "public/icon.png"
     },
     "linux": {
       "target": [

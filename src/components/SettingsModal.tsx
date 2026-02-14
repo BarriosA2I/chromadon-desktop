@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import barriosLogo from '@/assets/barrios-a2i-logo.png'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -452,6 +453,14 @@ export default function SettingsModal({
                       (Windows DPAPI). It is never stored in plaintext or transmitted externally.
                     </p>
                   </div>
+                </div>
+
+                {/* Barrios A2I Branding */}
+                <div className="mt-6 pt-4 border-t border-chroma-teal/10 text-center">
+                  <img src={barriosLogo} alt="Barrios A2I" className="h-8 mx-auto mb-2 opacity-60" />
+                  <p className="text-xs text-chroma-muted">
+                    Built by Barrios A2I &mdash; World-class AI systems
+                  </p>
                 </div>
               </div>
             </div>

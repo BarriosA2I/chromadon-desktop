@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import chromadonLogo from '@/assets/chromadon-logo-200.png'
 
 export default function SplashScreen() {
   const [text, setText] = useState('')
@@ -67,92 +68,62 @@ export default function SplashScreen() {
 
 function AnimatedLogo() {
   return (
-    <svg width="200" height="200" viewBox="0 0 200 200" fill="none">
-      {/* Outer hexagon */}
-      <motion.path
-        d="M100 10L175 50V150L100 190L25 150V50L100 10Z"
-        stroke="#00CED1"
-        strokeWidth="2"
-        fill="none"
-        initial={{ pathLength: 0, opacity: 0 }}
-        animate={{ pathLength: 1, opacity: 1 }}
-        transition={{ duration: 1.5, ease: 'easeInOut' }}
+    <div className="relative w-[200px] h-[200px]">
+      {/* Teal glow backdrop */}
+      <motion.div
+        className="absolute inset-0 rounded-full"
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: [0, 0.6, 0.3], scale: [0.5, 1.2, 1] }}
+        transition={{ duration: 2, times: [0, 0.6, 1], ease: 'easeOut' }}
+        style={{
+          background: 'radial-gradient(circle, rgba(0, 206, 209, 0.3) 0%, transparent 70%)',
+          filter: 'blur(20px)',
+        }}
       />
 
-      {/* Inner circle */}
-      <motion.circle
-        cx="100"
-        cy="100"
-        r="50"
-        stroke="#00CED1"
-        strokeWidth="2"
-        fill="none"
-        initial={{ pathLength: 0, opacity: 0 }}
-        animate={{ pathLength: 1, opacity: 1 }}
-        transition={{ duration: 1, delay: 0.5, ease: 'easeInOut' }}
+      {/* Ring reveal effect */}
+      <motion.div
+        className="absolute inset-2 rounded-full border-2 border-chroma-teal/40"
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: [0, 1, 0.3] }}
+        transition={{ duration: 1.5, ease: 'easeOut' }}
       />
 
-      {/* Neural nodes */}
-      <motion.g
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.2 }}
-      >
-        {/* Center node */}
-        <circle cx="100" cy="100" r="8" fill="#00CED1">
-          <animate
-            attributeName="opacity"
-            values="1;0.5;1"
-            dur="2s"
-            repeatCount="indefinite"
-          />
-        </circle>
+      {/* The real dragon crest logo */}
+      <motion.img
+        src={chromadonLogo}
+        alt="CHROMADON"
+        width={200}
+        height={200}
+        className="relative z-10"
+        initial={{ scale: 0.3, opacity: 0, filter: 'brightness(2) blur(10px)' }}
+        animate={{ scale: 1, opacity: 1, filter: 'brightness(1) blur(0px)' }}
+        transition={{ duration: 1.2, delay: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
+      />
 
-        {/* Outer nodes */}
-        {[0, 60, 120, 180, 240, 300].map((angle, i) => {
-          const x = 100 + 35 * Math.cos((angle * Math.PI) / 180)
-          const y = 100 + 35 * Math.sin((angle * Math.PI) / 180)
-          return (
-            <g key={i}>
-              <line
-                x1="100"
-                y1="100"
-                x2={x}
-                y2={y}
-                stroke="#8B5CF6"
-                strokeWidth="1"
-                opacity="0.6"
-              />
-              <circle cx={x} cy={y} r="4" fill="#8B5CF6">
-                <animate
-                  attributeName="opacity"
-                  values="1;0.3;1"
-                  dur="1.5s"
-                  begin={`${i * 0.2}s`}
-                  repeatCount="indefinite"
-                />
-              </circle>
-            </g>
-          )
-        })}
-      </motion.g>
-
-      {/* CHROMADON text */}
-      <motion.text
-        x="100"
-        y="175"
-        textAnchor="middle"
-        fill="#00CED1"
-        fontFamily="Orbitron"
-        fontSize="16"
-        fontWeight="bold"
-        letterSpacing="4"
+      {/* Breathing glow on the logo */}
+      <motion.div
+        className="absolute inset-0 rounded-full pointer-events-none z-20"
         initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1.5 }}
+        animate={{
+          boxShadow: [
+            '0 0 20px rgba(0, 206, 209, 0)',
+            '0 0 40px rgba(0, 206, 209, 0.4)',
+            '0 0 20px rgba(0, 206, 209, 0)',
+          ],
+        }}
+        transition={{ duration: 2, delay: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {/* CHROMADON text below */}
+      <motion.div
+        className="absolute -bottom-8 left-1/2 -translate-x-1/2"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.5, duration: 0.5 }}
       >
-        CHROMADON
-      </motion.text>
-    </svg>
+        <span className="heading-cyber text-lg tracking-[0.25em]">CHROMADON</span>
+      </motion.div>
+    </div>
   )
 }

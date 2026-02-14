@@ -479,7 +479,9 @@ function createWindow() {
     frame: false, // Frameless for custom title bar
     transparent: false,
     backgroundColor: '#0a0a0f',
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, 'app.asar', 'dist', 'icon.png')
+      : path.join(__dirname, '../public/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
