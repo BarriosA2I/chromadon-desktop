@@ -144,6 +144,7 @@ class AgenticOrchestrator {
         let sessionInputTokens = 0;
         let sessionOutputTokens = 0;
         const noOpDetector = new NoOpDetector();
+        let usingGemini = false;
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
                 break;
@@ -183,7 +184,6 @@ class AgenticOrchestrator {
                     ? (0, orchestrator_system_prompt_1.buildCompactSystemPrompt)()
                     : finalSystemPrompt;
                 let stream;
-                let usingGemini = false;
                 if (this.useGemini && this.geminiProvider) {
                     try {
                         stream = this.geminiProvider.streamChat({

@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.19.0 — 2026-02-14)
+## Recent Changes (v1.19.1 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: `usingGemini` variable scoping — was declared inside try block, referenced after loop | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.19.0 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -395,5 +401,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-14
-**Version:** 1.19.0 (Gemini API key settings + dual provider UI)
+**Version:** 1.19.1 (Gemini API key settings + usingGemini scope fix)
 **Author:** Barrios A2I (Gary Barrios)
