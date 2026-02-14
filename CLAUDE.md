@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.19.2 — 2026-02-14)
+## Recent Changes (v1.19.3 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: Anthropic billing/auth errors bounce back to Gemini instead of dying | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.19.2 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -409,5 +415,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-14
-**Version:** 1.19.2 (Either-key Brain startup + Anthropic fallback guard)
+**Version:** 1.19.3 (Anthropic billing bounce-back to Gemini)
 **Author:** Barrios A2I (Gary Barrios)

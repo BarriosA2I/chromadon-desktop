@@ -820,6 +820,25 @@ class AgenticOrchestrator {
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
+                // Recovery: Anthropic billing/auth failure after Gemini fallback — switch back to Gemini
+                if (!usingGemini && this.geminiProvider && error?.status === 400 &&
+                    (errorMsg.includes('credit balance') || errorMsg.includes('billing') || errorMsg.includes('API_KEY_INVALID'))) {
+                    console.warn(`[PROVIDER] Anthropic billing/auth error — re-enabling Gemini`);
+                    this.useGemini = true;
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('text_delta', { text: '\n\nAnthropic key issue. Switching back to primary provider...\n' });
+                    }
+                    continue;
+                }
+                // Recovery: Anthropic 401 unauthorized after Gemini fallback — switch back to Gemini
+                if (!usingGemini && this.geminiProvider && error?.status === 401) {
+                    console.warn(`[PROVIDER] Anthropic auth failed — re-enabling Gemini`);
+                    this.useGemini = true;
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('text_delta', { text: '\n\nAnthropic key invalid. Switching back to primary provider...\n' });
+                    }
+                    continue;
+                }
                 // User-friendly error messages (raw error preserved in console.error above)
                 console.error(`[CHROMADON Orchestrator] Unrecoverable error — status: ${error?.status}, message: ${errorMsg}, transientRetries: ${transientRetryCount}`);
                 let userMsg;
