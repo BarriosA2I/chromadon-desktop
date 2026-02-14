@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.16.1 — 2026-02-14)
+## Recent Changes (v1.16.2 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Added: `POST /chat/send` endpoint — sends messages through AI assistant chat panel via executeJavaScript + CustomEvent | `electron/main.ts` |
+
+## Changes (v1.16.1 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -330,5 +336,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.16.1 (Bug fix: scheduler auto-execution payload)
+**Version:** 1.16.2 (Chat send endpoint for MCP interaction)
 **Author:** Barrios A2I (Gary Barrios)

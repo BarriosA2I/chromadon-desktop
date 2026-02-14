@@ -741,6 +741,33 @@ function startControlServer() {
     }
   })
 
+  // Send a message through the AI chat panel
+  server.post('/chat/send', async (req: Request, res: Response) => {
+    try {
+      const { text } = req.body
+      if (!text || typeof text !== 'string') {
+        res.status(400).json({ success: false, error: 'text is required' })
+        return
+      }
+      if (!mainWindow) {
+        res.status(503).json({ success: false, error: 'Window not ready' })
+        return
+      }
+
+      // Dispatch the same CustomEvent that ChatPanel.tsx listens for
+      await mainWindow.webContents.executeJavaScript(`
+        window.dispatchEvent(new CustomEvent('chromadon-chat-submit', {
+          detail: { text: ${JSON.stringify(text)} }
+        }));
+        true;
+      `)
+
+      res.json({ success: true, message: 'Chat message sent', text: text.slice(0, 100) })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // Inject CSS for design iteration
   server.post('/design/css', async (req: Request, res: Response) => {
     try {
