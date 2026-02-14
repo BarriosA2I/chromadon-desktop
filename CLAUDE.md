@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.19.5 — 2026-02-14)
+## Recent Changes (v1.19.6 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: Provider bounce loop — Gemini→Anthropic→Gemini infinite loop now capped at 3 bounces | `resources/brain/dist/core/agentic-orchestrator.js` |
+| Fixed: Gemini 429 rate limit handling — respects retry delay, retries 2x before fallback | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.19.5 — 2026-02-14)
 
 | Change | File |
 |--------|------|

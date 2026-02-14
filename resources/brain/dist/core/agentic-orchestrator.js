@@ -141,6 +141,7 @@ class AgenticOrchestrator {
         let rateLimitRetryCount = 0; // Capped retries for 429 rate limits
         let currentModel = this.config.model; // Local model — allows fallback without affecting other sessions
         let modelFallbackUsed = false;
+        let providerBounceCount = 0; // Tracks Gemini→Anthropic→Gemini bounces to prevent infinite loops
         let lastNavigatedUrl = ''; // Track last URL for blank page recovery
         const urlAttemptCounts = {}; // Track repeated URL navigations
         let sessionInputTokens = 0;
@@ -688,10 +689,30 @@ class AgenticOrchestrator {
                 const errorMsg = error.message || 'Unknown error';
                 console.error(`[CHROMADON Orchestrator] Error in loop ${loopCount}:`, errorMsg);
                 console.error(`[CHROMADON Orchestrator] Error details — status: ${error?.status}, type: ${error?.error?.type}, constructor: ${error?.constructor?.name}`);
-                // Recovery: Gemini failure → fall back to Anthropic for the rest of this session
+                // Recovery: Gemini failure → handle 429 rate limits, then fall back to Anthropic
                 if (usingGemini && this.useGemini) {
+                    // Gemini 429: respect retry delay before falling back
+                    const isGemini429 = error?.status === 429 || (errorMsg.includes('429') && errorMsg.includes('Too Many Requests'));
+                    if (isGemini429) {
+                        // Extract retry delay from error message
+                        const retryMatch = errorMsg.match(/retry in (\d+(?:\.\d+)?)s/i);
+                        const retryDelaySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 15;
+                        rateLimitRetryCount++;
+                        if (rateLimitRetryCount <= 2) {
+                            const waitMs = Math.min(retryDelaySec * 1000, 30000);
+                            console.warn(`[PROVIDER] Gemini 429 — waiting ${waitMs}ms before retry (${rateLimitRetryCount}/2)`);
+                            if (!writer.isClosed()) {
+                                writer.writeEvent('text_delta', { text: `\n\nRate limited. Waiting ${retryDelaySec}s...\n` });
+                            }
+                            await new Promise(resolve => setTimeout(resolve, waitMs));
+                            continue;
+                        }
+                        // Gemini retries exhausted — fall through to Anthropic fallback below
+                        console.warn(`[PROVIDER] Gemini 429 retries exhausted (${rateLimitRetryCount})`);
+                    }
                     if (this.hasAnthropicKey) {
-                        console.warn(`[PROVIDER] Gemini error — disabling for this session, falling back to Anthropic`);
+                        providerBounceCount++;
+                        console.warn(`[PROVIDER] Gemini error — falling back to Anthropic (bounce ${providerBounceCount})`);
                         this.useGemini = false;
                         usingGemini = false;
                         if (!writer.isClosed()) {
@@ -702,7 +723,9 @@ class AgenticOrchestrator {
                     else {
                         // No Anthropic fallback — report error to user
                         console.error(`[PROVIDER] Gemini error — no Anthropic fallback configured`);
-                        const userMsg = `AI provider error: ${errorMsg}. No fallback provider configured. Please check your API key in Settings.`;
+                        const userMsg = isGemini429
+                            ? 'Gemini API rate limit reached. Please wait a minute and try again, or check your API plan.'
+                            : `AI provider error: ${errorMsg}. No fallback provider configured. Please check your API key in Settings.`;
                         if (!writer.isClosed()) {
                             writer.writeEvent('error', { message: userMsg });
                         }
@@ -825,23 +848,41 @@ class AgenticOrchestrator {
                     continue;
                 }
                 // Recovery: Anthropic billing/auth failure after Gemini fallback — switch back to Gemini
+                // BUT: cap bounces to prevent infinite Gemini→Anthropic→Gemini loops
                 if (!usingGemini && this.geminiProvider && error?.status === 400 &&
                     (errorMsg.includes('credit balance') || errorMsg.includes('billing') || errorMsg.includes('API_KEY_INVALID'))) {
-                    console.warn(`[PROVIDER] Anthropic billing/auth error — re-enabling Gemini`);
-                    this.useGemini = true;
-                    if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: '\n\nAnthropic key issue. Switching back to primary provider...\n' });
+                    if (providerBounceCount < 3) {
+                        console.warn(`[PROVIDER] Anthropic billing/auth error — re-enabling Gemini (bounce ${providerBounceCount + 1})`);
+                        this.useGemini = true;
+                        providerBounceCount++;
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: '\n\nAnthropic key issue. Switching back to primary provider...\n' });
+                        }
+                        continue;
                     }
-                    continue;
+                    // Too many bounces — both providers are failing
+                    console.error(`[PROVIDER] Both providers failing after ${providerBounceCount} bounces — giving up`);
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('error', { message: 'Both AI providers are currently unavailable. Gemini is rate-limited and Anthropic has a billing issue. Please check your API keys in Settings, or wait a few minutes and try again.' });
+                    }
+                    break;
                 }
                 // Recovery: Anthropic 401 unauthorized after Gemini fallback — switch back to Gemini
                 if (!usingGemini && this.geminiProvider && error?.status === 401) {
-                    console.warn(`[PROVIDER] Anthropic auth failed — re-enabling Gemini`);
-                    this.useGemini = true;
-                    if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: '\n\nAnthropic key invalid. Switching back to primary provider...\n' });
+                    if (providerBounceCount < 3) {
+                        console.warn(`[PROVIDER] Anthropic auth failed — re-enabling Gemini (bounce ${providerBounceCount + 1})`);
+                        this.useGemini = true;
+                        providerBounceCount++;
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: '\n\nAnthropic key invalid. Switching back to primary provider...\n' });
+                        }
+                        continue;
                     }
-                    continue;
+                    console.error(`[PROVIDER] Both providers failing after ${providerBounceCount} bounces — giving up`);
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('error', { message: 'Both AI providers are currently unavailable. Please check your API keys in Settings.' });
+                    }
+                    break;
                 }
                 // User-friendly error messages (raw error preserved in console.error above)
                 console.error(`[CHROMADON Orchestrator] Unrecoverable error — status: ${error?.status}, message: ${errorMsg}, transientRetries: ${transientRetryCount}`);
