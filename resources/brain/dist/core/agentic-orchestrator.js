@@ -578,6 +578,7 @@ class AgenticOrchestrator {
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
+                                tool_name: toolName,
                                 content: `Error: ${result.error || 'Unknown error'}`,
                                 is_error: true,
                             });
@@ -587,6 +588,7 @@ class AgenticOrchestrator {
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
+                                tool_name: toolName,
                                 content: [
                                     {
                                         type: 'text',
@@ -604,6 +606,7 @@ class AgenticOrchestrator {
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
+                                tool_name: toolName,
                                 content: result.result,
                             });
                         }
@@ -612,6 +615,7 @@ class AgenticOrchestrator {
                             toolResults.push({
                                 type: 'tool_result',
                                 tool_use_id: toolId,
+                                tool_name: toolName,
                                 content: `${result.result}${verificationText ? `\n\n[AUTO-CONTEXT]\n${verificationText}` : ''}`,
                             });
                         }

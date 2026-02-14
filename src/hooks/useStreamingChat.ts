@@ -129,11 +129,12 @@ export function useStreamingChat() {
     abortControllerRef.current = abort
 
     try {
-      // Check if API key is configured before waiting for brain
+      // Check if at least one API key is configured before waiting for brain
       if (window.electronAPI?.settingsGetApiKeyStatus) {
-        const keyStatus = await window.electronAPI.settingsGetApiKeyStatus()
-        if (!keyStatus.hasKey) {
-          throw new Error('No API key configured. Open Settings (gear icon) to add your Anthropic API key.')
+        const anthropicStatus = await window.electronAPI.settingsGetApiKeyStatus()
+        const geminiStatus = await window.electronAPI.settingsGetGeminiKeyStatus?.().catch(() => ({ hasKey: false }))
+        if (!anthropicStatus.hasKey && !geminiStatus?.hasKey) {
+          throw new Error('No API key configured. Open Settings (gear icon) to add your Gemini or Anthropic API key.')
         }
       }
 
@@ -158,7 +159,7 @@ export function useStreamingChat() {
         throw new Error('AI assistant is starting up. Please wait a moment and try again.')
       }
 
-      const chatPayload = {
+      const chatPayload: RequestInit = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -166,6 +167,8 @@ export function useStreamingChat() {
           sessionId: currentSessionId,
         }),
         signal: abort.signal,
+        cache: 'no-store' as RequestCache,
+        keepalive: false,
       }
 
       // Fetch with exponential backoff (3 attempts: 1s, 2s, 4s)
@@ -202,77 +205,82 @@ export function useStreamingChat() {
       const decoder = new TextDecoder()
       let buffer = ''
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
+          buffer += decoder.decode(value, { stream: true })
 
-        // Parse complete SSE events from buffer
-        // Events are separated by double newlines
-        const parts = buffer.split('\n\n')
-        // Keep the last part as buffer (might be incomplete)
-        buffer = parts.pop() || ''
+          // Parse complete SSE events from buffer
+          // Events are separated by double newlines
+          const parts = buffer.split('\n\n')
+          // Keep the last part as buffer (might be incomplete)
+          buffer = parts.pop() || ''
 
-        for (const part of parts) {
-          if (!part.trim()) continue
-          const events = parseSSEChunk(part + '\n')
+          for (const part of parts) {
+            if (!part.trim()) continue
+            const events = parseSSEChunk(part + '\n')
 
-          for (const evt of events) {
-            switch (evt.event) {
-              case 'session_id':
-                setOrchestratorSessionId(evt.data.sessionId)
-                break
+            for (const evt of events) {
+              switch (evt.event) {
+                case 'session_id':
+                  setOrchestratorSessionId(evt.data.sessionId)
+                  break
 
-              case 'text_delta':
-                if (streamingMsgIdRef.current) {
-                  appendToStreamingMessage(streamingMsgIdRef.current, evt.data.text)
-                }
-                break
+                case 'text_delta':
+                  if (streamingMsgIdRef.current) {
+                    appendToStreamingMessage(streamingMsgIdRef.current, evt.data.text)
+                  }
+                  break
 
-              case 'tool_start':
-                if (streamingMsgIdRef.current) {
-                  addToolCallToMessage(streamingMsgIdRef.current, {
-                    id: evt.data.id,
-                    name: evt.data.name,
-                    status: 'calling',
-                  })
-                }
-                break
+                case 'tool_start':
+                  if (streamingMsgIdRef.current) {
+                    addToolCallToMessage(streamingMsgIdRef.current, {
+                      id: evt.data.id,
+                      name: evt.data.name,
+                      status: 'calling',
+                    })
+                  }
+                  break
 
-              case 'tool_executing':
-                if (streamingMsgIdRef.current) {
-                  updateToolCallInMessage(streamingMsgIdRef.current, evt.data.id, {
-                    status: 'executing',
-                    input: evt.data.input,
-                  })
-                }
-                break
+                case 'tool_executing':
+                  if (streamingMsgIdRef.current) {
+                    updateToolCallInMessage(streamingMsgIdRef.current, evt.data.id, {
+                      status: 'executing',
+                      input: evt.data.input,
+                    })
+                  }
+                  break
 
-              case 'tool_result':
-                if (streamingMsgIdRef.current) {
-                  updateToolCallInMessage(streamingMsgIdRef.current, evt.data.id, {
-                    status: evt.data.success ? 'done' : 'error',
-                    success: evt.data.success,
-                    result: evt.data.result,
-                    error: evt.data.error,
-                    durationMs: evt.data.durationMs,
-                  })
-                }
-                break
+                case 'tool_result':
+                  if (streamingMsgIdRef.current) {
+                    updateToolCallInMessage(streamingMsgIdRef.current, evt.data.id, {
+                      status: evt.data.success ? 'done' : 'error',
+                      success: evt.data.success,
+                      result: evt.data.result,
+                      error: evt.data.error,
+                      durationMs: evt.data.durationMs,
+                    })
+                  }
+                  break
 
-              case 'error':
-                if (streamingMsgIdRef.current) {
-                  appendToStreamingMessage(streamingMsgIdRef.current, `\n\nError: ${evt.data.message}`)
-                }
-                break
+                case 'error':
+                  if (streamingMsgIdRef.current) {
+                    appendToStreamingMessage(streamingMsgIdRef.current, `\n\nError: ${evt.data.message}`)
+                  }
+                  break
 
-              case 'done':
-                // Stream complete
-                break
+                case 'done':
+                  // Stream complete
+                  break
+              }
             }
           }
         }
+      } finally {
+        // Explicitly release the reader to free the HTTP connection for reuse
+        try { reader.releaseLock() } catch { /* already released */ }
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return

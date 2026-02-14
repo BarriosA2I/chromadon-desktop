@@ -7,7 +7,16 @@
 
 ---
 
-## Recent Changes (v1.19.3 — 2026-02-14)
+## Recent Changes (v1.19.4 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: SSE streaming dead after first message — reader.releaseLock() + cache:no-store | `src/hooks/useStreamingChat.ts` |
+| Fixed: Gemini tool calls — tool_result uses function name for functionResponse | `resources/brain/dist/providers/gemini-provider.js` |
+| Fixed: API key check now accepts Gemini key (was Anthropic-only gate) | `src/hooks/useStreamingChat.ts` |
+| Added: `tool_name` field on all tool_result blocks for Gemini compatibility | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.19.3 — 2026-02-14)
 
 | Change | File |
 |--------|------|

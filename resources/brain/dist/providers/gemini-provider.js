@@ -139,8 +139,8 @@ function convertBlockToPart(block, msgRole) {
                 },
             };
         case 'tool_result': {
-            // Extract the tool name — Gemini needs it for functionResponse
-            const name = block.tool_use_id || 'unknown_tool';
+            // Extract the tool name — Gemini needs the actual function name, NOT the opaque tool_use_id
+            const name = block.tool_name || block.tool_use_id || 'unknown_tool';
             let responseContent;
             if (typeof block.content === 'string') {
                 responseContent = block.content;
