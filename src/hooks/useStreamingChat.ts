@@ -10,6 +10,41 @@ import type { MediaAttachment } from '../store/chatTypes'
 
 const API_BASE = 'http://localhost:3001'
 
+// Lightweight circuit breaker state for SSE connections
+interface CircuitBreakerState {
+  consecutiveFailures: number
+  openUntil: number // timestamp when circuit reopens (0 = closed)
+  readonly threshold: number
+  readonly cooldownMs: number
+}
+
+function createCircuitBreakerState(): CircuitBreakerState {
+  return { consecutiveFailures: 0, openUntil: 0, threshold: 3, cooldownMs: 30000 }
+}
+
+function isCircuitOpen(cb: CircuitBreakerState): boolean {
+  if (cb.openUntil === 0) return false
+  if (Date.now() >= cb.openUntil) {
+    // Cooldown elapsed — half-open (allow one attempt)
+    cb.openUntil = 0
+    cb.consecutiveFailures = 0
+    return false
+  }
+  return true
+}
+
+function recordFailure(cb: CircuitBreakerState): void {
+  cb.consecutiveFailures++
+  if (cb.consecutiveFailures >= cb.threshold) {
+    cb.openUntil = Date.now() + cb.cooldownMs
+  }
+}
+
+function recordSuccess(cb: CircuitBreakerState): void {
+  cb.consecutiveFailures = 0
+  cb.openUntil = 0
+}
+
 interface SSEEvent {
   event: string
   data: any
@@ -54,12 +89,24 @@ export function useStreamingChat() {
 
   const abortControllerRef = useRef<AbortController | null>(null)
   const streamingMsgIdRef = useRef<string | null>(null)
+  const circuitBreakerRef = useRef<CircuitBreakerState>(createCircuitBreakerState())
 
   const sendMessage = useCallback(async (text: string, media?: MediaAttachment[]) => {
     // Read isConnected at call time from store (not from closure)
     // to avoid stale closure issues that prevent messages from sending
     const currentIsConnected = useChromadonStore.getState().isConnected
     if (!text.trim() || !currentIsConnected) return
+
+    // Check circuit breaker — prevent hammering Brain API when it's down
+    const cb = circuitBreakerRef.current
+    if (isCircuitOpen(cb)) {
+      addChatMessage({
+        role: 'assistant',
+        type: 'error',
+        content: 'Brain API is unreachable. Waiting for connection to recover. Please try again in a moment.',
+      })
+      return
+    }
 
     // Cancel any in-flight request
     if (abortControllerRef.current) {
@@ -121,23 +168,37 @@ export function useStreamingChat() {
         signal: abort.signal,
       }
 
-      // Fetch with one retry on connection failure
+      // Fetch with exponential backoff (3 attempts: 1s, 2s, 4s)
       let response: Response
-      try {
-        response = await fetch(`${API_BASE}/api/orchestrator/chat`, chatPayload)
-      } catch (fetchErr: any) {
-        if (fetchErr.name === 'AbortError') throw fetchErr
-        // Retry once after 2 seconds
-        await new Promise(r => setTimeout(r, 2000))
-        response = await fetch(`${API_BASE}/api/orchestrator/chat`, chatPayload)
+      const backoffDelays = [1000, 2000, 4000]
+      let lastFetchErr: any = null
+      for (let attempt = 0; attempt <= backoffDelays.length; attempt++) {
+        try {
+          response = await fetch(`${API_BASE}/api/orchestrator/chat`, chatPayload)
+          lastFetchErr = null
+          break
+        } catch (fetchErr: any) {
+          if (fetchErr.name === 'AbortError') throw fetchErr
+          lastFetchErr = fetchErr
+          if (attempt < backoffDelays.length) {
+            await new Promise(r => setTimeout(r, backoffDelays[attempt]))
+          }
+        }
+      }
+      if (lastFetchErr) {
+        recordFailure(circuitBreakerRef.current)
+        throw lastFetchErr
       }
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+      if (!response!.ok) {
+        const errorData = await response!.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || `HTTP ${response!.status}`)
       }
 
-      const reader = response.body!.getReader()
+      // Connection succeeded — record success to reset circuit breaker
+      recordSuccess(circuitBreakerRef.current)
+
+      const reader = response!.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
 
