@@ -20,3 +20,4 @@ export interface SocialPromptContext {
     customInstructions?: string;
 }
 export declare function generateSocialPrompt(ctx: SocialPromptContext): string;
+//# sourceMappingURL=social-prompts.d.ts.map

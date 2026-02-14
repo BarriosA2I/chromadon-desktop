@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.16.3 — 2026-02-14)
+## Recent Changes (v1.16.4 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist — 529 overloaded detection fix + model fallback (Brain v1.3.4) | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.16.3 — 2026-02-14)
 
 | Change | File |
 |--------|------|

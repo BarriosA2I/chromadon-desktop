@@ -10,6 +10,7 @@
 import { AgenticOrchestrator, type SSEWriter } from './agentic-orchestrator';
 import type { ExecutionContext } from './browser-tools';
 import type { PageContext } from './ai-engine-v3';
+import type { AnalyticsDatabase } from '../analytics/database';
 export interface QueueTask {
     id: string;
     platform: string;
@@ -17,12 +18,14 @@ export interface QueueTask {
     content?: string;
     targetUrl?: string;
     priority: number;
-    status: 'queued' | 'running' | 'completed' | 'failed';
+    status: 'queued' | 'running' | 'completed' | 'failed' | 'scheduled';
     mediaUrls?: string[];
     scheduledTime?: string;
     hashtags?: string[];
     mentions?: string[];
     customInstructions?: string;
+    batchId?: string;
+    analyticsPostId?: number;
 }
 export interface TaskResult {
     taskId: string;
@@ -31,15 +34,21 @@ export interface TaskResult {
     toolCalls: number;
     durationMs: number;
     error?: string;
+    analyticsPostId?: number;
 }
 export type TaskProgressCallback = (taskId: string, status: string, message?: string) => void;
 export declare class SocialOverlord {
     private orchestrator;
     private contextFactory;
+    private analyticsDb;
     constructor(orchestrator: AgenticOrchestrator, contextFactory: () => Promise<{
         context: ExecutionContext;
         pageContext?: PageContext;
-    }>);
+    }>, analyticsDb?: AnalyticsDatabase);
+    /**
+     * Record a completed post to the analytics DB.
+     */
+    private recordPostToAnalytics;
     /**
      * Process a single queue task (non-streaming, returns result).
      */
@@ -55,3 +64,4 @@ export declare class SocialOverlord {
      */
     processQueue(tasks: QueueTask[], writer: SSEWriter, onProgress?: TaskProgressCallback): Promise<TaskResult[]>;
 }
+//# sourceMappingURL=social-overlord.d.ts.map

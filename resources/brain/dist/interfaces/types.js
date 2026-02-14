@@ -72,3 +72,4 @@ exports.SelectorSchema = zod_1.z.object({
     strategy: zod_1.z.enum(['css', 'xpath', 'text', 'aria', 'testid', 'visual']),
     confidence: zod_1.z.number().min(0).max(1),
 });
+//# sourceMappingURL=types.js.map

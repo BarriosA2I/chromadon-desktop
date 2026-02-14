@@ -215,3 +215,4 @@ export declare class CircuitOpenError extends Error {
  */
 export declare function createCircuitBreaker(config?: Partial<CircuitBreakerConfig>): CircuitBreaker;
 export {};
+//# sourceMappingURL=circuit-breaker.d.ts.map

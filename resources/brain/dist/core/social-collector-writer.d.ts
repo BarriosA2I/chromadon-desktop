@@ -30,3 +30,4 @@ export declare class CollectorWriter implements SSEWriter {
     /** Get a summary of what happened during execution. */
     getSummary(): string;
 }
+//# sourceMappingURL=social-collector-writer.d.ts.map

@@ -67,6 +67,9 @@ const multer_1 = __importDefault(require("multer"));
 const document_processor_1 = require("../client-context/document-processor");
 // Skill Memory imports
 const skills_1 = require("../skills");
+// Marketing Queue imports
+const marketing_tools_1 = require("../marketing/marketing-tools");
+const marketing_executor_1 = require("../marketing/marketing-executor");
 // Circuit Breaker for Desktop API calls
 const circuit_breaker_1 = require("../core/circuit-breaker");
 // 27-Agent System imports (runtime load to avoid type conflicts)
@@ -2090,6 +2093,7 @@ app.post('/api/orchestrator/chat', async (req, res) => {
         useDesktop,
         desktopUrl: CHROMADON_DESKTOP_URL,
         abortSignal: abortController.signal,
+        sessionRestoreAttempted: new Set(),
     };
     // Get current page context for system prompt
     let pageContext;
@@ -2226,6 +2230,7 @@ async function buildExecutionContext() {
         desktopTabId: useDesktop ? desktopActiveTabId : null,
         useDesktop,
         desktopUrl: CHROMADON_DESKTOP_URL,
+        sessionRestoreAttempted: new Set(),
     };
     let pageContext;
     try {
@@ -3780,18 +3785,23 @@ async function startServer() {
             const strategyEngine = new client_context_1.StrategyEngine(clientStorage, knowledgeVault);
             const clientContextExec = new client_context_1.ClientContextExecutor(clientStorage, knowledgeVault);
             console.log('[CHROMADON] ✅ Client Context Layer initialized');
-            // Merge additional tools: analytics + YouTube + skills + client context
+            // Merge additional tools: analytics + YouTube + skills + client context + marketing
             const additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
                 ...skills_1.SKILL_TOOLS,
                 ...client_context_1.CLIENT_CONTEXT_TOOLS,
+                ...marketing_tools_1.MARKETING_TOOLS,
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
             youtubeExec = youtubeTokenManager ? (0, youtube_executor_1.createYouTubeExecutor)(youtubeTokenManager) : null;
             const youtubeToolNames = new Set(youtube_tools_1.YOUTUBE_TOOLS.map(t => t.name));
+            const marketingExec = (0, marketing_executor_1.createMarketingExecutor)(CHROMADON_DESKTOP_URL);
+            const marketingToolNames = new Set(marketing_tools_1.MARKETING_TOOLS.map(t => t.name));
             const combinedExecutor = async (toolName, input) => {
+                if (marketingToolNames.has(toolName))
+                    return marketingExec(toolName, input);
                 if (clientContextExec.canHandle(toolName))
                     return clientContextExec.execute(toolName, input);
                 if (skillToolNames.has(toolName))
@@ -3815,8 +3825,9 @@ async function startServer() {
                 console.log(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube tools registered`);
             console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
             console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
+            console.log(`[CHROMADON]    - ${marketing_tools_1.MARKETING_TOOLS.length} Marketing Queue tools registered`);
             // Initialize Social Overlord (queue execution engine)
-            socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext);
+            socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);
             console.log('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');
             // Initialize CortexRouter (agent-first routing for /api/orchestrator/chat)
             initializeCortexRouter();

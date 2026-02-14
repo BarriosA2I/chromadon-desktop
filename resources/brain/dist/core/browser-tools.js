@@ -8,7 +8,68 @@
  * @author Barrios A2I
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createToolExecutor = exports.BROWSER_TOOLS = void 0;
+exports.createToolExecutor = exports.BROWSER_TOOLS = exports.attemptSessionRestore = exports.detectPlatformFromUrl = void 0;
+// ============================================================================
+// SESSION RESTORE UTILITIES
+// ============================================================================
+const PLATFORM_URL_MAP = [
+    { patterns: [/google\.com/i, /youtube\.com/i, /accounts\.google/i], platform: 'google' },
+    { patterns: [/twitter\.com/i, /x\.com/i], platform: 'twitter' },
+    { patterns: [/linkedin\.com/i], platform: 'linkedin' },
+    { patterns: [/facebook\.com/i, /fb\.com/i], platform: 'facebook' },
+    { patterns: [/instagram\.com/i], platform: 'instagram' },
+    { patterns: [/tiktok\.com/i], platform: 'tiktok' },
+];
+/**
+ * Detect which platform a URL belongs to (matches Desktop session partition names).
+ * Returns null for unrecognized domains.
+ */
+function detectPlatformFromUrl(url) {
+    try {
+        const hostname = new URL(url).hostname;
+        for (const entry of PLATFORM_URL_MAP) {
+            if (entry.patterns.some(p => p.test(hostname)))
+                return entry.platform;
+        }
+    }
+    catch { /* invalid URL */ }
+    return null;
+}
+exports.detectPlatformFromUrl = detectPlatformFromUrl;
+/**
+ * Attempt to restore a platform session via the Desktop Control Server's backup/restore endpoint.
+ * Returns true if restore succeeded, false otherwise.
+ */
+async function attemptSessionRestore(platform, desktopUrl) {
+    const password = process.env.SESSION_BACKUP_PASSWORD;
+    if (!password) {
+        console.log(`[SESSION RESTORE] No SESSION_BACKUP_PASSWORD set — skipping restore for ${platform}`);
+        return false;
+    }
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const resp = await fetch(`${desktopUrl}/sessions/${platform}/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+            signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        const data = await resp.json();
+        if (data.success) {
+            console.log(`[SESSION RESTORE] ✅ Restored ${platform} session (${data.cookiesRestored || '?'} cookies)`);
+            return true;
+        }
+        console.log(`[SESSION RESTORE] ❌ Restore failed for ${platform}: ${data.error || 'unknown'}`);
+        return false;
+    }
+    catch (err) {
+        console.log(`[SESSION RESTORE] ❌ Restore request failed for ${platform}: ${err.message}`);
+        return false;
+    }
+}
+exports.attemptSessionRestore = attemptSessionRestore;
 // ============================================================================
 // TOOL DEFINITIONS (Anthropic Tool[] format)
 // ============================================================================
@@ -500,7 +561,7 @@ function createToolExecutor() {
         const startTime = Date.now();
         try {
             if (ctx.useDesktop) {
-                return await executeDesktop(toolName, input, ctx.desktopTabId, ctx.desktopUrl);
+                return await executeDesktop(toolName, input, ctx.desktopTabId, ctx.desktopUrl, ctx);
             }
             else if (ctx.page) {
                 return await executeCDP(toolName, input, ctx.page);
@@ -523,7 +584,7 @@ exports.createToolExecutor = createToolExecutor;
 // ============================================================================
 // DESKTOP EXECUTION
 // ============================================================================
-async function executeDesktop(toolName, input, tabId, desktopUrl) {
+async function executeDesktop(toolName, input, tabId, desktopUrl, context) {
     const escape = (s) => s.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
     // Tab-independent tools work without a tabId
     if (toolName === 'list_tabs') {
@@ -613,6 +674,23 @@ async function executeDesktop(toolName, input, tabId, desktopUrl) {
                     return { success: true, result: `Navigated to ${url} [WARNING: page shows error]` };
                 }
                 if (health === 'LOGGED_OUT') {
+                    // Attempt session restore before giving up
+                    const platform = detectPlatformFromUrl(url);
+                    if (platform && context?.sessionRestoreAttempted && !context.sessionRestoreAttempted.has(platform)) {
+                        context.sessionRestoreAttempted.add(platform);
+                        console.log(`[SESSION RESTORE] Login wall detected on ${platform} — attempting restore...`);
+                        const restored = await attemptSessionRestore(platform, desktopUrl);
+                        if (restored) {
+                            // Re-navigate after restore
+                            await fetch(`${desktopUrl}/tabs/navigate`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ id: tabId, url }),
+                            });
+                            await new Promise(r => setTimeout(r, 3000));
+                            return { success: true, result: `Navigated to ${url} [session restored for ${platform}]` };
+                        }
+                    }
                     return { success: false, result: '', error: `Navigation to ${url} landed on login page — session expired` };
                 }
             }

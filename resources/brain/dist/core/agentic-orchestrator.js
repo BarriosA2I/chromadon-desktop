@@ -119,6 +119,9 @@ class AgenticOrchestrator {
         // 4. Agentic loop
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
+        let overloadedRetryCount = 0; // Capped retries for API overloaded errors
+        let currentModel = this.config.model; // Local model — allows fallback without affecting other sessions
+        let modelFallbackUsed = false;
         let lastNavigatedUrl = ''; // Track last URL for blank page recovery
         const urlAttemptCounts = {}; // Track repeated URL navigations
         let sessionInputTokens = 0;
@@ -153,7 +156,7 @@ class AgenticOrchestrator {
                 // 6. Call Claude API with streaming (browser tools + any additional tools)
                 const allTools = [...browser_tools_1.BROWSER_TOOLS, ...this.additionalTools];
                 const stream = this.client.messages.stream({
-                    model: this.config.model,
+                    model: currentModel,
                     max_tokens: this.config.maxTokens,
                     temperature: 0,
                     system: finalSystemPrompt,
@@ -358,6 +361,33 @@ class AgenticOrchestrator {
                                 }
                                 else if (pageError === 'NOT_FOUND') {
                                     result = { ...result, result: 'Page not found (404). DO NOT retry this URL. Navigate to https://studio.youtube.com directly.' };
+                                }
+                                else if (pageError === 'AUTH_WALL') {
+                                    // Attempt session restore before reporting failure
+                                    const currentUrl = lastNavigatedUrl || '';
+                                    const platform = (0, browser_tools_1.detectPlatformFromUrl)(currentUrl);
+                                    if (platform && context.sessionRestoreAttempted && !context.sessionRestoreAttempted.has(platform)) {
+                                        context.sessionRestoreAttempted.add(platform);
+                                        console.log(`[PAGE HEALTH] Auth wall on ${platform} — attempting session restore...`);
+                                        const desktopUrl = context.desktopUrl || 'http://127.0.0.1:3002';
+                                        const restored = await (0, browser_tools_1.attemptSessionRestore)(platform, desktopUrl);
+                                        if (restored && currentUrl) {
+                                            // Re-navigate after restore
+                                            await fetch(`${desktopUrl}/tabs/navigate`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ id: context.desktopTabId, url: currentUrl }),
+                                            });
+                                            await new Promise(r => setTimeout(r, 3000));
+                                            result = { ...result, result: `Session restored for ${platform}. Page reloaded — continue with your task.` };
+                                        }
+                                        else {
+                                            result = { ...result, result: `AUTH WALL — ${platform} session expired and restore failed. Manual re-authentication required in Desktop app.` };
+                                        }
+                                    }
+                                    else {
+                                        result = { ...result, result: `AUTH WALL — login page detected. Session expired or not authenticated. Manual re-authentication required in Desktop app.` };
+                                    }
                                 }
                             }
                         }
@@ -578,6 +608,7 @@ class AgenticOrchestrator {
             catch (error) {
                 const errorMsg = error.message || 'Unknown error';
                 console.error(`[CHROMADON Orchestrator] Error in loop ${loopCount}:`, errorMsg);
+                console.error(`[CHROMADON Orchestrator] Error details — status: ${error?.status}, type: ${error?.error?.type}, constructor: ${error?.constructor?.name}`);
                 // Recovery: if 400 with tool_use_id mismatch, purge tool messages and retry once
                 if (error?.status === 400 && errorMsg.includes('tool_use_id')) {
                     console.warn('[CHROMADON Orchestrator] Tool history corruption detected — purging tool blocks and retrying');
@@ -616,15 +647,41 @@ class AgenticOrchestrator {
                     await new Promise(resolve => setTimeout(resolve, retryAfterMs));
                     continue;
                 }
-                // Recovery: 529 overloaded — longer backoff and retry
-                if (error?.status === 529) {
-                    const waitMs = Math.min(5000 * Math.pow(2, loopCount), 60000);
-                    console.warn(`[CHROMADON Orchestrator] API overloaded (529) — waiting ${waitMs}ms before retry`);
+                // Recovery: 529 overloaded — longer backoff and retry (check status AND error message)
+                const isOverloaded = error?.status === 529
+                    || error?.error?.type === 'overloaded_error'
+                    || errorMsg.includes('overloaded_error')
+                    || errorMsg.includes('Overloaded');
+                if (isOverloaded && overloadedRetryCount < 1) {
+                    overloadedRetryCount++;
+                    const waitMs = 3000;
+                    console.warn(`[CHROMADON Orchestrator] API overloaded — retrying in ${waitMs}ms`);
                     if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: `\n\nAPI busy. Retrying in ${Math.ceil(waitMs / 1000)}s...\n` });
+                        writer.writeEvent('text_delta', { text: `\n\nRetrying...\n` });
                     }
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
+                }
+                if (isOverloaded) {
+                    // Try fallback model before giving up
+                    if (!modelFallbackUsed) {
+                        modelFallbackUsed = true;
+                        overloadedRetryCount = 0;
+                        currentModel = currentModel.includes('haiku')
+                            ? 'claude-3-haiku-20240307'
+                            : 'claude-3-5-haiku-20241022';
+                        console.warn(`[CHROMADON Orchestrator] Primary model overloaded — switching to ${currentModel}`);
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: `\n\nSwitching to backup model...\n` });
+                        }
+                        continue;
+                    }
+                    // Both models failed — give up
+                    console.error(`[CHROMADON Orchestrator] Both models overloaded after retries — giving up`);
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('error', { message: 'The AI service is temporarily busy. Please try again in a few minutes.' });
+                    }
+                    break;
                 }
                 // Recovery: transient errors (timeout, connection, network) — retry up to 3 times
                 // Uses independent transientRetryCount so retries work mid-workflow (not tied to loopCount)
@@ -918,6 +975,9 @@ class AgenticOrchestrator {
             if (t.includes("Oops") && t.includes("something went wrong")) return "YOUTUBE_ERROR";
             if (t.includes("try again later")) return "RATE_LIMITED";
             if (t.includes("404") && t.includes("page not found")) return "NOT_FOUND";
+            var u = window.location.href || '';
+            if (/sign.?in|log.?in|\/auth\/|\/sso\/|accounts\\.google|login\\.microsoft/i.test(u) ||
+                (/sign in|log in|choose an account/i.test(t) && t.length < 5000)) return "AUTH_WALL";
             return null;
           })()`,
                 }),
