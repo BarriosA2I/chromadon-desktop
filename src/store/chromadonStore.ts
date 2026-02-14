@@ -310,7 +310,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   // Marketing queue initial state
   marketingQueue: [],
   activeTasksByPlatform: {} as Record<Platform, MarketingTask | null>,
-  queueStats: { total: 0, queued: 0, running: 0, completed: 0, failed: 0 },
+  queueStats: { total: 0, queued: 0, running: 0, completed: 0, failed: 0, scheduled: 0 },
   showMarketingQueue: false,
 
   // Chat initial state
