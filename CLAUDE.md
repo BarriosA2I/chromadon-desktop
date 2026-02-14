@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.16.4 — 2026-02-14)
+## Recent Changes (v1.16.5 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist — capped 429 retries + disabled SDK auto-retry (Brain v1.3.5) | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.16.4 — 2026-02-14)
 
 | Change | File |
 |--------|------|

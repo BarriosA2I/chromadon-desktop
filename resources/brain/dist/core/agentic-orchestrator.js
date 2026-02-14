@@ -62,7 +62,7 @@ class AgenticOrchestrator {
     getSkillsForPrompt;
     getClientKnowledge;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge) {
-        this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 2 });
+        this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 0 });
         this.toolExecutor = toolExecutor;
         this.config = { ...DEFAULT_CONFIG, ...config };
         this.additionalTools = additionalTools || [];
@@ -120,6 +120,7 @@ class AgenticOrchestrator {
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
         let overloadedRetryCount = 0; // Capped retries for API overloaded errors
+        let rateLimitRetryCount = 0; // Capped retries for 429 rate limits
         let currentModel = this.config.model; // Local model — allows fallback without affecting other sessions
         let modelFallbackUsed = false;
         let lastNavigatedUrl = ''; // Track last URL for blank page recovery
@@ -634,18 +635,40 @@ class AgenticOrchestrator {
                     session.messages.push({ role: 'user', content: 'Continue with the current task. Resume where you left off.' });
                     continue;
                 }
-                // Recovery: 429 rate limit — exponential backoff and retry
+                // Recovery: 429 rate limit — capped retries with model fallback
                 if (error?.status === 429) {
-                    const retryAfterHeader = error?.headers?.get?.('retry-after') || error?.headers?.['retry-after'];
-                    const retryAfterMs = retryAfterHeader
-                        ? Math.min(parseInt(String(retryAfterHeader), 10) * 1000, 30000)
-                        : Math.min(1000 * Math.pow(2, loopCount), 30000);
-                    console.warn(`[CHROMADON Orchestrator] Rate limited (429) — waiting ${retryAfterMs}ms before retry`);
-                    if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: `\n\nBrief pause... resuming in ${Math.ceil(retryAfterMs / 1000)}s.\n` });
+                    rateLimitRetryCount++;
+                    if (rateLimitRetryCount <= 3) {
+                        const retryAfterHeader = error?.headers?.get?.('retry-after') || error?.headers?.['retry-after'];
+                        const retryAfterMs = retryAfterHeader
+                            ? Math.min(parseInt(String(retryAfterHeader), 10) * 1000, 15000)
+                            : Math.min(2000 * Math.pow(2, rateLimitRetryCount - 1), 15000);
+                        console.warn(`[CHROMADON Orchestrator] Rate limited (429) — retry ${rateLimitRetryCount}/3, waiting ${retryAfterMs}ms`);
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: `\n\nBrief pause... resuming in ${Math.ceil(retryAfterMs / 1000)}s.\n` });
+                        }
+                        await new Promise(resolve => setTimeout(resolve, retryAfterMs));
+                        continue;
                     }
-                    await new Promise(resolve => setTimeout(resolve, retryAfterMs));
-                    continue;
+                    // Retries exhausted — try fallback model
+                    if (!modelFallbackUsed) {
+                        modelFallbackUsed = true;
+                        rateLimitRetryCount = 0;
+                        currentModel = currentModel.includes('haiku')
+                            ? 'claude-3-haiku-20240307'
+                            : 'claude-3-5-haiku-20241022';
+                        console.warn(`[CHROMADON Orchestrator] Rate limit retries exhausted — switching to ${currentModel}`);
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: `\n\nSwitching to backup model...\n` });
+                        }
+                        continue;
+                    }
+                    // Both models rate limited — give up
+                    console.error(`[CHROMADON Orchestrator] Both models rate limited — giving up`);
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('error', { message: 'Rate limit reached. Please wait a minute and try again.' });
+                    }
+                    break;
                 }
                 // Recovery: 529 overloaded — longer backoff and retry (check status AND error message)
                 const isOverloaded = error?.status === 529
