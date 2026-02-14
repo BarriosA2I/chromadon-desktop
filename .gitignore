@@ -6,3 +6,5 @@ release/
 *.blockmap
 .env
 .env.*
+.claude/
+screenshot.png
