@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.16.2 — 2026-02-14)
+## Recent Changes (v1.16.3 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Added: `mediaUrls?: string[]` to MarketingTask interface — stores file paths for post attachments | `electron/main.ts`, `electron/preload.ts`, `src/store/chromadonStore.ts` |
+| Added: `mediaUrls` accepted in `POST /queue/add` endpoint and stored on tasks | `electron/main.ts` |
+| Added: `mediaUrls` included in scheduler auto-execution payload to Brain | `electron/main.ts` |
+
+## Changes (v1.16.2 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -336,5 +344,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.16.2 (Chat send endpoint for MCP interaction)
+**Version:** 1.16.3 (Media attachment support in marketing queue)
 **Author:** Barrios A2I (Gary Barrios)

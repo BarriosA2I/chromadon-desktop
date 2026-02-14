@@ -97,6 +97,7 @@ interface MarketingTask {
   recurrence?: { type: 'none' | 'daily' | 'weekly' | 'custom'; intervalMs?: number; endAfter?: number; occurrenceCount?: number }
   batchId?: string
   hashtags?: string[]
+  mediaUrls?: string[]
   analyticsPostId?: number
 }
 

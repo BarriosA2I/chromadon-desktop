@@ -359,6 +359,8 @@ export interface MarketingTask {
   // Cross-posting
   batchId?: string
   hashtags?: string[]
+  // Media attachments
+  mediaUrls?: string[]
   // Analytics linkage
   analyticsPostId?: number
 }
@@ -2793,7 +2795,7 @@ function startControlServer() {
   // Add task to queue
   server.post('/queue/add', (req: Request, res: Response) => {
     try {
-      const { platform, action, content, targetUrl, priority = 0, scheduledTime, recurrence, batchId, hashtags } = req.body
+      const { platform, action, content, targetUrl, priority = 0, scheduledTime, recurrence, batchId, hashtags, mediaUrls } = req.body
       if (!platform || !action) {
         res.status(400).json({ success: false, error: 'Platform and action are required' })
         return
@@ -2812,6 +2814,7 @@ function startControlServer() {
         recurrence,
         batchId,
         hashtags,
+        mediaUrls,
       }
 
       marketingQueue.push(task)
@@ -4191,6 +4194,7 @@ async function checkScheduledTasks(): Promise<void> {
             status: task.status,
             hashtags: task.hashtags,
             batchId: task.batchId,
+            mediaUrls: task.mediaUrls,
           },
         }),
       })

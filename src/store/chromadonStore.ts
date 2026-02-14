@@ -79,6 +79,8 @@ export interface MarketingTask {
   // Cross-posting
   batchId?: string
   hashtags?: string[]
+  // Media attachments
+  mediaUrls?: string[]
   // Analytics linkage
   analyticsPostId?: number
 }
