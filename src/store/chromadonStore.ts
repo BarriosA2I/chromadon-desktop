@@ -193,6 +193,7 @@ interface ChromadonState {
   // Settings state
   showSettings: boolean
   apiKeyStatus: { hasKey: boolean; keyPreview: string | null }
+  geminiKeyStatus: { hasKey: boolean; keyPreview: string | null }
 
   // Actions
   setConnected: (connected: boolean, mode?: 'CDP' | 'FRESH' | 'EMBEDDED') => void
@@ -258,6 +259,7 @@ interface ChromadonState {
   // Settings actions
   setShowSettings: (show: boolean) => void
   setApiKeyStatus: (status: { hasKey: boolean; keyPreview: string | null }) => void
+  setGeminiKeyStatus: (status: { hasKey: boolean; keyPreview: string | null }) => void
 
   // Orchestrator/streaming actions
   setOrchestratorSessionId: (id: string | null) => void
@@ -347,6 +349,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   // Settings initial state
   showSettings: false,
   apiKeyStatus: { hasKey: false, keyPreview: null },
+  geminiKeyStatus: { hasKey: false, keyPreview: null },
 
   // Actions
   setConnected: (connected, mode) => set({ isConnected: connected, connectionMode: mode ?? null }),
@@ -503,6 +506,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
   // Settings actions
   setShowSettings: (show) => set({ showSettings: show }),
   setApiKeyStatus: (status) => set({ apiKeyStatus: status }),
+  setGeminiKeyStatus: (status) => set({ geminiKeyStatus: status }),
 
   // Orchestrator/streaming actions
   setOrchestratorSessionId: (id) => set({ orchestratorSessionId: id }),

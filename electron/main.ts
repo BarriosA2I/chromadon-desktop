@@ -133,6 +133,105 @@ function deleteApiKey(): void {
   }
 }
 
+// ==================== GEMINI API KEY MANAGER ====================
+const GEMINI_KEY_FILE = 'chromadon-gemini-key.json'
+let cachedGeminiKey: string | null = null
+
+function getGeminiKeyPath(): string {
+  return path.join(app.getPath('userData'), GEMINI_KEY_FILE)
+}
+
+function storeGeminiKey(key: string): void {
+  const keyPath = getGeminiKeyPath()
+  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
+  const log = (msg: string) => {
+    const line = `[${new Date().toISOString()}] [GeminiKey] ${msg}\n`
+    fs.appendFileSync(logFile, line)
+    console.log('[GeminiKey]', msg)
+  }
+
+  try {
+    cachedGeminiKey = key
+    const useEncryption = safeStorage.isEncryptionAvailable()
+    log(`storeGeminiKey: encryption=${useEncryption}, path=${keyPath}`)
+
+    if (useEncryption) {
+      const encrypted = safeStorage.encryptString(key)
+      const envelope = JSON.stringify({
+        format: 'dpapi',
+        data: encrypted.toString('base64'),
+        storedAt: Date.now(),
+      })
+      fs.writeFileSync(keyPath, envelope, 'utf8')
+    } else {
+      const envelope = JSON.stringify({
+        format: 'base64',
+        data: Buffer.from(key).toString('base64'),
+        storedAt: Date.now(),
+      })
+      fs.writeFileSync(keyPath, envelope, 'utf8')
+    }
+
+    const verify = loadGeminiKey()
+    if (verify && verify.startsWith('AIza')) {
+      log(`storeGeminiKey: verified OK (${verify.slice(0, 8)}...${verify.slice(-4)})`)
+    } else {
+      log(`storeGeminiKey: WARNING - read-back verification failed!`)
+    }
+  } catch (err: any) {
+    log(`storeGeminiKey: ERROR - ${err.message}`)
+    throw err
+  }
+}
+
+function loadGeminiKey(): string | null {
+  if (cachedGeminiKey) return cachedGeminiKey
+
+  const keyPath = getGeminiKeyPath()
+  if (!fs.existsSync(keyPath)) return null
+
+  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
+  const log = (msg: string) => {
+    const line = `[${new Date().toISOString()}] [GeminiKey] ${msg}\n`
+    fs.appendFileSync(logFile, line)
+    console.log('[GeminiKey]', msg)
+  }
+
+  try {
+    const raw = fs.readFileSync(keyPath, 'utf8')
+    if (raw.startsWith('{')) {
+      const envelope = JSON.parse(raw)
+      log(`loadGeminiKey: format=${envelope.format}, storedAt=${envelope.storedAt}`)
+
+      if (envelope.format === 'dpapi') {
+        const encrypted = Buffer.from(envelope.data, 'base64')
+        const key = safeStorage.decryptString(encrypted)
+        log(`loadGeminiKey: decrypted OK (${key.slice(0, 8)}...${key.slice(-4)})`)
+        cachedGeminiKey = key
+        return key
+      } else if (envelope.format === 'base64') {
+        const key = Buffer.from(envelope.data, 'base64').toString('utf8')
+        log(`loadGeminiKey: decoded OK (${key.slice(0, 8)}...${key.slice(-4)})`)
+        cachedGeminiKey = key
+        return key
+      }
+    }
+    return null
+  } catch (err: any) {
+    log(`loadGeminiKey: ERROR - ${err.message}`)
+    return null
+  }
+}
+
+function deleteGeminiKey(): void {
+  cachedGeminiKey = null
+  const keyPath = getGeminiKeyPath()
+  if (fs.existsSync(keyPath)) {
+    fs.unlinkSync(keyPath)
+    console.log('[GeminiKey] Deleted:', keyPath)
+  }
+}
+
 // Bundled Brain server child process
 let brainProcess: ChildProcess | null = null
 // In-memory API key cache — survives Brain crashes (only child process dies, not Electron)
@@ -200,9 +299,10 @@ function startBrainServer(apiKey?: string): void {
     return
   }
 
-  // Resolve API key: parameter > stored > env (blank)
+  // Resolve API keys: parameter > stored > env (blank)
   const resolvedKey = apiKey || loadApiKey() || ''
-  log(`Starting bundled Brain server... (API key ${resolvedKey ? 'provided' : 'NOT set'})`)
+  const resolvedGeminiKey = loadGeminiKey() || ''
+  log(`Starting bundled Brain server... (Anthropic key ${resolvedKey ? 'provided' : 'NOT set'}, Gemini key ${resolvedGeminiKey ? 'provided' : 'NOT set'})`)
 
   try {
     brainProcess = fork(brainEntry, [], {
@@ -216,6 +316,7 @@ function startBrainServer(apiKey?: string): void {
         PREFER_DESKTOP: 'true',
         NODE_ENV: 'production',
         ...(resolvedKey ? { ANTHROPIC_API_KEY: resolvedKey } : {}),
+        ...(resolvedGeminiKey ? { GEMINI_API_KEY: resolvedGeminiKey } : {}),
       },
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     })
@@ -3817,6 +3918,75 @@ ipcMain.handle('settings:validateApiKey', async (_event, apiKey: string) => {
 ipcMain.handle('settings:removeApiKey', () => {
   try {
     deleteApiKey()
+    restartBrainServer()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+// ==================== GEMINI KEY IPC HANDLERS ====================
+
+ipcMain.handle('settings:getGeminiKeyStatus', () => {
+  const key = loadGeminiKey()
+  return {
+    hasKey: !!key,
+    keyPreview: key ? `AIza...${key.slice(-4)}` : null,
+  }
+})
+
+ipcMain.handle('settings:setGeminiKey', async (_event: any, apiKey: string) => {
+  try {
+    if (!apiKey.startsWith('AIza')) {
+      return { success: false, error: 'Invalid format. Google AI key must start with AIza' }
+    }
+    storeGeminiKey(apiKey)
+    restartBrainServer()
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('settings:validateGeminiKey', async (_event: any, apiKey: string) => {
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'Hi' }] }],
+        }),
+      }
+    )
+
+    if (response.ok || response.status === 429) {
+      return { success: true, valid: true }
+    }
+    if (response.status === 400) {
+      const errorData = await response.json().catch(() => ({})) as any
+      const errorMsg = errorData.error?.message || ''
+      if (errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('API key not valid')) {
+        return { success: true, valid: false, error: 'Invalid API key' }
+      }
+      // Other 400 errors might be quota-related — key is still valid
+      return { success: true, valid: true, warning: errorMsg }
+    }
+    if (response.status === 403) {
+      return { success: true, valid: false, error: 'API key does not have access to Gemini API. Enable it at console.cloud.google.com' }
+    }
+    const errorData = await response.json().catch(() => ({})) as any
+    const errorMsg = errorData.error?.message || `HTTP ${response.status}`
+    return { success: true, valid: false, error: errorMsg }
+  } catch (err: any) {
+    return { success: false, error: `Network error: ${err.message}` }
+  }
+})
+
+ipcMain.handle('settings:removeGeminiKey', () => {
+  try {
+    deleteGeminiKey()
     restartBrainServer()
     return { success: true }
   } catch (err: any) {

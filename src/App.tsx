@@ -346,6 +346,8 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setShowSettings,
     apiKeyStatus,
     setApiKeyStatus,
+    geminiKeyStatus,
+    setGeminiKeyStatus,
     setPlatformSessions,
     setMarketingQueue,
   } = useChromadonStore()
@@ -378,12 +380,19 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
   // Check API key status on mount — auto-open settings if no key set
   useEffect(() => {
     const checkApiKey = async () => {
+      let hasAnyKey = false
       if (window.electronAPI?.settingsGetApiKeyStatus) {
         const status = await window.electronAPI.settingsGetApiKeyStatus()
         setApiKeyStatus(status)
-        if (!status.hasKey) {
-          setShowSettings(true)
-        }
+        if (status.hasKey) hasAnyKey = true
+      }
+      if (window.electronAPI?.settingsGetGeminiKeyStatus) {
+        const gStatus = await window.electronAPI.settingsGetGeminiKeyStatus()
+        setGeminiKeyStatus(gStatus)
+        if (gStatus.hasKey) hasAnyKey = true
+      }
+      if (!hasAnyKey) {
+        setShowSettings(true)
       }
     }
     const timer = setTimeout(checkApiKey, 3000)
@@ -857,6 +866,8 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
         onClose={() => setShowSettings(false)}
         apiKeyStatus={apiKeyStatus}
         onApiKeyStatusChange={setApiKeyStatus}
+        geminiKeyStatus={geminiKeyStatus}
+        onGeminiKeyStatusChange={setGeminiKeyStatus}
       />
     </>
   )

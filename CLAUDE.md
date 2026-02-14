@@ -7,7 +7,22 @@
 
 ---
 
-## Recent Changes (v1.18.0 — 2026-02-14)
+## Recent Changes (v1.19.0 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Added: Gemini API key input in Settings (Primary provider, teal-themed) | `src/components/SettingsModal.tsx` |
+| Added: Anthropic key relabeled as "Fallback" provider (gold-themed) | `src/components/SettingsModal.tsx` |
+| Added: Gemini key storage with DPAPI encryption (same pattern as Anthropic) | `electron/main.ts` |
+| Added: 4 IPC handlers — getGeminiKeyStatus, setGeminiKey, validateGeminiKey, removeGeminiKey | `electron/main.ts` |
+| Added: Gemini key validation against Google Generative AI REST API | `electron/main.ts` |
+| Added: `GEMINI_API_KEY` env var passed to Brain on startup | `electron/main.ts` |
+| Added: 4 preload bridge methods + type definitions for Gemini settings | `electron/preload.ts` |
+| Added: `geminiKeyStatus` state + `setGeminiKeyStatus` action in store | `src/store/chromadonStore.ts` |
+| Updated: Settings auto-open only when NEITHER key is configured | `src/App.tsx` |
+| Updated: Status indicator shows "Gemini (primary)" / "Anthropic only" / "No API Key" | `src/components/SettingsModal.tsx` |
+
+## Changes (v1.18.0 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -380,5 +395,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-14
-**Version:** 1.18.0 (Brain v1.5.0 — Gemini provider + cost router)
+**Version:** 1.19.0 (Gemini API key settings + dual provider UI)
 **Author:** Barrios A2I (Gary Barrios)

@@ -320,6 +320,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsRemoveApiKey: () => ipcRenderer.invoke('settings:removeApiKey'),
   settingsGetBrainStatus: () => ipcRenderer.invoke('settings:getBrainStatus'),
 
+  // Gemini Settings API
+  settingsGetGeminiKeyStatus: () => ipcRenderer.invoke('settings:getGeminiKeyStatus'),
+  settingsSetGeminiKey: (apiKey: string) => ipcRenderer.invoke('settings:setGeminiKey', apiKey),
+  settingsValidateGeminiKey: (apiKey: string) => ipcRenderer.invoke('settings:validateGeminiKey', apiKey),
+  settingsRemoveGeminiKey: () => ipcRenderer.invoke('settings:removeGeminiKey'),
+
   // ==================== AUTO-UPDATER API ====================
   onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => {
     const handler = (_event: any, info: { version: string; releaseDate: string }) => callback(info)
@@ -466,6 +472,12 @@ declare global {
       settingsValidateApiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; error?: string }>
       settingsRemoveApiKey: () => Promise<{ success: boolean; error?: string }>
       settingsGetBrainStatus: () => Promise<{ isRunning: boolean; pid: number | null }>
+
+      // Gemini Settings API
+      settingsGetGeminiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
+      settingsSetGeminiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
+      settingsValidateGeminiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; error?: string; warning?: string }>
+      settingsRemoveGeminiKey: () => Promise<{ success: boolean; error?: string }>
 
       // Auto-updater API
       onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
