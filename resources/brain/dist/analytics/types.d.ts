@@ -167,5 +167,40 @@ export interface ROIData {
         roi: number;
     }>;
 }
+export interface Lead {
+    id?: number;
+    name: string;
+    platform: string;
+    handle: string;
+    interest: string;
+    source: string;
+    notes: string;
+    status: 'new' | 'contacted' | 'qualified' | 'converted' | 'lost';
+    created_at?: string;
+}
+export interface Campaign {
+    id?: number;
+    name: string;
+    description: string;
+    platforms: string;
+    start_date: string | null;
+    end_date: string | null;
+    status: 'active' | 'paused' | 'completed' | 'archived';
+    created_at?: string;
+}
+export interface CampaignPost {
+    campaign_id: number;
+    post_id: number;
+}
+export interface AutoReplyRule {
+    id?: number;
+    platform: string;
+    trigger_type: 'keyword' | 'all' | 'mention' | 'question';
+    trigger_value: string;
+    reply_template: string;
+    is_active: number;
+    uses: number;
+    created_at?: string;
+}
 export type SupportedPlatform = 'twitter' | 'linkedin' | 'instagram' | 'facebook' | 'youtube' | 'tiktok';
 //# sourceMappingURL=types.d.ts.map

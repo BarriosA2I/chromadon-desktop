@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.16.6 — 2026-02-14)
+## Recent Changes (v1.17.0 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.4.0 — 16 new AI chat tools (8 marketing + 8 YouTube Studio) | `resources/brain/dist/` |
+| Marketing tools: content_calendar, repurpose_content, hashtag_research, engagement_report, competitor_watch, auto_reply, lead_capture, campaign_tracker | Brain `marketing/` |
+| YouTube Studio tools: video_analytics, comment_manager, seo_optimizer, thumbnail_test, community_post, revenue_report, playlist_manager, upload_scheduler | Brain `youtube/` |
+
+## Changes (v1.16.6 — 2026-02-14)
 
 | Change | File |
 |--------|------|

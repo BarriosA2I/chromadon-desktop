@@ -5,7 +5,7 @@
  *
  * @author Barrios A2I
  */
-import type { Post, PostMetrics, AudienceMetrics, Competitor, CompetitorPost, ScheduledPost, DailySnapshot, OverviewData, PlatformData, ContentData, AudienceData, CompetitorData, TimingData, ROIData } from './types';
+import type { Post, PostMetrics, AudienceMetrics, Competitor, CompetitorPost, ScheduledPost, DailySnapshot, OverviewData, PlatformData, ContentData, AudienceData, CompetitorData, TimingData, ROIData, Lead, Campaign, AutoReplyRule } from './types';
 export declare class AnalyticsDatabase {
     private db;
     constructor(dbPath?: string);
@@ -27,6 +27,24 @@ export declare class AnalyticsDatabase {
     getROIAnalytics(days?: number): ROIData;
     getScheduledPosts(platform?: string): ScheduledPost[];
     updateScheduledPostStatus(id: number, status: string, postId?: number): void;
+    insertLead(lead: Omit<Lead, 'id' | 'created_at'>): number;
+    getLeads(status?: string, platform?: string): Lead[];
+    updateLeadStatus(id: number, status: string, notes?: string): void;
+    insertCampaign(campaign: Omit<Campaign, 'id' | 'created_at'>): number;
+    getCampaigns(status?: string): Campaign[];
+    getCampaignWithPosts(campaignId: number): {
+        campaign: Campaign;
+        posts: Array<Post & {
+            metrics?: PostMetrics;
+        }>;
+    } | null;
+    linkPostToCampaign(campaignId: number, postId: number): void;
+    updateCampaignStatus(id: number, status: string): void;
+    insertAutoReplyRule(rule: Omit<AutoReplyRule, 'id' | 'uses' | 'created_at'>): number;
+    getAutoReplyRules(platform?: string, activeOnly?: boolean): AutoReplyRule[];
+    deleteAutoReplyRule(id: number): void;
+    incrementRuleUses(id: number): void;
+    deactivateCompetitor(id: number): void;
     private daysAgo;
     private extractPost;
     private extractMetrics;

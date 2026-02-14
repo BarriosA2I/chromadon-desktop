@@ -471,6 +471,116 @@ class AnalyticsDatabase {
         }
     }
     // =========================================================================
+    // LEAD MANAGEMENT (v1.4.0)
+    // =========================================================================
+    insertLead(lead) {
+        const stmt = this.db.prepare(`
+      INSERT INTO leads (name, platform, handle, interest, source, notes, status)
+      VALUES (@name, @platform, @handle, @interest, @source, @notes, @status)
+    `);
+        return stmt.run(lead).lastInsertRowid;
+    }
+    getLeads(status, platform) {
+        let sql = 'SELECT * FROM leads WHERE 1=1';
+        const params = [];
+        if (status) {
+            sql += ' AND status = ?';
+            params.push(status);
+        }
+        if (platform) {
+            sql += ' AND platform = ?';
+            params.push(platform);
+        }
+        sql += ' ORDER BY created_at DESC';
+        return this.db.prepare(sql).all(...params);
+    }
+    updateLeadStatus(id, status, notes) {
+        if (notes) {
+            this.db.prepare('UPDATE leads SET status = ?, notes = ? WHERE id = ?').run(status, notes, id);
+        }
+        else {
+            this.db.prepare('UPDATE leads SET status = ? WHERE id = ?').run(status, id);
+        }
+    }
+    // =========================================================================
+    // CAMPAIGN MANAGEMENT (v1.4.0)
+    // =========================================================================
+    insertCampaign(campaign) {
+        const stmt = this.db.prepare(`
+      INSERT INTO campaigns (name, description, platforms, start_date, end_date, status)
+      VALUES (@name, @description, @platforms, @start_date, @end_date, @status)
+    `);
+        return stmt.run(campaign).lastInsertRowid;
+    }
+    getCampaigns(status) {
+        if (status) {
+            return this.db.prepare('SELECT * FROM campaigns WHERE status = ? ORDER BY created_at DESC').all(status);
+        }
+        return this.db.prepare('SELECT * FROM campaigns ORDER BY created_at DESC').all();
+    }
+    getCampaignWithPosts(campaignId) {
+        const campaign = this.db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+        if (!campaign)
+            return null;
+        const posts = this.db.prepare(`
+      SELECT p.*, pm.impressions, pm.reach, pm.likes, pm.comments, pm.shares,
+             pm.saves, pm.clicks, pm.engagement_rate as metric_engagement_rate
+      FROM campaign_posts cp
+      JOIN posts p ON cp.post_id = p.id
+      LEFT JOIN post_metrics pm ON pm.post_id = p.id
+      WHERE cp.campaign_id = ?
+      ORDER BY p.published_at DESC
+    `).all(campaignId);
+        return {
+            campaign,
+            posts: posts.map(r => ({
+                ...this.extractPost(r),
+                metrics: r.impressions != null ? this.extractMetrics(r) : undefined,
+            })),
+        };
+    }
+    linkPostToCampaign(campaignId, postId) {
+        this.db.prepare('INSERT OR IGNORE INTO campaign_posts (campaign_id, post_id) VALUES (?, ?)').run(campaignId, postId);
+    }
+    updateCampaignStatus(id, status) {
+        this.db.prepare('UPDATE campaigns SET status = ? WHERE id = ?').run(status, id);
+    }
+    // =========================================================================
+    // AUTO-REPLY RULES (v1.4.0)
+    // =========================================================================
+    insertAutoReplyRule(rule) {
+        const stmt = this.db.prepare(`
+      INSERT INTO auto_reply_rules (platform, trigger_type, trigger_value, reply_template, is_active)
+      VALUES (@platform, @trigger_type, @trigger_value, @reply_template, @is_active)
+    `);
+        return stmt.run(rule).lastInsertRowid;
+    }
+    getAutoReplyRules(platform, activeOnly) {
+        let sql = 'SELECT * FROM auto_reply_rules WHERE 1=1';
+        const params = [];
+        if (platform) {
+            sql += ' AND platform = ?';
+            params.push(platform);
+        }
+        if (activeOnly) {
+            sql += ' AND is_active = 1';
+        }
+        sql += ' ORDER BY created_at DESC';
+        return this.db.prepare(sql).all(...params);
+    }
+    deleteAutoReplyRule(id) {
+        this.db.prepare('DELETE FROM auto_reply_rules WHERE id = ?').run(id);
+    }
+    incrementRuleUses(id) {
+        this.db.prepare('UPDATE auto_reply_rules SET uses = uses + 1 WHERE id = ?').run(id);
+    }
+    // =========================================================================
+    // COMPETITOR UPDATE (v1.4.0)
+    // =========================================================================
+    deactivateCompetitor(id) {
+        this.db.prepare('UPDATE competitors SET is_active = 0 WHERE id = ?').run(id);
+    }
+    // =========================================================================
     // HELPERS
     // =========================================================================
     daysAgo(days) {

@@ -122,6 +122,58 @@ const MIGRATIONS = [
 
   CREATE INDEX IF NOT EXISTS idx_snapshots_platform_date ON daily_snapshots(platform, date);
   `,
+    // Version 2: Marketing automation tables (leads, campaigns, auto-reply rules)
+    `
+  CREATE TABLE IF NOT EXISTS leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    handle TEXT NOT NULL DEFAULT '',
+    interest TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_leads_platform ON leads(platform);
+  CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
+
+  CREATE TABLE IF NOT EXISTS campaigns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    platforms TEXT NOT NULL DEFAULT '[]',
+    start_date TEXT,
+    end_date TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
+
+  CREATE TABLE IF NOT EXISTS campaign_posts (
+    campaign_id INTEGER NOT NULL,
+    post_id INTEGER NOT NULL,
+    PRIMARY KEY (campaign_id, post_id),
+    FOREIGN KEY (campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS auto_reply_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT NOT NULL,
+    trigger_type TEXT NOT NULL DEFAULT 'keyword',
+    trigger_value TEXT NOT NULL,
+    reply_template TEXT NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    uses INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_auto_reply_platform ON auto_reply_rules(platform);
+  CREATE INDEX IF NOT EXISTS idx_auto_reply_active ON auto_reply_rules(is_active);
+  `,
 ];
 // ============================================================================
 // MIGRATION RUNNER

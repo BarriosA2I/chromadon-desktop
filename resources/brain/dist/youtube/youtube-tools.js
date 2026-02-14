@@ -292,5 +292,130 @@ exports.YOUTUBE_TOOLS = [
             required: ['subscription_id'],
         },
     },
+    // =========================================================================
+    // YOUTUBE STUDIO TOOLS (v1.4.0)
+    // =========================================================================
+    {
+        name: 'youtube_video_analytics',
+        description: 'Get a detailed performance report for a specific video or your channel\'s recent uploads. Shows views, likes, comments, engagement rate, and performance comparison. Use when the user asks about video performance or wants analytics.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                video_id: { type: 'string', description: 'Specific video ID to analyze (optional — omit for channel-wide recent uploads report)' },
+                max_results: { type: 'number', description: 'Number of recent videos to analyze if no video_id (default: 10)' },
+            },
+        },
+    },
+    {
+        name: 'youtube_comment_manager',
+        description: 'Bulk comment management for YouTube videos. List unanswered comments, reply to all unanswered with a template, or get a comment summary with themes and sentiment. Use when the user wants to manage comments in bulk.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                action: {
+                    type: 'string',
+                    enum: ['list_unanswered', 'reply_all', 'summary'],
+                    description: 'Action: list_unanswered (comments without replies), reply_all (reply to all unanswered), summary (themes and stats)',
+                },
+                video_id: { type: 'string', description: 'YouTube video ID' },
+                reply_text: { type: 'string', description: 'Reply text for reply_all action' },
+                max_results: { type: 'number', description: 'Max comments to process (default: 50)' },
+            },
+            required: ['action', 'video_id'],
+        },
+    },
+    {
+        name: 'youtube_seo_optimizer',
+        description: 'Analyze a YouTube video\'s SEO and get specific improvement suggestions. Checks title length, description keywords, tag count, and thumbnail. Returns an SEO score with actionable recommendations. Use when the user wants to optimize a video for search.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                video_id: { type: 'string', description: 'YouTube video ID to analyze' },
+            },
+            required: ['video_id'],
+        },
+    },
+    {
+        name: 'youtube_thumbnail_test',
+        description: 'Track thumbnail performance for a video. Check current view stats (as a CTR proxy) or log a thumbnail change for later comparison. Use when the user wants to test different thumbnails.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                action: {
+                    type: 'string',
+                    enum: ['check', 'log_change'],
+                    description: 'check: get current stats, log_change: record a thumbnail change event',
+                },
+                video_id: { type: 'string', description: 'YouTube video ID' },
+                notes: { type: 'string', description: 'Notes about the thumbnail change (for log_change)' },
+            },
+            required: ['action', 'video_id'],
+        },
+    },
+    {
+        name: 'youtube_community_post',
+        description: 'Create a YouTube community tab post. Since community posts aren\'t available via API, this queues a browser automation task to navigate YouTube Studio and post. Use when the user wants to post to their YouTube community tab.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                text: { type: 'string', description: 'Community post text content' },
+                post_type: {
+                    type: 'string',
+                    enum: ['text', 'poll', 'image'],
+                    description: 'Type of community post (default: text)',
+                },
+                poll_options: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Poll options (required if post_type is poll)',
+                },
+                image_path: { type: 'string', description: 'Path to image file (for image posts)' },
+            },
+            required: ['text'],
+        },
+    },
+    {
+        name: 'youtube_revenue_report',
+        description: 'Get an estimated revenue report based on video view counts and industry CPM estimates. Provides per-video and total estimated earnings. Use when the user asks about monetization or revenue.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                max_results: { type: 'number', description: 'Number of recent videos to include (default: 20)' },
+            },
+        },
+    },
+    {
+        name: 'youtube_playlist_manager',
+        description: 'Advanced playlist management. List all playlists with stats, get detailed playlist analytics, or clone a playlist. Use when the user wants to manage playlists beyond basic CRUD.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                action: {
+                    type: 'string',
+                    enum: ['list_all', 'stats', 'clone'],
+                    description: 'list_all: all playlists with counts, stats: detailed playlist stats, clone: copy playlist to new one',
+                },
+                playlist_id: { type: 'string', description: 'Playlist ID (required for stats and clone)' },
+                new_title: { type: 'string', description: 'Title for cloned playlist (for clone action)' },
+            },
+            required: ['action'],
+        },
+    },
+    {
+        name: 'youtube_upload_scheduler',
+        description: 'Schedule a video upload for a future time. Queues the upload in the marketing queue and executes it at the scheduled time. Use when the user wants to upload a video at a specific time in the future.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                file_path: { type: 'string', description: 'Absolute path to video file on disk' },
+                title: { type: 'string', description: 'Video title' },
+                description: { type: 'string', description: 'Video description' },
+                tags: { type: 'array', items: { type: 'string' }, description: 'Video tags' },
+                scheduled_time: { type: 'string', description: 'ISO 8601 datetime for when to upload (required)' },
+                privacy_status: { type: 'string', description: 'Privacy: private, unlisted, or public (default: private)' },
+            },
+            required: ['file_path', 'title', 'scheduled_time'],
+        },
+    },
 ];
 //# sourceMappingURL=youtube-tools.js.map
