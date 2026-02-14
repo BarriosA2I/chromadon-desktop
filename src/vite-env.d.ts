@@ -173,6 +173,12 @@ interface Window {
     settingsRemoveApiKey: () => Promise<{ success: boolean; error?: string }>
     settingsGetBrainStatus: () => Promise<{ isRunning: boolean; pid: number | null }>
 
+    // Gemini Settings API
+    settingsGetGeminiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
+    settingsSetGeminiKey: (apiKey: string) => Promise<{ success: boolean; error?: string }>
+    settingsValidateGeminiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; warning?: string; error?: string }>
+    settingsRemoveGeminiKey: () => Promise<{ success: boolean; error?: string }>
+
     // Auto-updater API
     onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => (() => void)
     onUpdateDownloadProgress: (callback: (progress: { percent: number }) => void) => (() => void)
