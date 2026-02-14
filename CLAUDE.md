@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.19.1 — 2026-02-14)
+## Recent Changes (v1.19.2 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain now starts with EITHER Gemini or Anthropic key (was requiring Anthropic) | `resources/brain/dist/api/server.js` |
+| Added: Anthropic fallback guard — prevents fallback calls when no Anthropic key is set | `resources/brain/dist/core/agentic-orchestrator.js` |
+| Fixed: NeuralRAGAIEngine conditionally initialized only when Anthropic key is present | `resources/brain/dist/api/server.js` |
+
+## Changes (v1.19.1 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -401,5 +409,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-14
-**Version:** 1.19.1 (Gemini API key settings + usingGemini scope fix)
+**Version:** 1.19.2 (Either-key Brain startup + Anthropic fallback guard)
 **Author:** Barrios A2I (Gary Barrios)

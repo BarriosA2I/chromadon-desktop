@@ -1755,7 +1755,7 @@ app.post('/api/mission/ai', async (req, res) => {
             console.log('[CHROMADON] ⚠️ AI Engine not available, falling back to basic mission');
             res.status(503).json({
                 success: false,
-                error: 'Neural RAG AI Engine not initialized. Set ANTHROPIC_API_KEY environment variable.',
+                error: 'Neural RAG AI Engine not initialized. Set ANTHROPIC_API_KEY or GEMINI_API_KEY environment variable.',
             });
             return;
         }
@@ -2043,7 +2043,7 @@ app.post('/api/orchestrator/chat', async (req, res) => {
     if (!orchestrator) {
         res.status(503).json({
             success: false,
-            error: 'Agentic Orchestrator not initialized. Set ANTHROPIC_API_KEY environment variable.',
+            error: 'Agentic Orchestrator not initialized. Set ANTHROPIC_API_KEY or GEMINI_API_KEY environment variable.',
         });
         return;
     }
@@ -3739,14 +3739,20 @@ async function startServer() {
     // Initialize browser connection (skipped in DESKTOP mode)
     await initializeBrowser();
     // Initialize Neural RAG AI Engine v3.0
-    if (ANTHROPIC_API_KEY) {
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    if (ANTHROPIC_API_KEY || GEMINI_API_KEY) {
         try {
-            aiEngine = new core_1.NeuralRAGAIEngine(ANTHROPIC_API_KEY);
-            console.log('[CHROMADON] ✅ Neural RAG AI Engine v3.0 initialized');
-            console.log('[CHROMADON]    - Dual-Process Routing (System 1/System 2)');
-            console.log('[CHROMADON]    - Self-Reflection Tokens [RET][REL][SUP][USE]');
-            console.log('[CHROMADON]    - Hierarchical Memory (L0-L3)');
-            console.log('[CHROMADON]    - Circuit Breaker Protection');
+            if (ANTHROPIC_API_KEY) {
+                aiEngine = new core_1.NeuralRAGAIEngine(ANTHROPIC_API_KEY);
+                console.log('[CHROMADON] ✅ Neural RAG AI Engine v3.0 initialized');
+                console.log('[CHROMADON]    - Dual-Process Routing (System 1/System 2)');
+                console.log('[CHROMADON]    - Self-Reflection Tokens [RET][REL][SUP][USE]');
+                console.log('[CHROMADON]    - Hierarchical Memory (L0-L3)');
+                console.log('[CHROMADON]    - Circuit Breaker Protection');
+            }
+            else {
+                console.log('[CHROMADON] ⚠️ Neural RAG AI Engine skipped (no Anthropic key — Gemini only)');
+            }
             // Initialize Analytics Database
             try {
                 analyticsDb = new database_1.AnalyticsDatabase();
@@ -3812,7 +3818,7 @@ async function startServer() {
                     return analyticsExec(toolName, input);
                 return `Unknown additional tool: ${toolName}`;
             };
-            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY, toolExecutor, undefined, additionalTools, combinedExecutor, () => skillMemory.getSkillsJson(), () => {
+            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutor, undefined, additionalTools, combinedExecutor, () => skillMemory.getSkillsJson(), () => {
                 const activeId = clientStorage.getActiveClientId();
                 if (!activeId)
                     return null;
@@ -3842,7 +3848,7 @@ async function startServer() {
         }
     }
     else {
-        console.log('[CHROMADON] ⚠️ ANTHROPIC_API_KEY not set - AI features disabled');
+        console.log('[CHROMADON] ⚠️ No API keys set (ANTHROPIC_API_KEY or GEMINI_API_KEY) — AI features disabled');
     }
     return new Promise((resolve) => {
         const server = app.listen(PORT, () => {

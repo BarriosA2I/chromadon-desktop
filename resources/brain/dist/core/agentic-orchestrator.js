@@ -65,14 +65,16 @@ class AgenticOrchestrator {
     additionalToolNames;
     getSkillsForPrompt;
     getClientKnowledge;
+    hasAnthropicKey;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge) {
-        this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 0 });
+        this.hasAnthropicKey = apiKey !== 'gemini-only-no-anthropic-fallback';
+        this.client = new sdk_1.default({ apiKey: this.hasAnthropicKey ? apiKey : 'dummy', timeout: 120_000, maxRetries: 0 });
         // Gemini as primary provider (Anthropic as fallback)
         const geminiKey = process.env.GEMINI_API_KEY;
         if (geminiKey) {
             this.geminiProvider = new gemini_provider_1.GeminiProvider(geminiKey);
             this.useGemini = true;
-            console.log('[PROVIDER] Gemini enabled as primary provider (Anthropic fallback ready)');
+            console.log(`[PROVIDER] Gemini enabled as primary provider${this.hasAnthropicKey ? ' (Anthropic fallback ready)' : ' (no Anthropic fallback)'}`);
         }
         else {
             this.geminiProvider = null;
@@ -200,18 +202,23 @@ class AgenticOrchestrator {
                         }
                     }
                     catch (geminiInitErr) {
-                        console.warn(`[PROVIDER] Gemini init failed, falling back to Anthropic: ${geminiInitErr.message}`);
-                        stream = this.client.messages.stream({
-                            model: currentModel,
-                            max_tokens: this.config.maxTokens,
-                            temperature: 0,
-                            system: finalSystemPrompt,
-                            tools: allTools,
-                            messages: sanitizedMessages,
-                        });
+                        if (this.hasAnthropicKey) {
+                            console.warn(`[PROVIDER] Gemini init failed, falling back to Anthropic: ${geminiInitErr.message}`);
+                            stream = this.client.messages.stream({
+                                model: currentModel,
+                                max_tokens: this.config.maxTokens,
+                                temperature: 0,
+                                system: finalSystemPrompt,
+                                tools: allTools,
+                                messages: sanitizedMessages,
+                            });
+                        }
+                        else {
+                            throw geminiInitErr; // No Anthropic fallback available
+                        }
                     }
                 }
-                else {
+                else if (this.hasAnthropicKey) {
                     stream = this.client.messages.stream({
                         model: currentModel,
                         max_tokens: this.config.maxTokens,
@@ -220,6 +227,10 @@ class AgenticOrchestrator {
                         tools: allTools,
                         messages: sanitizedMessages,
                     });
+                }
+                else {
+                    // No provider available
+                    throw new Error('No AI provider available. Set GEMINI_API_KEY or ANTHROPIC_API_KEY.');
                 }
                 // Wire abort signal to cancel the stream
                 let abortHandler = null;
@@ -675,13 +686,24 @@ class AgenticOrchestrator {
                 console.error(`[CHROMADON Orchestrator] Error details — status: ${error?.status}, type: ${error?.error?.type}, constructor: ${error?.constructor?.name}`);
                 // Recovery: Gemini failure → fall back to Anthropic for the rest of this session
                 if (usingGemini && this.useGemini) {
-                    console.warn(`[PROVIDER] Gemini error — disabling for this session, falling back to Anthropic`);
-                    this.useGemini = false;
-                    usingGemini = false;
-                    if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: '\n\nSwitching providers...\n' });
+                    if (this.hasAnthropicKey) {
+                        console.warn(`[PROVIDER] Gemini error — disabling for this session, falling back to Anthropic`);
+                        this.useGemini = false;
+                        usingGemini = false;
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('text_delta', { text: '\n\nSwitching providers...\n' });
+                        }
+                        continue;
                     }
-                    continue;
+                    else {
+                        // No Anthropic fallback — report error to user
+                        console.error(`[PROVIDER] Gemini error — no Anthropic fallback configured`);
+                        const userMsg = `AI provider error: ${errorMsg}. No fallback provider configured. Please check your API key in Settings.`;
+                        if (!writer.isClosed()) {
+                            writer.writeEvent('error', { message: userMsg });
+                        }
+                        break;
+                    }
                 }
                 // Recovery: if 400 with tool_use_id mismatch, purge tool messages and retry once
                 if (error?.status === 400 && errorMsg.includes('tool_use_id')) {
