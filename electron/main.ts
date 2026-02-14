@@ -8,6 +8,7 @@ import { fork, ChildProcess } from 'child_process'
 import { browserViewManager, TabInfo, Platform, SessionMode, PlatformSession } from './browser-view-manager'
 import { vault, ChromadonProfile, StoredCredential } from './security/vault'
 import { StorageManager } from './storage-manager'
+import { sessionBackupManager } from './session-backup'
 
 // Screenshot storage manager (initialized in startControlServer)
 const storageManager = new StorageManager()
@@ -1994,6 +1995,48 @@ function startControlServer() {
     }
   })
 
+  // ==================== SESSION BACKUP ENDPOINTS ====================
+
+  server.post('/sessions/:platform/export', async (req: Request, res: Response) => {
+    try {
+      const platform = req.params.platform as Platform
+      const { password } = req.body
+      if (!password) { res.status(400).json({ success: false, error: 'Password required' }); return }
+      const result = await sessionBackupManager.exportSession(platform, password)
+      res.json({ success: true, platform, cookieCount: result.cookieCount })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  server.post('/sessions/:platform/restore', async (req: Request, res: Response) => {
+    try {
+      const platform = req.params.platform as Platform
+      const { password } = req.body
+      if (!password) { res.status(400).json({ success: false, error: 'Password required' }); return }
+      const result = await sessionBackupManager.importSession(platform, password)
+      await browserViewManager.verifyPlatformAuth(platform)
+      res.json({ success: true, platform, imported: result.imported, skipped: result.skipped })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  server.get('/sessions/backups', (_req: Request, res: Response) => {
+    res.json({ success: true, backups: sessionBackupManager.listBackups() })
+  })
+
+  server.post('/sessions/backups/export-all', async (req: Request, res: Response) => {
+    try {
+      const { password } = req.body
+      if (!password) { res.status(400).json({ success: false, error: 'Password required' }); return }
+      const results = await sessionBackupManager.exportAll(password)
+      res.json({ success: true, results })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // Create platform-specific tab (uses shared session)
   server.post('/tabs/platform', (req: Request, res: Response) => {
     try {
@@ -2925,6 +2968,10 @@ function startControlServer() {
     console.log(`  POST /tabs/platform       - Create platform-shared tab`)
     console.log(`  GET  /sessions            - List platform sessions`)
     console.log(`  POST /sessions/:platform  - Update platform session`)
+    console.log(`  POST /sessions/:p/export  - Export session backup`)
+    console.log(`  POST /sessions/:p/restore - Restore session backup`)
+    console.log(`  GET  /sessions/backups    - List session backups`)
+    console.log(`  POST /sessions/backups/export-all - Export all sessions`)
     console.log(`  GET  /queue               - Get marketing queue status`)
     console.log(`  POST /queue/add           - Add task to queue`)
     console.log(`  POST /queue/process/:plat - Process next task`)
@@ -3383,6 +3430,42 @@ ipcMain.handle('session:clear', async (_event, platform: Platform) => {
   if (authPlatform === 'google') {
     browserViewManager.updatePlatformSession('youtube', { isAuthenticated: false, accountName: undefined, accountEmail: undefined })
   }
+  return { success: true }
+})
+
+// ==================== SESSION BACKUP IPC HANDLERS ====================
+
+ipcMain.handle('session:export', async (_event, { platform, password }: { platform: Platform; password: string }) => {
+  const result = await sessionBackupManager.exportSession(platform, password)
+  return { success: true, platform, cookieCount: result.cookieCount }
+})
+
+ipcMain.handle('session:import', async (_event, { platform, password }: { platform: Platform; password: string }) => {
+  const result = await sessionBackupManager.importSession(platform, password)
+  await browserViewManager.verifyPlatformAuth(platform)
+  return { success: true, platform, imported: result.imported, skipped: result.skipped }
+})
+
+ipcMain.handle('session:exportAll', async (_event, { password }: { password: string }) => {
+  const results = await sessionBackupManager.exportAll(password)
+  return { success: true, results }
+})
+
+ipcMain.handle('session:importAll', async (_event, { password }: { password: string }) => {
+  const results = await sessionBackupManager.importAll(password)
+  const platforms: Platform[] = ['google', 'twitter', 'linkedin', 'facebook', 'instagram', 'tiktok']
+  for (const p of platforms) {
+    try { await browserViewManager.verifyPlatformAuth(p) } catch {}
+  }
+  return { success: true, results }
+})
+
+ipcMain.handle('session:listBackups', () => {
+  return { success: true, backups: sessionBackupManager.listBackups() }
+})
+
+ipcMain.handle('session:deleteBackup', (_event, platform: Platform) => {
+  sessionBackupManager.deleteBackup(platform)
   return { success: true }
 })
 
@@ -3982,6 +4065,18 @@ app.whenReady().then(() => {
   startControlServer()
   initAutoUpdater()
 
+  // Initialize session backup manager + hourly auto-backup
+  sessionBackupManager.initialize()
+  setInterval(async () => {
+    if (sessionBackupManager.hasAutoBackupKey()) {
+      try {
+        await sessionBackupManager.autoBackup()
+      } catch (err) {
+        console.error('[SessionBackup] Auto-backup failed:', err)
+      }
+    }
+  }, 60 * 60 * 1000)
+
   // Load stored API key and start brain
   const storedKey = loadApiKey()
   console.log(`[CHROMADON] Startup: API key ${storedKey ? 'found' : 'NOT found'}, userData=${app.getPath('userData')}`)
@@ -3990,6 +4085,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  sessionBackupManager.clearAutoBackupKey()
   if (brainHealthInterval) clearInterval(brainHealthInterval)
   if (brainProcess) {
     console.log('[Desktop] Shutting down Brain server...')

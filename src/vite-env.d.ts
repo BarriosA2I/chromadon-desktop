@@ -140,6 +140,12 @@ interface Window {
     sessionVerify: (platform: string) => Promise<{ success: boolean; platform: string; isAuthenticated: boolean }>
     sessionUpdate: (platform: string, updates: any) => Promise<{ success: boolean; session: any | null }>
     sessionClear: (platform: string) => Promise<{ success: boolean }>
+    sessionExport: (platform: string, password: string) => Promise<{ success: boolean; platform: string; cookieCount: number }>
+    sessionImport: (platform: string, password: string) => Promise<{ success: boolean; platform: string; imported: number; skipped: number }>
+    sessionExportAll: (password: string) => Promise<{ success: boolean; results: { platform: string; cookies: number }[] }>
+    sessionImportAll: (password: string) => Promise<{ success: boolean; results: { platform: string; imported: number }[] }>
+    sessionListBackups: () => Promise<{ success: boolean; backups: { version: number; lastBackupAt: number; backups: { platform: string; file: string; exportedAt: number; cookieCount: number }[] } }>
+    sessionDeleteBackup: (platform: string) => Promise<{ success: boolean }>
     oauthSignIn: (platform: string) => Promise<{ success: boolean; platform: string; userClosed?: boolean; error?: string }>
     tabCreatePlatform: (platform: string, url?: string) => Promise<{ success: boolean; id: number; platform: string; tabs: TabInfo[] }>
 

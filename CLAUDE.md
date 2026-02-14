@@ -7,7 +7,21 @@
 
 ---
 
-## Recent Changes (v1.14.1 — 2026-02-13)
+## Recent Changes (v1.15.0 — 2026-02-13)
+
+| Change | File |
+|--------|------|
+| Added: Session backup/restore — encrypted cookie export/import per platform | `electron/session-backup.ts` (NEW) |
+| Added: 6 IPC handlers + 4 HTTP control server endpoints for session backup | `electron/main.ts` |
+| Added: Hourly auto-backup when user has done at least one manual backup | `electron/main.ts` |
+| Added: Preload bridge methods for session backup/restore | `electron/preload.ts` |
+| Added: Backup/Restore buttons per platform in Session Setup UI | `src/components/SessionSetup.tsx` |
+| Added: "Backup All" button + password prompt modal + backup status indicators | `src/components/SessionSetup.tsx` |
+| Added: sessionBackups state to Zustand store | `src/store/chromadonStore.ts` |
+| Added: Circuit breaker + exponential backoff to streaming chat | `src/hooks/useStreamingChat.ts` |
+| Added: Structured JSON logger utility | `src/utils/logger.ts` |
+
+## Changes (v1.14.1 — 2026-02-13)
 
 | Change | File |
 |--------|------|
@@ -289,5 +303,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.13.4 (Email crash alerts for client brain downtime)
+**Version:** 1.15.0 (Session backup/restore with encrypted cookie export/import)
 **Author:** Barrios A2I (Gary Barrios)

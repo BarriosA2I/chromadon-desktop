@@ -237,6 +237,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Clear platform session (sign out)
   sessionClear: (platform: Platform) => ipcRenderer.invoke('session:clear', platform),
 
+  // Session backup/restore
+  sessionExport: (platform: Platform, password: string) =>
+    ipcRenderer.invoke('session:export', { platform, password }),
+  sessionImport: (platform: Platform, password: string) =>
+    ipcRenderer.invoke('session:import', { platform, password }),
+  sessionExportAll: (password: string) =>
+    ipcRenderer.invoke('session:exportAll', { password }),
+  sessionImportAll: (password: string) =>
+    ipcRenderer.invoke('session:importAll', { password }),
+  sessionListBackups: () =>
+    ipcRenderer.invoke('session:listBackups'),
+  sessionDeleteBackup: (platform: Platform) =>
+    ipcRenderer.invoke('session:deleteBackup', platform),
+
   // OAuth popup sign-in (opens separate window for manual sign-in)
   oauthSignIn: (platform: Platform) => ipcRenderer.invoke('oauth:signIn', platform),
 
@@ -409,6 +423,12 @@ declare global {
       sessionVerify: (platform: Platform) => Promise<{ success: boolean; platform: Platform; isAuthenticated: boolean }>
       sessionUpdate: (platform: Platform, updates: Partial<PlatformSession>) => Promise<{ success: boolean; session: PlatformSession | null }>
       sessionClear: (platform: Platform) => Promise<{ success: boolean }>
+      sessionExport: (platform: Platform, password: string) => Promise<{ success: boolean; platform: Platform; cookieCount: number }>
+      sessionImport: (platform: Platform, password: string) => Promise<{ success: boolean; platform: Platform; imported: number; skipped: number }>
+      sessionExportAll: (password: string) => Promise<{ success: boolean; results: { platform: string; cookies: number }[] }>
+      sessionImportAll: (password: string) => Promise<{ success: boolean; results: { platform: string; imported: number }[] }>
+      sessionListBackups: () => Promise<{ success: boolean; backups: { version: number; lastBackupAt: number; backups: { platform: string; file: string; exportedAt: number; cookieCount: number }[] } }>
+      sessionDeleteBackup: (platform: Platform) => Promise<{ success: boolean }>
       oauthSignIn: (platform: Platform) => Promise<{ success: boolean; platform: Platform; userClosed?: boolean; error?: string }>
       tabCreatePlatform: (platform: Platform, url?: string) => Promise<{ success: boolean; id: number; platform: Platform; tabs: TabInfo[] }>
 

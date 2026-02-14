@@ -148,6 +148,7 @@ interface ChromadonState {
 
   // Platform session state
   platformSessions: Record<Platform, PlatformSession>
+  sessionBackups: { version: number; lastBackupAt: number; backups: { platform: string; file: string; exportedAt: number; cookieCount: number }[] } | null
   showSessionSetup: boolean
 
   // Marketing queue state
@@ -211,6 +212,7 @@ interface ChromadonState {
   // Platform session actions
   setPlatformSessions: (sessions: PlatformSession[]) => void
   updatePlatformSession: (platform: Platform, updates: Partial<PlatformSession>) => void
+  setSessionBackups: (backups: { version: number; lastBackupAt: number; backups: { platform: string; file: string; exportedAt: number; cookieCount: number }[] } | null) => void
   setShowSessionSetup: (show: boolean) => void
 
   // Marketing queue actions
@@ -293,6 +295,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
 
   // Platform session initial state
   platformSessions: {} as Record<Platform, PlatformSession>,
+  sessionBackups: null,
   showSessionSetup: false,
 
   // Marketing queue initial state
@@ -393,6 +396,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
       },
     },
   })),
+  setSessionBackups: (backups) => set({ sessionBackups: backups }),
   setShowSessionSetup: (show) => set({ showSessionSetup: show }),
 
   // Marketing queue actions

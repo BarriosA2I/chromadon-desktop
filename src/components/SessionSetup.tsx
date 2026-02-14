@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useChromadonStore, Platform, PlatformSession } from '../store/chromadonStore'
 
@@ -74,16 +74,40 @@ const PLATFORMS: {
   },
 ]
 
+function timeAgo(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000)
+  if (seconds < 60) return 'just now'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
+
 export default function SessionSetup({
   isOpen,
   onClose,
 }: SessionSetupProps) {
-  const { platformSessions, setPlatformSessions } = useChromadonStore()
+  const { platformSessions, setPlatformSessions, sessionBackups, setSessionBackups } = useChromadonStore()
   const [verifyingPlatform, setVerifyingPlatform] = useState<Platform | null>(null)
   const [verifyResult, setVerifyResult] = useState<Record<string, 'verified' | 'expired'>>({})
 
+  // Backup state
+  const [backupPrompt, setBackupPrompt] = useState<{ action: 'export' | 'import' | 'exportAll'; platform?: Platform } | null>(null)
+  const [backupPassword, setBackupPassword] = useState('')
+  const [backupLoading, setBackupLoading] = useState(false)
+  const [backupStatus, setBackupStatus] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
-  // Load sessions on mount
+  const loadBackups = useCallback(async () => {
+    if (!window.electronAPI?.sessionListBackups) return
+    try {
+      const res = await window.electronAPI.sessionListBackups()
+      if (res.success) setSessionBackups(res.backups)
+    } catch {}
+  }, [setSessionBackups])
+
+  // Load sessions + backups on mount
   useEffect(() => {
     if (isOpen && window.electronAPI?.sessionList) {
       window.electronAPI.sessionList().then((result) => {
@@ -91,8 +115,16 @@ export default function SessionSetup({
           setPlatformSessions(result.sessions)
         }
       })
+      loadBackups()
     }
-  }, [isOpen, setPlatformSessions])
+  }, [isOpen, setPlatformSessions, loadBackups])
+
+  // Clear status message after 3 seconds
+  useEffect(() => {
+    if (!backupStatus) return
+    const t = setTimeout(() => setBackupStatus(null), 3000)
+    return () => clearTimeout(t)
+  }, [backupStatus])
 
   // Verify a platform's auth status (re-checks cookies)
   const verifyPlatform = async (platform: Platform) => {
@@ -101,7 +133,6 @@ export default function SessionSetup({
     setVerifyingPlatform(platform)
     try {
       const result = await window.electronAPI.sessionVerify(platform)
-      // Show verification result feedback
       const status = result.isAuthenticated ? 'verified' : 'expired'
       setVerifyResult(prev => ({ ...prev, [platform]: status }))
       setTimeout(() => setVerifyResult(prev => {
@@ -109,7 +140,6 @@ export default function SessionSetup({
         delete next[platform]
         return next
       }), 3000)
-      // Refresh the full session list with verified data
       if (result.success) {
         const res = await window.electronAPI.sessionList()
         if (res.success && res.sessions) {
@@ -135,7 +165,6 @@ export default function SessionSetup({
     setVerifyingPlatform(platform)
     try {
       await window.electronAPI.sessionClear(platform)
-      // Refresh the full session list
       const res = await window.electronAPI.sessionList()
       if (res.success && res.sessions) {
         setPlatformSessions(res.sessions)
@@ -153,10 +182,7 @@ export default function SessionSetup({
       return
     }
 
-    // YouTube shares Google's session - if Google is signed in, YouTube is too
     if (platform === 'youtube' && platformSessions['google']?.isAuthenticated) {
-      console.log('[SessionSetup] Google is signed in, auto-marking YouTube as authenticated')
-      // Tell backend to mark YouTube as authenticated
       if (window.electronAPI?.sessionUpdate) {
         await window.electronAPI.sessionUpdate('youtube', { isAuthenticated: true })
       }
@@ -167,23 +193,16 @@ export default function SessionSetup({
       return
     }
 
-    // If YouTube is clicked but Google is NOT signed in, sign into Google instead
     const effectivePlatform = platform === 'youtube' ? 'google' : platform
 
     setVerifyingPlatform(platform)
     try {
-      console.log(`[SessionSetup] Opening OAuth popup for ${effectivePlatform} (requested: ${platform})`)
       const result = await window.electronAPI.oauthSignIn(effectivePlatform)
-
       if (result.success) {
-        console.log(`[SessionSetup] OAuth success for ${effectivePlatform}`)
-        // Refresh session list to show authenticated status
         const sessions = await window.electronAPI.sessionList()
         if (sessions.success && sessions.sessions) {
           setPlatformSessions(sessions.sessions)
         }
-      } else if (result.userClosed) {
-        console.log(`[SessionSetup] User closed OAuth popup for ${effectivePlatform}`)
       }
     } catch (err) {
       console.error('Failed to open OAuth popup:', err)
@@ -191,8 +210,43 @@ export default function SessionSetup({
     setVerifyingPlatform(null)
   }
 
-  // Get session status for platform
-  // YouTube inherits Google's auth (shared partition)
+  // Execute backup/restore action
+  const executeBackupAction = async () => {
+    if (!backupPrompt || !backupPassword.trim()) return
+    setBackupLoading(true)
+
+    try {
+      if (backupPrompt.action === 'export' && backupPrompt.platform) {
+        const res = await window.electronAPI.sessionExport(backupPrompt.platform, backupPassword)
+        if (res.success) {
+          setBackupStatus({ message: `Backed up ${res.cookieCount} cookies for ${backupPrompt.platform}`, type: 'success' })
+        }
+      } else if (backupPrompt.action === 'import' && backupPrompt.platform) {
+        const res = await window.electronAPI.sessionImport(backupPrompt.platform, backupPassword)
+        if (res.success) {
+          setBackupStatus({ message: `Restored ${res.imported} cookies for ${backupPrompt.platform}`, type: 'success' })
+          // Refresh sessions
+          const sessions = await window.electronAPI.sessionList()
+          if (sessions.success && sessions.sessions) setPlatformSessions(sessions.sessions)
+        }
+      } else if (backupPrompt.action === 'exportAll') {
+        const res = await window.electronAPI.sessionExportAll(backupPassword)
+        if (res.success) {
+          const total = res.results.reduce((sum: number, r: { cookies: number }) => sum + r.cookies, 0)
+          setBackupStatus({ message: `Backed up ${total} cookies across ${res.results.length} platforms`, type: 'success' })
+        }
+      }
+      await loadBackups()
+    } catch (err: any) {
+      setBackupStatus({ message: err.message || 'Backup operation failed', type: 'error' })
+    }
+
+    setBackupLoading(false)
+    setBackupPrompt(null)
+    setBackupPassword('')
+  }
+
+  // Get session status for platform (YouTube inherits Google)
   const getSessionStatus = (platform: Platform): PlatformSession | null => {
     if (platform === 'youtube') {
       const ytSession = platformSessions['youtube']
@@ -205,7 +259,13 @@ export default function SessionSetup({
     return platformSessions[platform] || null
   }
 
-  // Count authenticated platforms
+  // Get last backup time for a platform
+  const getBackupInfo = (platform: Platform): { exportedAt: number; cookieCount: number } | null => {
+    if (!sessionBackups?.backups) return null
+    const entry = sessionBackups.backups.find(b => b.platform === platform)
+    return entry ? { exportedAt: entry.exportedAt, cookieCount: entry.cookieCount } : null
+  }
+
   const authenticatedCount = PLATFORMS.filter(
     (p) => getSessionStatus(p.id)?.isAuthenticated
   ).length
@@ -281,6 +341,24 @@ export default function SessionSetup({
                   </p>
                 </div>
 
+                {/* Status message */}
+                <AnimatePresence>
+                  {backupStatus && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className={`mb-4 p-3 rounded-lg text-xs font-mono text-center ${
+                        backupStatus.type === 'success'
+                          ? 'bg-chroma-teal/10 text-chroma-teal border border-chroma-teal/30'
+                          : 'bg-red-500/10 text-red-400 border border-red-500/30'
+                      }`}
+                    >
+                      {backupStatus.message}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Progress Bar */}
                 <div className="mb-6">
                   <div className="flex justify-between text-xs font-mono text-chroma-muted mb-2">
@@ -307,6 +385,9 @@ export default function SessionSetup({
                     const isAuthenticated = session?.isAuthenticated ?? false
                     const isVerifying = verifyingPlatform === platform.id
                     const vResult = verifyResult[platform.id]
+                    const backup = getBackupInfo(platform.id)
+                    // YouTube shares Google backup
+                    const effectiveBackup = platform.id === 'youtube' ? getBackupInfo('google') : backup
 
                     return (
                       <motion.div
@@ -353,16 +434,15 @@ export default function SessionSetup({
                         {/* Status / Account Info */}
                         <div className="mt-3 pt-3 border-t border-white/5">
                           {isAuthenticated ? (
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-chroma-teal font-mono">
-                                {session?.accountEmail || session?.accountName || 'Signed In'}
-                              </span>
-                              <div className="flex items-center gap-2">
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs text-chroma-teal font-mono">
+                                  {session?.accountEmail || session?.accountName || 'Signed In'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    verifyPlatform(platform.id)
-                                  }}
+                                  onClick={(e) => { e.stopPropagation(); verifyPlatform(platform.id) }}
                                   className={`text-xs transition-colors ${
                                     vResult === 'verified' ? 'text-chroma-teal font-semibold' :
                                     vResult === 'expired' ? 'text-red-400 font-semibold' :
@@ -370,26 +450,69 @@ export default function SessionSetup({
                                   }`}
                                   disabled={isVerifying || !!vResult}
                                 >
-                                  {isVerifying ? 'Checking...' : vResult === 'verified' ? 'Verified ✓' : vResult === 'expired' ? 'Expired!' : 'Verify'}
+                                  {isVerifying ? '...' : vResult === 'verified' ? 'OK' : vResult === 'expired' ? 'Expired!' : 'Verify'}
                                 </button>
+                                {platform.id !== 'youtube' && (
+                                  <>
+                                    <span className="text-white/10">|</span>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setBackupPrompt({ action: 'export', platform: platform.id }) }}
+                                      className="text-xs text-chroma-muted hover:text-chroma-gold transition-colors"
+                                    >
+                                      Backup
+                                    </button>
+                                  </>
+                                )}
+                                {effectiveBackup && platform.id !== 'youtube' && (
+                                  <>
+                                    <span className="text-white/10">|</span>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setBackupPrompt({ action: 'import', platform: platform.id }) }}
+                                      className="text-xs text-chroma-muted hover:text-chroma-teal transition-colors"
+                                    >
+                                      Restore
+                                    </button>
+                                  </>
+                                )}
+                                <span className="text-white/10">|</span>
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    disconnectPlatform(platform.id)
-                                  }}
+                                  onClick={(e) => { e.stopPropagation(); disconnectPlatform(platform.id) }}
                                   className="text-xs text-chroma-muted hover:text-chroma-error transition-colors"
                                   disabled={isVerifying}
                                 >
                                   Disconnect
                                 </button>
                               </div>
+                              {/* Backup indicator */}
+                              {effectiveBackup && (
+                                <div className="mt-2 text-[10px] text-chroma-muted/60 font-mono">
+                                  Backup: {timeAgo(effectiveBackup.exportedAt)} ({effectiveBackup.cookieCount} cookies)
+                                </div>
+                              )}
                             </div>
                           ) : (
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs text-chroma-muted font-mono">Not signed in</span>
-                              <span className="text-xs text-chroma-teal group-hover:text-white transition-colors">
-                                Click to sign in →
-                              </span>
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-chroma-muted font-mono">Not signed in</span>
+                                <div className="flex items-center gap-2">
+                                  {effectiveBackup && platform.id !== 'youtube' && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setBackupPrompt({ action: 'import', platform: platform.id }) }}
+                                      className="text-xs text-chroma-gold hover:text-chroma-gold/80 transition-colors"
+                                    >
+                                      Restore
+                                    </button>
+                                  )}
+                                  <span className="text-xs text-chroma-teal group-hover:text-white transition-colors">
+                                    Click to sign in
+                                  </span>
+                                </div>
+                              </div>
+                              {effectiveBackup && (
+                                <div className="mt-1 text-[10px] text-chroma-muted/60 font-mono">
+                                  Backup available: {timeAgo(effectiveBackup.exportedAt)}
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -416,6 +539,16 @@ export default function SessionSetup({
                   >
                     Skip for now
                   </button>
+                  {authenticatedCount > 0 && (
+                    <motion.button
+                      onClick={() => setBackupPrompt({ action: 'exportAll' })}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex-1 py-3 rounded-xl border border-chroma-gold/30 text-chroma-gold hover:bg-chroma-gold/10 transition-colors font-display uppercase tracking-wider text-sm"
+                    >
+                      Backup All
+                    </motion.button>
+                  )}
                   <motion.button
                     onClick={onClose}
                     whileHover={{ scale: 1.02 }}
@@ -428,7 +561,7 @@ export default function SessionSetup({
                       color: authenticatedCount > 0 ? '#0A0A0F' : '#888',
                     }}
                   >
-                    Continue →
+                    Continue
                   </motion.button>
                 </div>
 
@@ -439,12 +572,74 @@ export default function SessionSetup({
                     <p>
                       Sign in manually to bypass bot detection. Once authenticated,
                       CHROMADON agents can work within your authenticated sessions.
+                      Use <span className="text-chroma-gold">Backup</span> to save sessions for recovery.
                     </p>
                   </div>
                 </div>
               </div>
             </div>
           </motion.div>
+
+          {/* Password Prompt Modal */}
+          <AnimatePresence>
+            {backupPrompt && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[60] flex items-center justify-center"
+              >
+                <div className="absolute inset-0 bg-black/60" onClick={() => { setBackupPrompt(null); setBackupPassword('') }} />
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="relative z-10 w-full max-w-sm mx-4 cyber-panel rounded-xl p-6 border border-chroma-teal/30"
+                >
+                  <h3 className="text-sm font-display text-white uppercase tracking-wider mb-1">
+                    {backupPrompt.action === 'export' ? 'Backup Session' :
+                     backupPrompt.action === 'import' ? 'Restore Session' :
+                     'Backup All Sessions'}
+                  </h3>
+                  <p className="text-xs text-chroma-muted mb-4 font-mono">
+                    {backupPrompt.action === 'import'
+                      ? 'This will replace current cookies. Enter your backup password.'
+                      : 'Enter a password to encrypt the backup.'}
+                  </p>
+                  <input
+                    type="password"
+                    value={backupPassword}
+                    onChange={(e) => setBackupPassword(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') executeBackupAction() }}
+                    placeholder="Backup password"
+                    autoFocus
+                    className="w-full px-3 py-2 rounded-lg bg-chroma-black/60 border border-chroma-teal/20 text-white text-sm font-mono focus:border-chroma-teal/60 focus:outline-none mb-4"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => { setBackupPrompt(null); setBackupPassword('') }}
+                      className="flex-1 py-2 rounded-lg border border-chroma-teal/20 text-chroma-muted text-xs hover:text-white transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={executeBackupAction}
+                      disabled={backupLoading || !backupPassword.trim()}
+                      className="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors disabled:opacity-40"
+                      style={{
+                        background: backupPrompt.action === 'import'
+                          ? 'linear-gradient(135deg, #D4AF37, #FFD700)'
+                          : 'linear-gradient(135deg, #00CED1, #00FFFF)',
+                        color: '#0A0A0F',
+                      }}
+                    >
+                      {backupLoading ? 'Working...' : backupPrompt.action === 'import' ? 'Restore' : 'Backup'}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
