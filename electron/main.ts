@@ -346,17 +346,56 @@ export interface MarketingTask {
   content?: string
   targetUrl?: string
   priority: number
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'scheduled'
   result?: any
   error?: string
   createdAt: number
   startedAt?: number
   completedAt?: number
   tabId?: number
+  // Scheduling
+  scheduledTime?: string
+  recurrence?: { type: 'none' | 'daily' | 'weekly' | 'custom'; intervalMs?: number; endAfter?: number; occurrenceCount?: number }
+  // Cross-posting
+  batchId?: string
+  hashtags?: string[]
+  // Analytics linkage
+  analyticsPostId?: number
+}
+
+// Queue persistence
+const QUEUE_FILE = 'marketing-queue.json'
+
+function getQueuePath(): string {
+  return path.join(app.getPath('userData'), QUEUE_FILE)
+}
+
+function saveQueue(): void {
+  try {
+    fs.writeFileSync(getQueuePath(), JSON.stringify(marketingQueue, null, 2), 'utf8')
+  } catch (err) {
+    console.error('[Queue] Save failed:', err)
+  }
+}
+
+function loadQueue(): MarketingTask[] {
+  try {
+    const queuePath = getQueuePath()
+    if (!fs.existsSync(queuePath)) return []
+    const raw = fs.readFileSync(queuePath, 'utf8')
+    const tasks = JSON.parse(raw) as MarketingTask[]
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000
+    return tasks
+      .filter(t => !((t.status === 'completed' || t.status === 'failed') && t.completedAt && t.completedAt < sevenDaysAgo))
+      .map(t => t.status === 'running' ? { ...t, status: 'queued' as const } : t)
+  } catch (err) {
+    console.error('[Queue] Load failed:', err)
+    return []
+  }
 }
 
 // Marketing queue state
-let marketingQueue: MarketingTask[] = []
+let marketingQueue: MarketingTask[] = loadQueue()
 let activeTasksByPlatform: Map<Platform, MarketingTask> = new Map()
 
 let mainWindow: BrowserWindow | null = null
@@ -2716,6 +2755,7 @@ function startControlServer() {
       stats: {
         total: marketingQueue.length,
         queued: marketingQueue.filter(t => t.status === 'queued').length,
+        scheduled: marketingQueue.filter(t => t.status === 'scheduled').length,
         running: marketingQueue.filter(t => t.status === 'running').length,
         completed: marketingQueue.filter(t => t.status === 'completed').length,
         failed: marketingQueue.filter(t => t.status === 'failed').length,
@@ -2726,7 +2766,7 @@ function startControlServer() {
   // Add task to queue
   server.post('/queue/add', (req: Request, res: Response) => {
     try {
-      const { platform, action, content, targetUrl, priority = 0 } = req.body
+      const { platform, action, content, targetUrl, priority = 0, scheduledTime, recurrence, batchId, hashtags } = req.body
       if (!platform || !action) {
         res.status(400).json({ success: false, error: 'Platform and action are required' })
         return
@@ -2739,8 +2779,12 @@ function startControlServer() {
         content,
         targetUrl,
         priority,
-        status: 'queued',
+        status: scheduledTime ? 'scheduled' : 'queued',
         createdAt: Date.now(),
+        scheduledTime,
+        recurrence,
+        batchId,
+        hashtags,
       }
 
       marketingQueue.push(task)
@@ -2752,6 +2796,7 @@ function startControlServer() {
         mainWindow.webContents.send('queue:updated', marketingQueue)
       }
 
+      saveQueue()
       res.json({ success: true, task })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
@@ -2798,6 +2843,7 @@ function startControlServer() {
         mainWindow.webContents.send('queue:taskStarted', task)
       }
 
+      saveQueue()
       res.json({ success: true, task })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
@@ -2830,6 +2876,7 @@ function startControlServer() {
         mainWindow.webContents.send('queue:taskCompleted', task)
       }
 
+      saveQueue()
       res.json({ success: true, task })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
@@ -2858,6 +2905,7 @@ function startControlServer() {
         mainWindow.webContents.send('queue:updated', marketingQueue)
       }
 
+      saveQueue()
       res.json({ success: true })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
@@ -2881,6 +2929,7 @@ function startControlServer() {
         mainWindow.webContents.send('queue:updated', marketingQueue)
       }
 
+      saveQueue()
       res.json({ success: true, remaining: marketingQueue.length })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
@@ -3510,7 +3559,7 @@ ipcMain.handle('queue:add', (_event, task: Omit<MarketingTask, 'id' | 'status' |
   const newTask: MarketingTask = {
     ...task,
     id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    status: 'queued',
+    status: task.scheduledTime ? 'scheduled' : 'queued',
     createdAt: Date.now(),
     priority: task.priority ?? 0,
   }
@@ -3522,6 +3571,7 @@ ipcMain.handle('queue:add', (_event, task: Omit<MarketingTask, 'id' | 'status' |
     mainWindow.webContents.send('queue:updated', marketingQueue)
   }
 
+  saveQueue()
   return { success: true, task: newTask }
 })
 
@@ -3556,6 +3606,7 @@ ipcMain.handle('queue:process', async (_event, platform: Platform) => {
     mainWindow.webContents.send('queue:taskStarted', task)
   }
 
+  saveQueue()
   return { success: true, task }
 })
 
@@ -3578,6 +3629,7 @@ ipcMain.handle('queue:complete', (_event, { taskId, result, error }: { taskId: s
     mainWindow.webContents.send('queue:taskCompleted', task)
   }
 
+  saveQueue()
   return { success: true, task }
 })
 
@@ -3599,6 +3651,7 @@ ipcMain.handle('queue:remove', (_event, taskId: string) => {
     mainWindow.webContents.send('queue:updated', marketingQueue)
   }
 
+  saveQueue()
   return { success: true }
 })
 
@@ -3616,6 +3669,7 @@ ipcMain.handle('queue:clear', (_event, status?: 'completed' | 'failed' | 'all') 
     mainWindow.webContents.send('queue:updated', marketingQueue)
   }
 
+  saveQueue()
   return { success: true, remaining: marketingQueue.length }
 })
 
@@ -4025,6 +4079,128 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
 })
 
 // App lifecycle
+// ==================== MARKETING QUEUE SCHEDULER ====================
+let schedulerInterval: ReturnType<typeof setInterval> | null = null
+
+function calculateNextScheduleTime(task: MarketingTask): string | null {
+  if (!task.recurrence || task.recurrence.type === 'none') return null
+  if (!task.scheduledTime) return null
+
+  // Check endAfter limit
+  if (task.recurrence.endAfter && task.recurrence.occurrenceCount && task.recurrence.occurrenceCount >= task.recurrence.endAfter) {
+    return null
+  }
+
+  const current = new Date(task.scheduledTime)
+  let next: Date
+
+  switch (task.recurrence.type) {
+    case 'daily':
+      next = new Date(current.getTime() + 24 * 60 * 60 * 1000)
+      break
+    case 'weekly':
+      next = new Date(current.getTime() + 7 * 24 * 60 * 60 * 1000)
+      break
+    case 'custom':
+      if (!task.recurrence.intervalMs) return null
+      next = new Date(current.getTime() + task.recurrence.intervalMs)
+      break
+    default:
+      return null
+  }
+
+  return next.toISOString()
+}
+
+async function checkScheduledTasks(): Promise<void> {
+  const now = Date.now()
+  const dueTasks = marketingQueue.filter(
+    t => t.status === 'scheduled' && t.scheduledTime && new Date(t.scheduledTime).getTime() <= now
+  )
+
+  if (dueTasks.length === 0) return
+
+  console.log(`[Scheduler] Found ${dueTasks.length} due task(s)`)
+
+  for (const task of dueTasks) {
+    // Handle recurrence — clone task for next occurrence before we transition this one
+    const nextTime = calculateNextScheduleTime(task)
+    if (nextTime) {
+      const recurringTask: MarketingTask = {
+        ...task,
+        id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        status: 'scheduled',
+        scheduledTime: nextTime,
+        recurrence: {
+          ...task.recurrence!,
+          occurrenceCount: (task.recurrence!.occurrenceCount || 1) + 1,
+        },
+        createdAt: Date.now(),
+        startedAt: undefined,
+        completedAt: undefined,
+        result: undefined,
+        error: undefined,
+      }
+      marketingQueue.push(recurringTask)
+      console.log(`[Scheduler] Created recurring task ${recurringTask.id} for ${nextTime}`)
+    }
+
+    // Transition to queued
+    task.status = 'queued'
+
+    // Auto-execute via Brain API
+    try {
+      const resp = await fetch('http://127.0.0.1:3001/api/social/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: task.id,
+          platform: task.platform,
+          action: task.action,
+          content: task.content,
+          targetUrl: task.targetUrl,
+          priority: task.priority,
+          status: task.status,
+          hashtags: task.hashtags,
+          batchId: task.batchId,
+        }),
+      })
+
+      const result = await resp.json()
+      task.status = result.success ? 'completed' : 'failed'
+      task.completedAt = Date.now()
+      task.result = result.summary
+      task.error = result.error
+      console.log(`[Scheduler] Task ${task.id} ${task.status}: ${result.summary?.slice(0, 100) || ''}`)
+    } catch (err) {
+      task.status = 'failed'
+      task.completedAt = Date.now()
+      task.error = `Scheduler execution failed: ${(err as Error).message}`
+      console.error(`[Scheduler] Task ${task.id} failed:`, err)
+    }
+  }
+
+  // Persist and notify
+  saveQueue()
+  if (mainWindow) {
+    mainWindow.webContents.send('queue:updated', marketingQueue)
+  }
+}
+
+function startScheduler(): void {
+  if (schedulerInterval) return
+  schedulerInterval = setInterval(checkScheduledTasks, 30_000)
+  console.log('[Scheduler] Started (30s interval)')
+}
+
+function stopScheduler(): void {
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval)
+    schedulerInterval = null
+    console.log('[Scheduler] Stopped')
+  }
+}
+
 app.whenReady().then(() => {
   // Spoof User-Agent AND Sec-CH-UA Client Hints headers on ALL platform
   // session partitions. Sec-CH-UA is the #1 detection vector — Chromium
@@ -4084,9 +4260,11 @@ app.whenReady().then(() => {
   console.log(`[CHROMADON] Startup: API key ${storedKey ? 'found' : 'NOT found'}, userData=${app.getPath('userData')}`)
   startBrainServer(storedKey || undefined)
   startBrainHealthCheck()
+  startScheduler()
 })
 
 app.on('before-quit', () => {
+  stopScheduler()
   sessionBackupManager.clearAutoBackupKey()
   if (brainHealthInterval) clearInterval(brainHealthInterval)
   if (brainProcess) {

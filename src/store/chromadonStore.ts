@@ -66,19 +66,28 @@ export interface MarketingTask {
   content?: string
   targetUrl?: string
   priority: number
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'scheduled'
   result?: any
   error?: string
   createdAt: number
   startedAt?: number
   completedAt?: number
   tabId?: number
+  // Scheduling
+  scheduledTime?: string
+  recurrence?: { type: 'none' | 'daily' | 'weekly' | 'custom'; intervalMs?: number; endAfter?: number; occurrenceCount?: number }
+  // Cross-posting
+  batchId?: string
+  hashtags?: string[]
+  // Analytics linkage
+  analyticsPostId?: number
 }
 
 // Queue stats
 export interface QueueStats {
   total: number
   queued: number
+  scheduled: number
   running: number
   completed: number
   failed: number
@@ -404,6 +413,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
     const stats: QueueStats = {
       total: queue.length,
       queued: queue.filter((t) => t.status === 'queued').length,
+      scheduled: queue.filter((t) => t.status === 'scheduled').length,
       running: queue.filter((t) => t.status === 'running').length,
       completed: queue.filter((t) => t.status === 'completed').length,
       failed: queue.filter((t) => t.status === 'failed').length,
@@ -415,6 +425,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
     const stats: QueueStats = {
       total: newQueue.length,
       queued: newQueue.filter((t) => t.status === 'queued').length,
+      scheduled: newQueue.filter((t) => t.status === 'scheduled').length,
       running: newQueue.filter((t) => t.status === 'running').length,
       completed: newQueue.filter((t) => t.status === 'completed').length,
       failed: newQueue.filter((t) => t.status === 'failed').length,
@@ -428,6 +439,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
     const stats: QueueStats = {
       total: newQueue.length,
       queued: newQueue.filter((t) => t.status === 'queued').length,
+      scheduled: newQueue.filter((t) => t.status === 'scheduled').length,
       running: newQueue.filter((t) => t.status === 'running').length,
       completed: newQueue.filter((t) => t.status === 'completed').length,
       failed: newQueue.filter((t) => t.status === 'failed').length,
@@ -439,6 +451,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
     const stats: QueueStats = {
       total: newQueue.length,
       queued: newQueue.filter((t) => t.status === 'queued').length,
+      scheduled: newQueue.filter((t) => t.status === 'scheduled').length,
       running: newQueue.filter((t) => t.status === 'running').length,
       completed: newQueue.filter((t) => t.status === 'completed').length,
       failed: newQueue.filter((t) => t.status === 'failed').length,

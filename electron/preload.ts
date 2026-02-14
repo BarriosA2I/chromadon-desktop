@@ -86,13 +86,18 @@ interface MarketingTask {
   content?: string
   targetUrl?: string
   priority: number
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'scheduled'
   result?: any
   error?: string
   createdAt: number
   startedAt?: number
   completedAt?: number
   tabId?: number
+  scheduledTime?: string
+  recurrence?: { type: 'none' | 'daily' | 'weekly' | 'custom'; intervalMs?: number; endAfter?: number; occurrenceCount?: number }
+  batchId?: string
+  hashtags?: string[]
+  analyticsPostId?: number
 }
 
 // Queue stats type
@@ -102,6 +107,7 @@ interface QueueStats {
   running: number
   completed: number
   failed: number
+  scheduled: number
 }
 
 // Expose protected methods for window controls
@@ -269,6 +275,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     content?: string
     targetUrl?: string
     priority?: number
+    scheduledTime?: string
+    recurrence?: { type: 'none' | 'daily' | 'weekly' | 'custom'; intervalMs?: number; endAfter?: number; occurrenceCount?: number }
+    batchId?: string
+    hashtags?: string[]
   }) => ipcRenderer.invoke('queue:add', task),
   queueProcess: (platform: Platform) => ipcRenderer.invoke('queue:process', platform),
   queueComplete: (taskId: string, result?: any, error?: string) =>

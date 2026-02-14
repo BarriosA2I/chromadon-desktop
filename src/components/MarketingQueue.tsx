@@ -55,7 +55,7 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
   } = useChromadonStore()
 
   const [showAddModal, setShowAddModal] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'queued' | 'running' | 'completed' | 'failed'>('all')
+  const [filter, setFilter] = useState<'all' | 'scheduled' | 'queued' | 'running' | 'completed' | 'failed'>('all')
   const [processingAll, setProcessingAll] = useState(false)
 
   // Load queue on mount
@@ -289,6 +289,7 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
                 <div className="flex gap-4 mt-4">
                   {[
                     { label: 'Total', value: queueStats.total, color: '#00CED1' },
+                    { label: 'Scheduled', value: queueStats.scheduled, color: '#6366F1' },
                     { label: 'Queued', value: queueStats.queued, color: '#8B5CF6' },
                     { label: 'Running', value: queueStats.running, color: '#FBBF24' },
                     { label: 'Completed', value: queueStats.completed, color: '#10B981' },
@@ -339,7 +340,7 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
               <div className="relative px-6 py-3 border-b border-chroma-teal/10 flex items-center justify-between">
                 {/* Filters */}
                 <div className="flex gap-2">
-                  {(['all', 'queued', 'running', 'completed', 'failed'] as const).map((f) => (
+                  {(['all', 'scheduled', 'queued', 'running', 'completed', 'failed'] as const).map((f) => (
                     <button
                       key={f}
                       onClick={() => setFilter(f)}
@@ -422,6 +423,8 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
                           ? 'border-green-500/30 bg-green-500/5'
                           : task.status === 'failed'
                           ? 'border-red-500/30 bg-red-500/5'
+                          : task.status === 'scheduled'
+                          ? 'border-indigo-500/40 bg-indigo-500/5'
                           : 'border-chroma-teal/20 bg-chroma-black/40'
                       }`}
                     >
@@ -458,6 +461,43 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
                             </p>
                           )}
 
+                          {/* Scheduled time */}
+                          {task.scheduledTime && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-indigo-400 font-mono">
+                                Scheduled: {new Date(task.scheduledTime).toLocaleString()}
+                              </span>
+                              {task.status === 'scheduled' && (
+                                <ScheduleCountdown scheduledTime={task.scheduledTime} />
+                              )}
+                              {task.recurrence && task.recurrence.type !== 'none' && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 uppercase">
+                                  {task.recurrence.type}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Batch / cross-post indicator */}
+                          {task.batchId && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-[10px] text-chroma-teal/60 font-mono">
+                                Cross-post: {task.batchId}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Hashtags */}
+                          {task.hashtags && task.hashtags.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {task.hashtags.map((tag) => (
+                                <span key={tag} className="text-[10px] text-chroma-teal/70 font-mono">
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
                           {/* Timestamps */}
                           <div className="flex gap-4 mt-2 text-xs text-chroma-muted">
                             <span>Created: {new Date(task.createdAt).toLocaleTimeString()}</span>
@@ -487,20 +527,22 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
 
                         {/* Actions */}
                         <div className="flex gap-2">
-                          {task.status === 'queued' && (
+                          {(task.status === 'queued' || task.status === 'scheduled') && (
                             <>
-                              <motion.button
-                                onClick={() => handleProcessTask(task)}
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider"
-                                style={{
-                                  background: 'linear-gradient(135deg, #D4AF37, #FFD700)',
-                                  color: '#0A0A0F',
-                                }}
-                              >
-                                Process
-                              </motion.button>
+                              {task.status === 'queued' && (
+                                <motion.button
+                                  onClick={() => handleProcessTask(task)}
+                                  whileHover={{ scale: 1.05 }}
+                                  whileTap={{ scale: 0.95 }}
+                                  className="px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider"
+                                  style={{
+                                    background: 'linear-gradient(135deg, #D4AF37, #FFD700)',
+                                    color: '#0A0A0F',
+                                  }}
+                                >
+                                  Process
+                                </motion.button>
+                              )}
                               <button
                                 onClick={() => handleDeleteTask(task.id)}
                                 className="p-2 rounded-lg text-chroma-muted hover:text-red-400 hover:bg-red-400/10 transition-colors"
@@ -527,15 +569,13 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
           <AddTaskModal
             isOpen={showAddModal}
             onClose={() => setShowAddModal(false)}
-            onAdd={(task) => {
+            onAdd={async (task) => {
               if (window.electronAPI?.queueAdd) {
-                window.electronAPI.queueAdd(task).then((result) => {
-                  if (result.success && result.task) {
-                    addMarketingTask(result.task)
-                  }
-                })
+                const result = await window.electronAPI.queueAdd(task)
+                if (result.success && result.task) {
+                  addMarketingTask(result.task)
+                }
               }
-              setShowAddModal(false)
             }}
           />
         </motion.div>
@@ -544,7 +584,7 @@ export default function MarketingQueue({ isOpen, onClose }: MarketingQueueProps)
   )
 }
 
-// Add Task Modal
+// Add Task Modal — supports multi-platform select + scheduling
 function AddTaskModal({
   isOpen,
   onClose,
@@ -558,30 +598,70 @@ function AddTaskModal({
     content?: string
     targetUrl?: string
     priority?: number
+    scheduledTime?: string
+    recurrence?: { type: 'none' | 'daily' | 'weekly' | 'custom' }
+    batchId?: string
+    hashtags?: string[]
   }) => void
 }) {
-  const [platform, setPlatform] = useState<Platform>('twitter')
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Platform[]>(['twitter'])
   const [action, setAction] = useState<MarketingTask['action']>('post')
   const [content, setContent] = useState('')
   const [targetUrl, setTargetUrl] = useState('')
-  const [priority, setPriority] = useState(0)
+  const [priority, setPriority] = useState(5)
+  const [scheduleEnabled, setScheduleEnabled] = useState(false)
+  const [scheduledTime, setScheduledTime] = useState('')
+  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekly'>('none')
+  const [hashtagInput, setHashtagInput] = useState('')
+
+  const togglePlatform = (p: Platform) => {
+    setSelectedPlatforms((prev) =>
+      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+    )
+  }
+
+  const parsedHashtags = hashtagInput
+    .split(/[,\s]+/)
+    .map((h) => h.replace(/^#/, '').trim())
+    .filter(Boolean)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onAdd({
-      platform,
-      action,
-      content: content || undefined,
-      targetUrl: targetUrl || undefined,
-      priority,
-    })
+    if (selectedPlatforms.length === 0) return
+
+    const batchId =
+      selectedPlatforms.length > 1
+        ? `batch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+        : undefined
+
+    for (const platform of selectedPlatforms) {
+      onAdd({
+        platform,
+        action,
+        content: content || undefined,
+        targetUrl: targetUrl || undefined,
+        priority,
+        scheduledTime: scheduleEnabled && scheduledTime ? new Date(scheduledTime).toISOString() : undefined,
+        recurrence: scheduleEnabled && recurrence !== 'none' ? { type: recurrence } : undefined,
+        batchId,
+        hashtags: parsedHashtags.length > 0 ? parsedHashtags : undefined,
+      })
+    }
+
     // Reset form
     setContent('')
     setTargetUrl('')
-    setPriority(0)
+    setPriority(5)
+    setScheduleEnabled(false)
+    setScheduledTime('')
+    setRecurrence('none')
+    setHashtagInput('')
+    onClose()
   }
 
   if (!isOpen) return null
+
+  const ALL_PLATFORMS: Platform[] = ['twitter', 'linkedin', 'facebook', 'instagram', 'youtube', 'tiktok']
 
   return (
     <motion.div
@@ -594,29 +674,38 @@ function AddTaskModal({
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative bg-chroma-dark rounded-xl border border-chroma-teal/30 p-6 w-full max-w-md"
+        className="relative bg-chroma-dark rounded-xl border border-chroma-teal/30 p-6 w-full max-w-md max-h-[80vh] overflow-y-auto"
       >
         <h3 className="text-lg font-display text-white mb-4">Add Marketing Task</h3>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Platform Select */}
+          {/* Platform Multi-Select Grid */}
           <div>
             <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
-              Platform
+              Platforms {selectedPlatforms.length > 1 && `(${selectedPlatforms.length} selected - cross-post)`}
             </label>
-            <select
-              value={platform}
-              onChange={(e) => setPlatform(e.target.value as Platform)}
-              className="w-full px-4 py-2 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-white focus:outline-none focus:border-chroma-teal/50"
-            >
-              {(['google', 'twitter', 'linkedin', 'facebook', 'instagram', 'youtube', 'tiktok'] as Platform[]).map(
-                (p) => (
-                  <option key={p} value={p}>
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </option>
+            <div className="flex flex-wrap gap-2">
+              {ALL_PLATFORMS.map((p) => {
+                const selected = selectedPlatforms.includes(p)
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => togglePlatform(p)}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
+                      selected ? 'text-white shadow-lg' : 'text-white/40 border border-white/10 hover:border-white/30'
+                    }`}
+                    style={
+                      selected
+                        ? { backgroundColor: PLATFORM_COLORS[p], boxShadow: `0 0 12px ${PLATFORM_COLORS[p]}40` }
+                        : {}
+                    }
+                  >
+                    <span className="mr-1">{PLATFORM_ICONS[p]}</span> {p}
+                  </button>
                 )
-              )}
-            </select>
+              })}
+            </div>
           </div>
 
           {/* Action Select */}
@@ -640,7 +729,7 @@ function AddTaskModal({
           {/* Content */}
           <div>
             <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
-              Content (optional)
+              Content
             </label>
             <textarea
               value={content}
@@ -650,6 +739,83 @@ function AddTaskModal({
               rows={3}
             />
           </div>
+
+          {/* Hashtags */}
+          <div>
+            <label className="block text-xs text-chroma-muted mb-2 uppercase tracking-wider">
+              Hashtags (comma or space separated)
+            </label>
+            <input
+              type="text"
+              value={hashtagInput}
+              onChange={(e) => setHashtagInput(e.target.value)}
+              placeholder="#AI #marketing #automation"
+              className="w-full px-4 py-2 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-white placeholder-chroma-muted/40 focus:outline-none focus:border-chroma-teal/50 font-mono text-sm"
+            />
+            {parsedHashtags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {parsedHashtags.map((h) => (
+                  <span key={h} className="text-[10px] px-1.5 py-0.5 rounded bg-chroma-teal/10 text-chroma-teal">
+                    #{h}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Schedule Toggle */}
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div
+                className={`w-10 h-5 rounded-full relative transition-colors ${
+                  scheduleEnabled ? 'bg-indigo-500' : 'bg-white/10'
+                }`}
+                onClick={() => setScheduleEnabled(!scheduleEnabled)}
+              >
+                <div
+                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                    scheduleEnabled ? 'translate-x-5' : 'translate-x-0.5'
+                  }`}
+                />
+              </div>
+              <span className="text-xs text-chroma-muted uppercase tracking-wider">
+                Schedule for later
+              </span>
+            </label>
+          </div>
+
+          {scheduleEnabled && (
+            <div className="space-y-3 p-3 rounded-lg border border-indigo-500/20 bg-indigo-500/5">
+              <div>
+                <label className="block text-xs text-indigo-300 mb-1">Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={scheduledTime}
+                  onChange={(e) => setScheduledTime(e.target.value)}
+                  className="w-full px-4 py-2 bg-chroma-black/60 border border-indigo-500/30 rounded-lg text-white focus:outline-none focus:border-indigo-500/60"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-indigo-300 mb-1">Recurrence</label>
+                <div className="flex gap-2">
+                  {(['none', 'daily', 'weekly'] as const).map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setRecurrence(r)}
+                      className={`px-3 py-1 rounded-lg text-xs uppercase transition-colors ${
+                        recurrence === r
+                          ? 'bg-indigo-500/30 text-indigo-300 border border-indigo-500/50'
+                          : 'text-chroma-muted border border-white/10 hover:border-white/30'
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Target URL */}
           <div>
@@ -691,13 +857,18 @@ function AddTaskModal({
             </button>
             <button
               type="submit"
-              className="flex-1 py-2 rounded-lg font-bold"
+              disabled={selectedPlatforms.length === 0}
+              className="flex-1 py-2 rounded-lg font-bold disabled:opacity-30"
               style={{
-                background: 'linear-gradient(135deg, #00CED1, #00FFFF)',
+                background: scheduleEnabled
+                  ? 'linear-gradient(135deg, #6366F1, #818CF8)'
+                  : 'linear-gradient(135deg, #00CED1, #00FFFF)',
                 color: '#0A0A0F',
               }}
             >
-              Add Task
+              {scheduleEnabled
+                ? `Schedule${selectedPlatforms.length > 1 ? ` (${selectedPlatforms.length})` : ''}`
+                : `Add Task${selectedPlatforms.length > 1 ? ` (${selectedPlatforms.length})` : ''}`}
             </button>
           </div>
         </form>
@@ -708,22 +879,59 @@ function AddTaskModal({
 
 // Status Badge Component
 function StatusBadge({ status }: { status: MarketingTask['status'] }) {
-  const colors = {
+  const colors: Record<string, { bg: string; text: string }> = {
+    scheduled: { bg: '#6366F120', text: '#6366F1' },
     queued: { bg: '#8B5CF620', text: '#8B5CF6' },
     running: { bg: '#FBBF2420', text: '#FBBF24' },
     completed: { bg: '#10B98120', text: '#10B981' },
     failed: { bg: '#EF444420', text: '#EF4444' },
   }
 
+  const c = colors[status] || colors.queued
+
   return (
     <span
       className="px-2 py-0.5 rounded text-xs font-mono uppercase"
       style={{
-        backgroundColor: colors[status].bg,
-        color: colors[status].text,
+        backgroundColor: c.bg,
+        color: c.text,
       }}
     >
       {status}
+    </span>
+  )
+}
+
+// Schedule Countdown
+function ScheduleCountdown({ scheduledTime }: { scheduledTime: string }) {
+  const [timeLeft, setTimeLeft] = useState('')
+
+  useEffect(() => {
+    const update = () => {
+      const diff = new Date(scheduledTime).getTime() - Date.now()
+      if (diff <= 0) {
+        setTimeLeft('due now')
+        return
+      }
+      const hours = Math.floor(diff / 3600000)
+      const mins = Math.floor((diff % 3600000) / 60000)
+      if (hours > 24) {
+        const days = Math.floor(hours / 24)
+        setTimeLeft(`in ${days}d ${hours % 24}h`)
+      } else if (hours > 0) {
+        setTimeLeft(`in ${hours}h ${mins}m`)
+      } else {
+        setTimeLeft(`in ${mins}m`)
+      }
+    }
+    update()
+    const interval = setInterval(update, 30000)
+    return () => clearInterval(interval)
+  }, [scheduledTime])
+
+  return (
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono">
+      {timeLeft}
     </span>
   )
 }

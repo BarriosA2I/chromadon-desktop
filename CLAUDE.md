@@ -7,7 +7,22 @@
 
 ---
 
-## Recent Changes (v1.15.1 — 2026-02-14)
+## Recent Changes (v1.16.0 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Added: Multi-platform cross-posting — toggle buttons to select multiple platforms per task | `src/components/MarketingQueue.tsx` |
+| Added: Scheduling UI — datetime picker, recurrence selector (none/daily/weekly), schedule toggle | `src/components/MarketingQueue.tsx` |
+| Added: Scheduled task display — indigo status badge, countdown timer, recurrence label | `src/components/MarketingQueue.tsx` |
+| Added: Hashtag input — comma/space separated with live preview badges | `src/components/MarketingQueue.tsx` |
+| Added: Cross-post batch indicator + batch ID display in task cards | `src/components/MarketingQueue.tsx` |
+| Added: Queue persistence — tasks survive app restarts via JSON file (7-day auto-cleanup) | `electron/main.ts` |
+| Added: 30-second scheduler loop — auto-executes due scheduled tasks, handles daily/weekly recurrence | `electron/main.ts` |
+| Added: `scheduledTime`, `recurrence`, `batchId`, `hashtags`, `analyticsPostId` to MarketingTask type | `electron/main.ts`, `electron/preload.ts`, `src/store/chromadonStore.ts` |
+| Added: `'scheduled'` status to MarketingTask + QueueStats | All type files |
+| Added: `saveQueue()` calls to all 10 queue mutation handlers (IPC + HTTP) | `electron/main.ts` |
+
+## Changes (v1.15.1 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -309,5 +324,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.15.1 (Session backup/restore — route fix)
+**Version:** 1.16.0 (Marketing Queue: Scheduling + Multi-Platform + Persistence)
 **Author:** Barrios A2I (Gary Barrios)
