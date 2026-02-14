@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.16.0 — 2026-02-14)
+## Recent Changes (v1.16.1 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: Scheduler auto-execution payload wrapped in `{ task: {...} }` to match Brain's expected format | `electron/main.ts` |
+
+## Changes (v1.16.0 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -324,5 +330,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.16.0 (Marketing Queue: Scheduling + Multi-Platform + Persistence)
+**Version:** 1.16.1 (Bug fix: scheduler auto-execution payload)
 **Author:** Barrios A2I (Gary Barrios)

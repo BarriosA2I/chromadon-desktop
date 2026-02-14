@@ -4154,15 +4154,17 @@ async function checkScheduledTasks(): Promise<void> {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: task.id,
-          platform: task.platform,
-          action: task.action,
-          content: task.content,
-          targetUrl: task.targetUrl,
-          priority: task.priority,
-          status: task.status,
-          hashtags: task.hashtags,
-          batchId: task.batchId,
+          task: {
+            id: task.id,
+            platform: task.platform,
+            action: task.action,
+            content: task.content,
+            targetUrl: task.targetUrl,
+            priority: task.priority,
+            status: task.status,
+            hashtags: task.hashtags,
+            batchId: task.batchId,
+          },
         }),
       })
 
