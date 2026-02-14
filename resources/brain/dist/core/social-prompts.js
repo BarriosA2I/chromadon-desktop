@@ -96,7 +96,7 @@ function generateSocialPrompt(ctx) {
     // Build the base instruction
     let prompt = '';
     // Pre-check instruction
-    prompt += `IMPORTANT: First, use get_page_context to check the current page. If you are not already on ${platformUrl}, navigate there first. If the page shows a login screen or "Sign in" prompt, STOP and report that the user is not authenticated on ${ctx.platform}.\n\n`;
+    prompt += `IMPORTANT: First, use get_page_context to check the current page. If you are not already on ${platformUrl}, navigate there first. If the page shows a login screen or "Sign in" prompt, report "AUTH_WALL:${ctx.platform}" — the system will attempt automatic session restore. If session restore fails and you still see a login page, STOP and report that the user is not authenticated on ${ctx.platform}.\n\n`;
     if (ctx.action === 'custom' && ctx.customInstructions) {
         prompt += `TASK: ${ctx.customInstructions}\n`;
         prompt += `Platform: ${ctx.platform} (${platformUrl})\n`;
@@ -127,6 +127,13 @@ function generateSocialPrompt(ctx) {
     }
     if (ctx.mentions && ctx.mentions.length > 0) {
         prompt += `\nMENTIONS: ${ctx.mentions.map((m) => (m.startsWith('@') ? m : `@${m}`)).join(' ')}\n`;
+    }
+    if (ctx.mediaUrls && ctx.mediaUrls.length > 0) {
+        prompt += `\nMEDIA FILES TO UPLOAD (${ctx.mediaUrls.length}):\n`;
+        ctx.mediaUrls.forEach((url, i) => {
+            prompt += `  ${i + 1}. ${url}\n`;
+        });
+        prompt += `\nIMPORTANT: BEFORE typing any text content, upload each media file first. Click the media/image/photo upload button on the platform, then use the upload_file tool with the file path above. After ALL media is uploaded and visible in the composer, THEN type the text content. Platforms often reset the text composer when media is added, so always upload media FIRST.\n`;
     }
     // Verification instruction — includes anti-double-post guard
     prompt += `\nAfter completing the action, verify it succeeded using take_screenshot or extract_text. Report what happened clearly and concisely.`;

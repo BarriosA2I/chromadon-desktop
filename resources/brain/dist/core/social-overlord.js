@@ -18,9 +18,35 @@ const social_prompts_1 = require("./social-prompts");
 class SocialOverlord {
     orchestrator;
     contextFactory;
-    constructor(orchestrator, contextFactory) {
+    analyticsDb;
+    constructor(orchestrator, contextFactory, analyticsDb) {
         this.orchestrator = orchestrator;
         this.contextFactory = contextFactory;
+        this.analyticsDb = analyticsDb || null;
+    }
+    /**
+     * Record a completed post to the analytics DB.
+     */
+    recordPostToAnalytics(task) {
+        if (!this.analyticsDb || task.action !== 'post')
+            return undefined;
+        try {
+            const postId = this.analyticsDb.insertPost({
+                platform: task.platform,
+                post_type: 'text',
+                content: task.content || '',
+                hashtags: JSON.stringify(task.hashtags || []),
+                media_urls: JSON.stringify(task.mediaUrls || []),
+                published_at: new Date().toISOString(),
+                external_id: task.id,
+                status: 'published',
+            });
+            return postId;
+        }
+        catch (err) {
+            console.error('[SocialOverlord] Failed to record post to analytics:', err);
+            return undefined;
+        }
     }
     /**
      * Process a single queue task (non-streaming, returns result).
@@ -34,6 +60,7 @@ class SocialOverlord {
                 action: task.action,
                 content: task.content,
                 targetUrl: task.targetUrl,
+                mediaUrls: task.mediaUrls,
                 hashtags: task.hashtags,
                 mentions: task.mentions,
                 customInstructions: task.customInstructions,
@@ -48,6 +75,8 @@ class SocialOverlord {
             // Check for errors in the collected events
             const errorEvents = collector.events.filter((e) => e.event === 'error');
             const hasError = errorEvents.length > 0;
+            // Record successful posts to analytics DB
+            const analyticsPostId = !hasError ? this.recordPostToAnalytics(task) : undefined;
             return {
                 taskId: task.id,
                 success: !hasError,
@@ -55,6 +84,7 @@ class SocialOverlord {
                 toolCalls: collector.toolResults.length,
                 durationMs,
                 error: hasError ? errorEvents.map((e) => e.data.message).join('; ') : undefined,
+                analyticsPostId,
             };
         }
         catch (error) {
@@ -85,6 +115,7 @@ class SocialOverlord {
                 action: task.action,
                 content: task.content,
                 targetUrl: task.targetUrl,
+                mediaUrls: task.mediaUrls,
                 hashtags: task.hashtags,
                 mentions: task.mentions,
                 customInstructions: task.customInstructions,
