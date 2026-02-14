@@ -199,6 +199,91 @@ function convertGeminiResponseToAnthropic(parts) {
     return blocks;
 }
 // ============================================================================
+// MALFORMED FUNCTION CALL RECOVERY
+// ============================================================================
+/**
+ * Parse a MALFORMED_FUNCTION_CALL finishMessage to extract the intended
+ * function name and arguments. Gemini sometimes emits Python code instead
+ * of proper JSON function calls, especially for datetime computations.
+ *
+ * Example finishMessage:
+ *   "from datetime import datetime, timedelta\nnow = datetime.now()\n..."
+ *   "print(default_api.schedule_post(platforms=['twitter'], content='Hello'))"
+ */
+function parseMalformedFunctionCall(finishMessage) {
+    if (!finishMessage)
+        return null;
+    try {
+        // Extract function call: default_api.FUNC_NAME(ARGS)
+        const callMatch = finishMessage.match(/default_api\.(\w+)\(([^)]*)\)/s);
+        if (!callMatch)
+            return null;
+        const funcName = callMatch[1];
+        const argsStr = callMatch[2];
+        // Parse Python-style keyword arguments into a JS object
+        const args = {};
+        // Match keyword=value pairs (handles strings, lists, numbers, variables)
+        const kwargPattern = /(\w+)\s*=\s*(\[.*?\]|'[^']*'|"[^"]*"|\w+)/g;
+        let match;
+        while ((match = kwargPattern.exec(argsStr)) !== null) {
+            const key = match[1];
+            let value = match[2];
+            // Convert Python values to JS
+            if (value.startsWith('[') && value.endsWith(']')) {
+                // Python list → JS array: ['twitter', 'linkedin'] → ["twitter", "linkedin"]
+                const items = value.slice(1, -1).split(',').map((s) => {
+                    s = s.trim();
+                    if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
+                        return s.slice(1, -1);
+                    }
+                    return s;
+                }).filter(Boolean);
+                value = items;
+            }
+            else if ((value.startsWith("'") && value.endsWith("'")) || (value.startsWith('"') && value.endsWith('"'))) {
+                // String literal
+                value = value.slice(1, -1);
+            }
+            else if (!isNaN(Number(value))) {
+                value = Number(value);
+            }
+            else {
+                // Variable reference — try to compute datetime values
+                if (key === 'scheduled_time' || key.includes('time') || key.includes('date')) {
+                    // Extract timedelta from the code
+                    const deltaMatch = finishMessage.match(/timedelta\((\w+)\s*=\s*(\d+)\)/);
+                    if (deltaMatch) {
+                        const unit = deltaMatch[1]; // minutes, hours, days
+                        const amount = parseInt(deltaMatch[2], 10);
+                        const now = new Date();
+                        if (unit === 'minutes')
+                            now.setMinutes(now.getMinutes() + amount);
+                        else if (unit === 'hours')
+                            now.setHours(now.getHours() + amount);
+                        else if (unit === 'days')
+                            now.setDate(now.getDate() + amount);
+                        value = now.toISOString();
+                    }
+                    else {
+                        continue; // Skip unresolvable variables
+                    }
+                }
+                else {
+                    continue; // Skip unresolvable variables
+                }
+            }
+            args[key] = value;
+        }
+        // Validate we got something useful
+        if (!funcName || Object.keys(args).length === 0)
+            return null;
+        return { name: funcName, args };
+    }
+    catch {
+        return null;
+    }
+}
+// ============================================================================
 // GEMINI PROVIDER
 // ============================================================================
 class GeminiProvider {
@@ -308,11 +393,46 @@ class GeminiProvider {
                 inputTokens = aggregated.usageMetadata.promptTokenCount || inputTokens;
                 outputTokens = aggregated.usageMetadata.candidatesTokenCount || outputTokens;
             }
+            // Handle MALFORMED_FUNCTION_CALL — Gemini tried to compute values via code
+            // instead of outputting a proper function call JSON. Parse the intent and retry.
+            const finishReason = aggregated.candidates?.[0]?.finishReason;
+            if (finishReason === 'MALFORMED_FUNCTION_CALL' && allParts.length === 0) {
+                const finishMessage = aggregated.candidates?.[0]?.finishMessage || '';
+                console.log(`[Gemini] MALFORMED_FUNCTION_CALL detected. Attempting recovery...`);
+                console.log(`[Gemini] finishMessage: ${finishMessage.substring(0, 300)}`);
+                // Try to extract the function name and reconstruct the call
+                const parsed = parseMalformedFunctionCall(finishMessage);
+                if (parsed) {
+                    console.log(`[Gemini] Recovered function call: ${parsed.name}(${JSON.stringify(parsed.args)})`);
+                    const recoveredBlock = {
+                        type: 'tool_use',
+                        id: `toolu_gemini_${Date.now()}_recovered`,
+                        name: parsed.name,
+                        input: parsed.args,
+                    };
+                    emitter.emit('contentBlock', recoveredBlock);
+                    resolve({
+                        content: [recoveredBlock],
+                        stop_reason: 'tool_use',
+                        usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+                    });
+                    return;
+                }
+                // Could not parse — return error text so orchestrator ends the stream gracefully
+                console.warn(`[Gemini] Could not recover malformed function call`);
+                const errorText = 'I tried to schedule that but ran into a formatting issue. Could you try again with the exact date and time? For example: "Schedule a post to Twitter for February 14 at 11:30 PM"';
+                emitter.emit('text', errorText);
+                resolve({
+                    content: [{ type: 'text', text: errorText }],
+                    stop_reason: 'end_turn',
+                    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+                });
+                return;
+            }
             // Convert all accumulated parts to Anthropic format
             const anthropicContent = convertGeminiResponseToAnthropic(allParts);
             // Determine stop reason
             const hasToolUse = anthropicContent.some((b) => b.type === 'tool_use');
-            const finishReason = aggregated.candidates?.[0]?.finishReason;
             let stopReason = 'end_turn';
             if (hasToolUse) {
                 stopReason = 'tool_use';

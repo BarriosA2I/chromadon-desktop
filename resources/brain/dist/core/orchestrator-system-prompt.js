@@ -16,7 +16,14 @@ function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge)
     const clientSection = clientKnowledge
         ? `\n\nACTIVE CLIENT KNOWLEDGE:\n${clientKnowledge}\nUse this context when creating content, answering business questions, or executing tasks for this client.`
         : '';
-    return `RULE #0 — COMMAND SCOPE (HIGHEST PRIORITY)
+    // Inject current UTC datetime so the model can compute relative times
+    // (e.g. "30 minutes from now" → "2026-02-14T23:19:00.000Z")
+    const now = new Date();
+    const currentTime = now.toISOString();
+    return `CURRENT TIME: ${currentTime}
+Use this for all time-related computations. When scheduling, output the exact ISO 8601 datetime string directly — NEVER write code to compute it.
+
+RULE #0 — COMMAND SCOPE (HIGHEST PRIORITY)
 Do EXACTLY what the user asks — nothing more, nothing less.
 
 SIMPLE COMMANDS (do it, then STOP):
@@ -414,8 +421,10 @@ exports.buildOrchestratorSystemPrompt = buildOrchestratorSystemPrompt;
  * where the full prompt is overkill and wastes tokens.
  */
 function buildCompactSystemPrompt() {
+    const now = new Date();
     return `You are CHROMADON, a browser automation assistant created by Barrios A2I.
 Execute the requested action using the provided tools. Be brief.
+Current UTC time: ${now.toISOString()}
 
 RULES:
 - ACT IMMEDIATELY. Never explain what you're about to do. Just call the tool.

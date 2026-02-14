@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.19.4 — 2026-02-14)
+## Recent Changes (v1.19.5 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: Gemini MALFORMED_FUNCTION_CALL — system prompts now include current UTC datetime for relative time computations | `resources/brain/dist/core/orchestrator-system-prompt.js` |
+| Added: MALFORMED_FUNCTION_CALL recovery — parses Python-style code and reconstructs valid tool_use blocks | `resources/brain/dist/providers/gemini-provider.js` |
+| Added: Graceful fallback for unrecoverable malformed calls — user sees friendly retry message | `resources/brain/dist/providers/gemini-provider.js` |
+
+## Changes (v1.19.4 — 2026-02-14)
 
 | Change | File |
 |--------|------|
