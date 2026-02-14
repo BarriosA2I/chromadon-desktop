@@ -44,6 +44,8 @@ export interface OrchestratorConfig {
 export type AdditionalToolExecutor = (toolName: string, input: Record<string, any>) => string | Promise<string>;
 export declare class AgenticOrchestrator {
     private client;
+    private geminiProvider;
+    private useGemini;
     private sessions;
     private toolExecutor;
     private config;

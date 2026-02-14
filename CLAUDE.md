@@ -7,7 +7,16 @@
 
 ---
 
-## Recent Changes (v1.17.0 — 2026-02-14)
+## Recent Changes (v1.18.0 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.5.0 — Gemini provider as primary LLM (90%+ cost reduction) | `resources/brain/dist/` |
+| Added: `@google/generative-ai` SDK to bundled brain dependencies | `resources/brain/node_modules/` |
+| Brain: 3-tier cost router (FAST/BALANCED/REASONING) with compact system prompt | Brain `routing/cost-router.js`, `providers/gemini-provider.js` |
+| Brain: Automatic Anthropic fallback on Gemini errors | Brain `core/agentic-orchestrator.js` |
+
+## Changes (v1.17.0 — 2026-02-14)
 
 | Change | File |
 |--------|------|
@@ -370,6 +379,6 @@ CHROMADON Desktop v1.0
 
 ---
 
-**Last Updated:** 2026-02-13
-**Version:** 1.16.3 (Media attachment support in marketing queue)
+**Last Updated:** 2026-02-14
+**Version:** 1.18.0 (Brain v1.5.0 — Gemini provider + cost router)
 **Author:** Barrios A2I (Gary Barrios)

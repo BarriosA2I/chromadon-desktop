@@ -6,7 +6,7 @@
  * @author Barrios A2I
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildOrchestratorSystemPrompt = void 0;
+exports.buildCompactSystemPrompt = exports.buildOrchestratorSystemPrompt = void 0;
 function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge) {
     const pageSection = pageContext
         ? `\nCURRENT PAGE:\nURL: ${pageContext.url}\nTitle: ${pageContext.title}${pageContext.interactiveElements?.length
@@ -408,4 +408,30 @@ If you lose track, look at the conversation history above. The user's most recen
 ${pageSection}${clientSection}`;
 }
 exports.buildOrchestratorSystemPrompt = buildOrchestratorSystemPrompt;
+/**
+ * Compact system prompt for FAST tier tasks (~500 tokens vs ~40K).
+ * Used for simple browser actions (click, navigate, scroll, etc.)
+ * where the full prompt is overkill and wastes tokens.
+ */
+function buildCompactSystemPrompt() {
+    return `You are CHROMADON, a browser automation assistant created by Barrios A2I.
+Execute the requested action using the provided tools. Be brief.
+
+RULES:
+- ACT IMMEDIATELY. Never explain what you're about to do. Just call the tool.
+- One sentence max between tool calls.
+- After completing a simple action: say "Done."
+- Use text-based clicking for Shadow DOM sites (YouTube Studio).
+- If a click fails, try get_interactive_elements to find what's clickable.
+- NEVER call get_page_context or get_interactive_elements BEFORE an action. Just try it.
+- For navigation: use the navigate tool with the URL directly.
+- For typing: target the input/textarea element, not a label.
+- Prefer API tools over browser tools when available.
+
+BANNED:
+- No em dashes. No markdown headers. No numbered lists unless asked.
+- Never say "RAG" or "retrieval-augmented generation."
+- Never ask "What would you like me to do next?" — just do it or say "Done."`;
+}
+exports.buildCompactSystemPrompt = buildCompactSystemPrompt;
 //# sourceMappingURL=orchestrator-system-prompt.js.map

@@ -22,6 +22,8 @@ const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const uuid_1 = require("uuid");
 const browser_tools_1 = require("./browser-tools");
 const orchestrator_system_prompt_1 = require("./orchestrator-system-prompt");
+const gemini_provider_1 = require("../providers/gemini-provider");
+const cost_router_1 = require("../routing/cost-router");
 const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 1024,
@@ -52,6 +54,8 @@ class NoOpDetector {
 }
 class AgenticOrchestrator {
     client;
+    geminiProvider;
+    useGemini;
     sessions = new Map();
     toolExecutor;
     config;
@@ -63,6 +67,18 @@ class AgenticOrchestrator {
     getClientKnowledge;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge) {
         this.client = new sdk_1.default({ apiKey, timeout: 120_000, maxRetries: 0 });
+        // Gemini as primary provider (Anthropic as fallback)
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (geminiKey) {
+            this.geminiProvider = new gemini_provider_1.GeminiProvider(geminiKey);
+            this.useGemini = true;
+            console.log('[PROVIDER] Gemini enabled as primary provider (Anthropic fallback ready)');
+        }
+        else {
+            this.geminiProvider = null;
+            this.useGemini = false;
+            console.log('[PROVIDER] No GEMINI_API_KEY — using Anthropic only');
+        }
         this.toolExecutor = toolExecutor;
         this.config = { ...DEFAULT_CONFIG, ...config };
         this.additionalTools = additionalTools || [];
@@ -154,16 +170,57 @@ class AgenticOrchestrator {
                     console.warn('[CHROMADON Orchestrator] sanitizeHistory produced empty messages — injecting recovery');
                     sanitizedMessages.push({ role: 'user', content: 'Continue with the current task. Resume where you left off.' });
                 }
-                // 6. Call Claude API with streaming (browser tools + any additional tools)
+                // 6. Call LLM API with streaming (browser tools + any additional tools)
                 const allTools = [...browser_tools_1.BROWSER_TOOLS, ...this.additionalTools];
-                const stream = this.client.messages.stream({
-                    model: currentModel,
-                    max_tokens: this.config.maxTokens,
-                    temperature: 0,
-                    system: finalSystemPrompt,
-                    tools: allTools,
-                    messages: sanitizedMessages,
-                });
+                // Cost router: select model tier based on user message
+                const lastUserMsg = typeof session.messages[session.messages.length - 1]?.content === 'string'
+                    ? session.messages[session.messages.length - 1].content
+                    : userMessage;
+                const modelTier = this.useGemini ? (0, cost_router_1.selectModelForTask)(lastUserMsg) : null;
+                const selectedModel = modelTier ? (0, cost_router_1.resolveModel)(modelTier) : currentModel;
+                // Select system prompt: compact for FAST tier, full for everything else
+                const effectiveSystemPrompt = (modelTier && (0, cost_router_1.shouldUseCompactPrompt)(modelTier))
+                    ? (0, orchestrator_system_prompt_1.buildCompactSystemPrompt)()
+                    : finalSystemPrompt;
+                let stream;
+                let usingGemini = false;
+                if (this.useGemini && this.geminiProvider) {
+                    try {
+                        stream = this.geminiProvider.streamChat({
+                            model: selectedModel,
+                            system: effectiveSystemPrompt,
+                            messages: sanitizedMessages,
+                            tools: allTools,
+                            maxTokens: this.config.maxTokens,
+                            temperature: 0,
+                        });
+                        usingGemini = true;
+                        if (loopCount === 1) {
+                            console.log(`[PROVIDER] Gemini ${selectedModel} | prompt: ${effectiveSystemPrompt.length < 2000 ? 'compact' : 'full'}`);
+                        }
+                    }
+                    catch (geminiInitErr) {
+                        console.warn(`[PROVIDER] Gemini init failed, falling back to Anthropic: ${geminiInitErr.message}`);
+                        stream = this.client.messages.stream({
+                            model: currentModel,
+                            max_tokens: this.config.maxTokens,
+                            temperature: 0,
+                            system: finalSystemPrompt,
+                            tools: allTools,
+                            messages: sanitizedMessages,
+                        });
+                    }
+                }
+                else {
+                    stream = this.client.messages.stream({
+                        model: currentModel,
+                        max_tokens: this.config.maxTokens,
+                        temperature: 0,
+                        system: finalSystemPrompt,
+                        tools: allTools,
+                        messages: sanitizedMessages,
+                    });
+                }
                 // Wire abort signal to cancel the stream
                 let abortHandler = null;
                 if (context.abortSignal) {
@@ -219,13 +276,19 @@ class AgenticOrchestrator {
                     }
                 }
                 stopReason = finalMessage.stop_reason || '';
-                // Cost tracking — log token usage per API call
+                // Cost tracking — log token usage per API call (provider-aware pricing)
                 if (finalMessage.usage) {
-                    sessionInputTokens += finalMessage.usage.input_tokens || 0;
-                    sessionOutputTokens += finalMessage.usage.output_tokens || 0;
-                    const callCost = ((finalMessage.usage.input_tokens || 0) / 1_000_000) * 1 +
-                        ((finalMessage.usage.output_tokens || 0) / 1_000_000) * 5;
-                    console.log(`[COST] Call ${loopCount}: ${finalMessage.usage.input_tokens}in/${finalMessage.usage.output_tokens}out ($${callCost.toFixed(4)}) | Session total: ${sessionInputTokens}in/${sessionOutputTokens}out ($${(sessionInputTokens / 1_000_000 * 1 + sessionOutputTokens / 1_000_000 * 5).toFixed(4)})`);
+                    const inTok = finalMessage.usage.input_tokens || 0;
+                    const outTok = finalMessage.usage.output_tokens || 0;
+                    sessionInputTokens += inTok;
+                    sessionOutputTokens += outTok;
+                    // Gemini: $0.10/$0.40 per M | Anthropic Haiku: $0.80/$4.00 per M
+                    const inputCostPerM = usingGemini ? 0.10 : 0.80;
+                    const outputCostPerM = usingGemini ? 0.40 : 4.00;
+                    const callCost = (inTok / 1_000_000) * inputCostPerM + (outTok / 1_000_000) * outputCostPerM;
+                    const sessionCost = (sessionInputTokens / 1_000_000) * inputCostPerM + (sessionOutputTokens / 1_000_000) * outputCostPerM;
+                    const providerTag = usingGemini ? `Gemini/${selectedModel}` : `Anthropic/${currentModel}`;
+                    console.log(`[COST] Call ${loopCount} (${providerTag}): ${inTok}in/${outTok}out ($${callCost.toFixed(4)}) | Session: ${sessionInputTokens}in/${sessionOutputTokens}out ($${sessionCost.toFixed(4)})`);
                 }
                 // 7. Push assistant message to session history
                 session.messages.push({ role: 'assistant', content: finalMessage.content });
@@ -610,6 +673,16 @@ class AgenticOrchestrator {
                 const errorMsg = error.message || 'Unknown error';
                 console.error(`[CHROMADON Orchestrator] Error in loop ${loopCount}:`, errorMsg);
                 console.error(`[CHROMADON Orchestrator] Error details — status: ${error?.status}, type: ${error?.error?.type}, constructor: ${error?.constructor?.name}`);
+                // Recovery: Gemini failure → fall back to Anthropic for the rest of this session
+                if (usingGemini && this.useGemini) {
+                    console.warn(`[PROVIDER] Gemini error — disabling for this session, falling back to Anthropic`);
+                    this.useGemini = false;
+                    usingGemini = false;
+                    if (!writer.isClosed()) {
+                        writer.writeEvent('text_delta', { text: '\n\nSwitching providers...\n' });
+                    }
+                    continue;
+                }
                 // Recovery: if 400 with tool_use_id mismatch, purge tool messages and retry once
                 if (error?.status === 400 && errorMsg.includes('tool_use_id')) {
                     console.warn('[CHROMADON Orchestrator] Tool history corruption detected — purging tool blocks and retrying');
@@ -751,9 +824,12 @@ class AgenticOrchestrator {
                 message: `Reached maximum tool-use loops (${this.config.maxLoops}). Stopping.`,
             });
         }
-        // 10. Done — include cost summary
-        const totalCostUSD = (sessionInputTokens / 1_000_000) * 1 + (sessionOutputTokens / 1_000_000) * 5;
-        console.log(`[COST] Session complete: ${loopCount} API calls, ${sessionInputTokens}in/${sessionOutputTokens}out, $${totalCostUSD.toFixed(4)}`);
+        // 10. Done — include cost summary (use correct provider pricing)
+        const finalInputCostPerM = usingGemini ? 0.10 : 0.80;
+        const finalOutputCostPerM = usingGemini ? 0.40 : 4.00;
+        const totalCostUSD = (sessionInputTokens / 1_000_000) * finalInputCostPerM + (sessionOutputTokens / 1_000_000) * finalOutputCostPerM;
+        const providerLabel = usingGemini ? 'Gemini' : 'Anthropic';
+        console.log(`[COST] Session complete (${providerLabel}): ${loopCount} API calls, ${sessionInputTokens}in/${sessionOutputTokens}out, $${totalCostUSD.toFixed(4)}`);
         if (!writer.isClosed()) {
             writer.writeEvent('done', {
                 apiCalls: loopCount,
