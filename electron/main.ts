@@ -4178,33 +4178,27 @@ async function checkScheduledTasks(): Promise<void> {
     // Transition to queued
     task.status = 'queued'
 
-    // Auto-execute via Brain API
+    // Auto-execute via AI assistant chat (same path clients use)
     try {
-      const resp = await fetch('http://127.0.0.1:3001/api/social/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task: {
-            id: task.id,
-            platform: task.platform,
-            action: task.action,
-            content: task.content,
-            targetUrl: task.targetUrl,
-            priority: task.priority,
-            status: task.status,
-            hashtags: task.hashtags,
-            batchId: task.batchId,
-            mediaUrls: task.mediaUrls,
-          },
-        }),
-      })
+      const chatPrompt = `Execute this scheduled social media task NOW:\nPlatform: ${task.platform}\nAction: ${task.action}\nContent: ${task.content}${task.hashtags?.length ? `\nHashtags: ${task.hashtags.join(' ')}` : ''}${task.mediaUrls?.length ? `\nMedia files: ${task.mediaUrls.join(', ')}` : ''}${task.targetUrl ? `\nTarget URL: ${task.targetUrl}` : ''}`
 
-      const result = await resp.json()
-      task.status = result.success ? 'completed' : 'failed'
-      task.completedAt = Date.now()
-      task.result = result.summary
-      task.error = result.error
-      console.log(`[Scheduler] Task ${task.id} ${task.status}: ${result.summary?.slice(0, 100) || ''}`)
+      if (mainWindow) {
+        await mainWindow.webContents.executeJavaScript(`
+          window.dispatchEvent(new CustomEvent('chromadon-chat-submit', {
+            detail: { text: ${JSON.stringify(chatPrompt)} }
+          }));
+          true;
+        `)
+        task.status = 'completed'
+        task.completedAt = Date.now()
+        task.result = 'Sent to AI assistant for execution'
+        console.log(`[Scheduler] Task ${task.id} sent to AI assistant chat`)
+      } else {
+        task.status = 'failed'
+        task.completedAt = Date.now()
+        task.error = 'Desktop window not ready'
+        console.error(`[Scheduler] Task ${task.id} failed: window not ready`)
+      }
     } catch (err) {
       task.status = 'failed'
       task.completedAt = Date.now()

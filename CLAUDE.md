@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.16.5 — 2026-02-14)
+## Recent Changes (v1.16.6 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: Scheduler now routes through AI assistant chat instead of calling Social Overlord API directly | `electron/main.ts` |
+| Fixed: Brain dist — capped 429 retries + disabled SDK auto-retry (Brain v1.3.5) | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.16.5 — 2026-02-14)
 
 | Change | File |
 |--------|------|
