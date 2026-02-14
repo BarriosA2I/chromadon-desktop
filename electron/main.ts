@@ -1965,6 +1965,23 @@ function startControlServer() {
     })
   })
 
+  // Session backup list (must be before :platform wildcard)
+  server.get('/sessions/backups', (_req: Request, res: Response) => {
+    res.json({ success: true, backups: sessionBackupManager.listBackups() })
+  })
+
+  // Export all sessions (must be before :platform wildcard)
+  server.post('/sessions/backups/export-all', async (req: Request, res: Response) => {
+    try {
+      const { password } = req.body
+      if (!password) { res.status(400).json({ success: false, error: 'Password required' }); return }
+      const results = await sessionBackupManager.exportAll(password)
+      res.json({ success: true, results })
+    } catch (error) {
+      res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
   // Get specific platform session
   server.get('/sessions/:platform', (req: Request, res: Response) => {
     const platform = req.params.platform as Platform
@@ -2017,21 +2034,6 @@ function startControlServer() {
       const result = await sessionBackupManager.importSession(platform, password)
       await browserViewManager.verifyPlatformAuth(platform)
       res.json({ success: true, platform, imported: result.imported, skipped: result.skipped })
-    } catch (error) {
-      res.status(500).json({ success: false, error: (error as Error).message })
-    }
-  })
-
-  server.get('/sessions/backups', (_req: Request, res: Response) => {
-    res.json({ success: true, backups: sessionBackupManager.listBackups() })
-  })
-
-  server.post('/sessions/backups/export-all', async (req: Request, res: Response) => {
-    try {
-      const { password } = req.body
-      if (!password) { res.status(400).json({ success: false, error: 'Password required' }); return }
-      const results = await sessionBackupManager.exportAll(password)
-      res.json({ success: true, results })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
     }
