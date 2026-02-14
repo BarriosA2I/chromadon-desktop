@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.15.0 — 2026-02-13)
+## Recent Changes (v1.15.1 — 2026-02-14)
+
+| Change | File |
+|--------|------|
+| Fixed: Route ordering — `/sessions/backups` now registered before `/sessions/:platform` wildcard | `electron/main.ts` |
+
+## Changes (v1.15.0 — 2026-02-13)
 
 | Change | File |
 |--------|------|
@@ -303,5 +309,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-13
-**Version:** 1.15.0 (Session backup/restore with encrypted cookie export/import)
+**Version:** 1.15.1 (Session backup/restore — route fix)
 **Author:** Barrios A2I (Gary Barrios)
