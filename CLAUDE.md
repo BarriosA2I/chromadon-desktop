@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.22.0 — 2026-02-15)
+## Recent Changes (v1.22.1 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Monitoring chat commands returning empty response — Brain cost router now routes monitoring keywords to FAST tier (gemini-2.0-flash) instead of BALANCED (gemini-2.5-flash) which returns 0 output tokens | `resources/brain/dist/routing/cost-router.js` |
+
+## Changes (v1.22.0 — 2026-02-15)
 
 | Change | File |
 |--------|------|
