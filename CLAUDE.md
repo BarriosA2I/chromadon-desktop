@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.4 — 2026-02-15)
+## Recent Changes (v1.25.5 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain v1.10.5 — Client data now stored in `CHROMADON_DATA_DIR` (Electron userData) in packaged app — documents/media persist correctly across restarts | `resources/brain/dist/` |
+
+## Changes (v1.25.4 — 2026-02-15)
 
 | Change | File |
 |--------|------|

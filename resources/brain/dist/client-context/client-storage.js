@@ -42,7 +42,8 @@ class ClientStorage {
     baseDir;
     metaPath;
     constructor(baseDir) {
-        this.baseDir = baseDir || path.join(process.cwd(), 'data', 'clients');
+        const dataRoot = baseDir || process.env.CHROMADON_DATA_DIR || process.cwd();
+        this.baseDir = path.join(dataRoot, 'data', 'clients');
         this.metaPath = path.join(this.baseDir, '_meta.json');
         if (!fs.existsSync(this.baseDir)) {
             fs.mkdirSync(this.baseDir, { recursive: true });

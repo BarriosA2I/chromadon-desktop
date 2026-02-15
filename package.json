@@ -1,6 +1,6 @@
 {
   "name": "chromadon-desktop",
-  "version": "1.25.4",
+  "version": "1.25.5",
   "description": "CHROMADON AI Browser Automation Control Panel",
   "main": "dist-electron/main.js",
   "author": "Barrios A2I <gary@barriosa2i.com>",
