@@ -355,6 +355,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updaterCheckForUpdates: () => ipcRenderer.invoke('updater:checkForUpdates'),
   updaterGetStatus: () => ipcRenderer.invoke('updater:getStatus'),
   updaterQuitAndInstall: () => ipcRenderer.invoke('updater:quitAndInstall'),
+
+  // ==================== SOCIAL MONITORING API ====================
+  monitoringGetStatus: () => ipcRenderer.invoke('monitoring:getStatus'),
+  monitoringToggle: (enabled: boolean, config?: { interval_minutes?: number; platforms?: string[]; max_replies_per_cycle?: number }) =>
+    ipcRenderer.invoke('monitoring:toggle', enabled, config),
+  monitoringGetLog: (platform?: string, limit?: number) => ipcRenderer.invoke('monitoring:getLog', platform, limit),
+  onMonitoringStatus: (callback: (status: any) => void) => {
+    const handler = (_event: any, status: any) => callback(status)
+    ipcRenderer.on('monitoring:status', handler)
+    return () => { ipcRenderer.removeListener('monitoring:status', handler) }
+  },
 })
 
 // Type definitions for the exposed API
@@ -488,6 +499,12 @@ declare global {
       updaterCheckForUpdates: () => Promise<{ success: boolean; version?: string; error?: string }>
       updaterGetStatus: () => Promise<{ status: string; version?: string; releaseDate?: string; percent?: number; error?: string }>
       updaterQuitAndInstall: () => Promise<void>
+
+      // Social Monitoring API
+      monitoringGetStatus: () => Promise<any>
+      monitoringToggle: (enabled: boolean, config?: { interval_minutes?: number; platforms?: string[]; max_replies_per_cycle?: number }) => Promise<any>
+      monitoringGetLog: (platform?: string, limit?: number) => Promise<any>
+      onMonitoringStatus: (callback: (status: any) => void) => (() => void)
     }
   }
 }

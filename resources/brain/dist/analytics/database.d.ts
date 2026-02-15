@@ -45,6 +45,27 @@ export declare class AnalyticsDatabase {
     deleteAutoReplyRule(id: number): void;
     incrementRuleUses(id: number): void;
     deactivateCompetitor(id: number): void;
+    insertMonitoringLog(entry: {
+        platform: string;
+        action_type: string;
+        comment_author?: string | null;
+        comment_text?: string | null;
+        reply_text?: string | null;
+        rule_id?: number | null;
+    }): number;
+    getMonitoringLog(platform?: string, limit?: number): any[];
+    getMonitoringConfig(): {
+        enabled: boolean;
+        interval_minutes: number;
+        platforms: string[];
+        max_replies_per_cycle: number;
+    } | null;
+    setMonitoringConfig(config: {
+        enabled?: boolean;
+        interval_minutes?: number;
+        platforms?: string[];
+        max_replies_per_cycle?: number;
+    }): void;
     private daysAgo;
     private extractPost;
     private extractMetrics;

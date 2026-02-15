@@ -188,5 +188,11 @@ interface Window {
     updaterCheckForUpdates: () => Promise<{ success: boolean; version?: string; error?: string }>
     updaterGetStatus: () => Promise<{ status: string; version?: string; releaseDate?: string; percent?: number; error?: string }>
     updaterQuitAndInstall: () => Promise<void>
+
+    // Social Monitoring API
+    monitoringGetStatus: () => Promise<any>
+    monitoringToggle: (enabled: boolean, config?: { interval_minutes?: number; platforms?: string[]; max_replies_per_cycle?: number }) => Promise<any>
+    monitoringGetLog: (platform?: string, limit?: number) => Promise<any>
+    onMonitoringStatus: (callback: (status: any) => void) => (() => void)
   }
 }

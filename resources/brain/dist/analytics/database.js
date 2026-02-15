@@ -588,6 +588,82 @@ class AnalyticsDatabase {
         this.db.prepare('UPDATE competitors SET is_active = 0 WHERE id = ?').run(id);
     }
     // =========================================================================
+    // MONITORING (v1.7.0)
+    // =========================================================================
+    insertMonitoringLog(entry) {
+        const stmt = this.db.prepare(`
+      INSERT INTO monitoring_log (platform, action_type, comment_author, comment_text, reply_text, rule_id)
+      VALUES (@platform, @action_type, @comment_author, @comment_text, @reply_text, @rule_id)
+    `);
+        return stmt.run({
+            platform: entry.platform,
+            action_type: entry.action_type,
+            comment_author: entry.comment_author || null,
+            comment_text: entry.comment_text || null,
+            reply_text: entry.reply_text || null,
+            rule_id: entry.rule_id || null,
+        }).lastInsertRowid;
+    }
+    getMonitoringLog(platform, limit = 20) {
+        let sql = 'SELECT * FROM monitoring_log WHERE 1=1';
+        const params = [];
+        if (platform) {
+            sql += ' AND platform = ?';
+            params.push(platform);
+        }
+        sql += ' ORDER BY created_at DESC LIMIT ?';
+        params.push(limit);
+        try {
+            return this.db.prepare(sql).all(...params);
+        }
+        catch {
+            return []; // Table might not exist yet
+        }
+    }
+    getMonitoringConfig() {
+        try {
+            const row = this.db.prepare('SELECT * FROM monitoring_config WHERE id = 1').get();
+            if (!row)
+                return null;
+            return {
+                enabled: !!row.enabled,
+                interval_minutes: row.interval_minutes,
+                platforms: JSON.parse(row.platforms),
+                max_replies_per_cycle: row.max_replies_per_cycle,
+            };
+        }
+        catch {
+            return null; // Table might not exist yet
+        }
+    }
+    setMonitoringConfig(config) {
+        const sets = [];
+        const params = {};
+        if (config.enabled !== undefined) {
+            sets.push('enabled = @enabled');
+            params.enabled = config.enabled ? 1 : 0;
+        }
+        if (config.interval_minutes) {
+            sets.push('interval_minutes = @interval_minutes');
+            params.interval_minutes = config.interval_minutes;
+        }
+        if (config.platforms) {
+            sets.push('platforms = @platforms');
+            params.platforms = JSON.stringify(config.platforms);
+        }
+        if (config.max_replies_per_cycle) {
+            sets.push('max_replies_per_cycle = @max_replies_per_cycle');
+            params.max_replies_per_cycle = config.max_replies_per_cycle;
+        }
+        if (sets.length === 0)
+            return;
+        sets.push("updated_at = datetime('now')");
+        try {
+            this.db.prepare(`UPDATE monitoring_config SET ${sets.join(', ')} WHERE id = 1`).run(params);
+        }
+        catch { /* Table might not exist yet */ }
+    }
+    // =========================================================================
     // HELPERS
     // =========================================================================
     daysAgo(days) {

@@ -839,6 +839,10 @@ function updateViewBounds() {
 
 // ==================== CLAUDE CODE CONTROL SERVER ====================
 
+// Track user activity for social monitoring idle detection
+let lastUserActivity = Date.now()
+let isProcessingChat = false
+
 function startControlServer() {
   const server = express()
   server.use(express.json())
@@ -937,6 +941,10 @@ function startControlServer() {
         return
       }
 
+      // Track user activity for social monitoring
+      lastUserActivity = Date.now()
+      isProcessingChat = true
+
       // Dispatch the same CustomEvent that ChatPanel.tsx listens for
       await mainWindow.webContents.executeJavaScript(`
         window.dispatchEvent(new CustomEvent('chromadon-chat-submit', {
@@ -945,10 +953,20 @@ function startControlServer() {
         true;
       `)
 
+      // Clear processing flag after a short delay (message queued, not fully processed yet)
+      setTimeout(() => { isProcessingChat = false }, 30000)
+
       res.json({ success: true, message: 'Chat message sent', text: text.slice(0, 100) })
     } catch (error) {
+      isProcessingChat = false
       res.status(500).json({ success: false, error: (error as Error).message })
     }
+  })
+
+  // Social monitoring idle status (Brain checks this before monitoring cycles)
+  server.get('/monitoring/idle-status', (_req: Request, res: Response) => {
+    const idleMs = Date.now() - lastUserActivity
+    res.json({ idleMs, isProcessing: isProcessingChat })
   })
 
   // Inject CSS for design iteration
@@ -4089,6 +4107,44 @@ ipcMain.handle('settings:getBrainStatus', async () => {
     // Brain not reachable
   }
   return { isRunning: false, pid: null }
+})
+
+// ==================== SOCIAL MONITORING IPC HANDLERS ====================
+
+ipcMain.handle('monitoring:getStatus', async () => {
+  try {
+    const res = await fetch('http://127.0.0.1:3001/api/monitoring/status', { signal: AbortSignal.timeout(3000) })
+    return await res.json()
+  } catch {
+    return { success: false, enabled: false, error: 'Brain not reachable' }
+  }
+})
+
+ipcMain.handle('monitoring:toggle', async (_event: any, enabled: boolean, config?: any) => {
+  try {
+    const res = await fetch('http://127.0.0.1:3001/api/monitoring/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled, ...config }),
+      signal: AbortSignal.timeout(3000),
+    })
+    return await res.json()
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
+ipcMain.handle('monitoring:getLog', async (_event: any, platform?: string, limit?: number) => {
+  try {
+    const params = new URLSearchParams()
+    if (platform) params.set('platform', platform)
+    if (limit) params.set('limit', String(limit))
+    const url = `http://127.0.0.1:3001/api/monitoring/log${params.toString() ? '?' + params : ''}`
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) })
+    return await res.json()
+  } catch {
+    return { success: false, entries: [], error: 'Brain not reachable' }
+  }
 })
 
 // Auto-updater: quit and install

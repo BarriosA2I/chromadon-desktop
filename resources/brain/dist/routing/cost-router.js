@@ -78,6 +78,8 @@ function selectModelForTask(userMessage, lastToolName) {
         // OBS Studio tools
         'obs_stream_start', 'obs_stream_stop', 'obs_record_start', 'obs_record_stop',
         'obs_scene_set', 'obs_scene_list', 'obs_status', 'obs_mic_mute', 'obs_source_visibility',
+        // Social Monitoring tools
+        'social_monitor', 'monitoring_log',
     ].includes(lastToolName)) {
         return ModelTier.FAST;
     }

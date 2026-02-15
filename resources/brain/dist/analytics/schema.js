@@ -174,6 +174,33 @@ const MIGRATIONS = [
   CREATE INDEX IF NOT EXISTS idx_auto_reply_platform ON auto_reply_rules(platform);
   CREATE INDEX IF NOT EXISTS idx_auto_reply_active ON auto_reply_rules(is_active);
   `,
+    // Version 3: Social media monitoring tables
+    `
+  CREATE TABLE IF NOT EXISTS monitoring_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    comment_author TEXT,
+    comment_text TEXT,
+    reply_text TEXT,
+    rule_id INTEGER,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_monitoring_platform ON monitoring_log(platform);
+  CREATE INDEX IF NOT EXISTS idx_monitoring_created ON monitoring_log(created_at);
+
+  CREATE TABLE IF NOT EXISTS monitoring_config (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    enabled INTEGER NOT NULL DEFAULT 0,
+    interval_minutes INTEGER NOT NULL DEFAULT 10,
+    platforms TEXT NOT NULL DEFAULT '["twitter","linkedin","youtube"]',
+    max_replies_per_cycle INTEGER NOT NULL DEFAULT 5,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  INSERT OR IGNORE INTO monitoring_config (id) VALUES (1);
+  `,
 ];
 // ============================================================================
 // MIGRATION RUNNER

@@ -72,6 +72,8 @@ const marketing_tools_1 = require("../marketing/marketing-tools");
 const marketing_executor_1 = require("../marketing/marketing-executor");
 // OBS Studio imports
 const obs_1 = require("../obs");
+// Social Media Monitoring imports
+const monitoring_1 = require("../monitoring");
 // Circuit Breaker for Desktop API calls
 const circuit_breaker_1 = require("../core/circuit-breaker");
 // 27-Agent System imports (runtime load to avoid type conflicts)
@@ -138,6 +140,8 @@ let youtubeTokenManager = null;
 let youtubeExec = null;
 // OBS Studio State
 let obsClientInstance = null;
+// Social Media Monitoring State
+let socialMonitor = null;
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -3203,6 +3207,74 @@ app.post('/api/ralph/respond', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== SOCIAL MONITORING ====================
+app.get('/api/monitoring/status', (_req, res) => {
+    try {
+        if (!socialMonitor) {
+            res.json({ success: true, enabled: false, message: 'Social Monitor not initialized' });
+            return;
+        }
+        const status = socialMonitor.getStatus();
+        res.json({ success: true, ...status });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/monitoring/toggle', (req, res) => {
+    try {
+        if (!socialMonitor || !analyticsDb) {
+            res.status(503).json({ success: false, error: 'Social Monitor not initialized' });
+            return;
+        }
+        const { enabled, interval_minutes, platforms, max_replies_per_cycle } = req.body;
+        if (enabled) {
+            if (interval_minutes)
+                socialMonitor.configure({ intervalMinutes: interval_minutes });
+            if (platforms)
+                socialMonitor.configure({ platforms });
+            if (max_replies_per_cycle)
+                socialMonitor.configure({ maxRepliesPerCycle: max_replies_per_cycle });
+            socialMonitor.start();
+            // Persist config
+            analyticsDb.setMonitoringConfig({
+                enabled: true,
+                interval_minutes: socialMonitor.getConfig().intervalMinutes,
+                platforms: socialMonitor.getConfig().platforms,
+                max_replies_per_cycle: socialMonitor.getConfig().maxRepliesPerCycle,
+            });
+        }
+        else {
+            socialMonitor.stop();
+            analyticsDb.setMonitoringConfig({
+                enabled: false,
+                interval_minutes: socialMonitor.getConfig().intervalMinutes,
+                platforms: socialMonitor.getConfig().platforms,
+                max_replies_per_cycle: socialMonitor.getConfig().maxRepliesPerCycle,
+            });
+        }
+        const status = socialMonitor.getStatus();
+        res.json({ success: true, ...status });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/monitoring/log', (req, res) => {
+    try {
+        if (!analyticsDb) {
+            res.status(503).json({ success: false, error: 'Analytics not initialized' });
+            return;
+        }
+        const platform = req.query.platform;
+        const limit = parseInt(req.query.limit) || 20;
+        const logs = analyticsDb.getMonitoringLog(platform, limit);
+        res.json({ success: true, count: logs.length, entries: logs });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== ANALYTICS ====================
 app.get('/api/analytics/overview', (req, res) => {
     try {
@@ -3731,6 +3803,11 @@ async function cleanup() {
             // Ignore
         }
     }
+    // Stop Social Monitor
+    if (socialMonitor) {
+        socialMonitor.destroy();
+        console.log('[CHROMADON] Social Monitor stopped');
+    }
     process.exit(0);
 }
 process.on('SIGINT', cleanup);
@@ -3834,7 +3911,7 @@ async function startServer() {
             catch (err) {
                 console.log(`[CHROMADON] ⚠️ OBS init failed (non-critical): ${err.message}`);
             }
-            // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS
+            // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS + monitoring
             const additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
@@ -3842,6 +3919,7 @@ async function startServer() {
                 ...(clientContextExec ? client_context_1.CLIENT_CONTEXT_TOOLS : []),
                 ...marketing_tools_1.MARKETING_TOOLS,
                 ...(obsExec ? obs_1.OBS_TOOLS : []),
+                ...monitoring_1.MONITORING_TOOLS,
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
@@ -3849,11 +3927,16 @@ async function startServer() {
             const youtubeToolNames = new Set(youtube_tools_1.YOUTUBE_TOOLS.map(t => t.name));
             const marketingExec = (0, marketing_executor_1.createMarketingExecutor)(CHROMADON_DESKTOP_URL, analyticsDb);
             const marketingToolNames = new Set(marketing_tools_1.MARKETING_TOOLS.map(t => t.name));
+            const monitoringToolNames = new Set(monitoring_1.MONITORING_TOOLS.map(t => t.name));
             const combinedExecutor = async (toolName, input) => {
                 if (obsExec && obsToolNames.has(toolName))
                     return obsExec(toolName, input);
                 if (marketingToolNames.has(toolName))
                     return marketingExec(toolName, input);
+                if (monitoringToolNames.has(toolName) && socialMonitor && analyticsDb) {
+                    const monitoringExec = (0, monitoring_1.createMonitoringExecutor)(socialMonitor, analyticsDb);
+                    return monitoringExec(toolName, input);
+                }
                 if (clientContextExec?.canHandle(toolName))
                     return clientContextExec.execute(toolName, input);
                 if (skillExec && skillToolNames.has(toolName))
@@ -3906,6 +3989,29 @@ async function startServer() {
                 }
                 catch (err) {
                     console.log(`[CHROMADON] ⚠️ Data Collector init failed (non-critical): ${err.message}`);
+                }
+            }
+            // Initialize Social Media Monitor (background comment monitoring)
+            if (analyticsDb) {
+                try {
+                    socialMonitor = new monitoring_1.SocialMonitor(orchestrator, buildExecutionContext, analyticsDb, CHROMADON_DESKTOP_URL);
+                    // Check DB for saved monitoring config
+                    const savedConfig = analyticsDb.getMonitoringConfig();
+                    if (savedConfig?.enabled) {
+                        socialMonitor.configure({
+                            intervalMinutes: savedConfig.interval_minutes,
+                            platforms: JSON.parse(JSON.stringify(savedConfig.platforms)),
+                            maxRepliesPerCycle: savedConfig.max_replies_per_cycle,
+                        });
+                        socialMonitor.start();
+                        console.log(`[CHROMADON] ✅ Social Monitor initialized + STARTED (${savedConfig.interval_minutes}min interval)`);
+                    }
+                    else {
+                        console.log('[CHROMADON] ✅ Social Monitor initialized (disabled — enable via chat)');
+                    }
+                }
+                catch (err) {
+                    console.log(`[CHROMADON] ⚠️ Social Monitor init failed (non-critical): ${err.message}`);
                 }
             }
         }

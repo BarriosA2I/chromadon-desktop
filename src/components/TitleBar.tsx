@@ -1,10 +1,27 @@
 import { motion } from 'framer-motion'
+import { useState, useEffect } from 'react'
 import { useChromadonStore } from '../store/chromadonStore'
 import ClientSwitcher from './ClientSwitcher'
 import chromadonLogo from '@/assets/chromadon-logo-32.png'
 
 export default function TitleBar() {
   const { isConnected, connectionMode, setShowInterviewScreen } = useChromadonStore()
+  const [monitoringEnabled, setMonitoringEnabled] = useState(false)
+
+  // Poll monitoring status every 30s
+  useEffect(() => {
+    if (!isConnected) return
+    let mounted = true
+    const check = async () => {
+      try {
+        const status = await window.electronAPI?.monitoringGetStatus()
+        if (mounted && status?.enabled !== undefined) setMonitoringEnabled(status.enabled)
+      } catch { /* ignore */ }
+    }
+    check()
+    const interval = setInterval(check, 30000)
+    return () => { mounted = false; clearInterval(interval) }
+  }, [isConnected])
 
   const handleMinimize = () => window.electronAPI?.minimize()
   const handleMaximize = () => window.electronAPI?.maximize()
@@ -39,7 +56,7 @@ export default function TitleBar() {
         </span>
       </div>
 
-      {/* Center — Connection Status */}
+      {/* Center — Connection Status + Monitoring */}
       <div className="flex-shrink-0 flex items-center gap-3 px-4 py-1 mx-3 rounded-full bg-chroma-black/40 border border-chroma-teal/10">
         <div className="relative">
           <div className={`led ${isConnected ? 'led-green' : 'led-red'}`} />
@@ -52,6 +69,20 @@ export default function TitleBar() {
         <span className={`text-sm font-ui font-semibold tracking-wider ${isConnected ? 'text-chroma-teal' : 'text-chroma-error'}`}>
           {isConnected ? connectionMode : 'DISCONNECTED'}
         </span>
+        {monitoringEnabled && (
+          <>
+            <div className="w-px h-4 bg-white/10" />
+            <div className="relative" title="Social Monitoring Active">
+              <div className="w-2 h-2 rounded-full bg-chroma-gold" />
+              <motion.div
+                className="absolute inset-0 rounded-full bg-chroma-gold"
+                animate={{ scale: [1, 2.5], opacity: [0.6, 0] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'easeOut' }}
+              />
+            </div>
+            <span className="text-xs font-mono text-chroma-gold/80 tracking-wider">MON</span>
+          </>
+        )}
       </div>
 
       {/* Right — Client Switcher + Window Controls */}

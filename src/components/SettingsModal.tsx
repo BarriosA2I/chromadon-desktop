@@ -35,6 +35,12 @@ export default function SettingsModal({
   const [geminiError, setGeminiError] = useState('')
   const [geminiSuccess, setGeminiSuccess] = useState('')
 
+  // Monitoring state
+  const [monitoringEnabled, setMonitoringEnabled] = useState(false)
+  const [monitoringInterval, setMonitoringInterval] = useState(10)
+  const [monitoringPlatforms, setMonitoringPlatforms] = useState<string[]>(['twitter', 'linkedin', 'youtube'])
+  const [monitoringLoading, setMonitoringLoading] = useState(false)
+
   // General state
   const [brainStatus, setBrainStatus] = useState<{ isRunning: boolean; pid: number | null }>({ isRunning: false, pid: null })
   const [appVersion, setAppVersion] = useState('')
@@ -125,6 +131,15 @@ export default function SettingsModal({
       const status = await window.electronAPI.settingsGetBrainStatus()
       setBrainStatus(status)
     }
+    // Fetch monitoring status
+    try {
+      const monStatus = await window.electronAPI?.monitoringGetStatus()
+      if (monStatus?.success !== false) {
+        setMonitoringEnabled(!!monStatus?.enabled)
+        if (monStatus?.config?.intervalMinutes) setMonitoringInterval(monStatus.config.intervalMinutes)
+        if (monStatus?.config?.platforms) setMonitoringPlatforms(monStatus.config.platforms)
+      }
+    } catch { /* Brain might not be ready */ }
   }
 
   // ─── Gemini key handlers ───
@@ -257,6 +272,30 @@ export default function SettingsModal({
     } else {
       setError(result.error || 'Failed to remove API key')
     }
+  }
+
+  const handleMonitoringToggle = async () => {
+    setMonitoringLoading(true)
+    try {
+      const newEnabled = !monitoringEnabled
+      const result = await window.electronAPI?.monitoringToggle(newEnabled, {
+        interval_minutes: monitoringInterval,
+        platforms: monitoringPlatforms,
+      })
+      if (result?.success !== false) {
+        setMonitoringEnabled(newEnabled)
+      }
+    } catch { /* ignore */ }
+    setMonitoringLoading(false)
+  }
+
+  const handlePlatformToggle = (platform: string) => {
+    setMonitoringPlatforms(prev => {
+      const next = prev.includes(platform)
+        ? prev.filter(p => p !== platform)
+        : [...prev, platform]
+      return next.length > 0 ? next : prev // Must have at least one
+    })
   }
 
   // Determine provider display
@@ -643,6 +682,71 @@ export default function SettingsModal({
                       Your API keys are encrypted with your operating system's credential store
                       (Windows DPAPI). They are never stored in plaintext or transmitted externally.
                     </p>
+                  </div>
+                </div>
+
+                {/* ─── Social Media Monitoring ─── */}
+                <div className="space-y-4 mb-6">
+                  <h3 className="text-sm font-ui font-semibold uppercase tracking-wider text-chroma-gold">
+                    Social Media Monitoring
+                  </h3>
+                  <p className="text-xs text-chroma-muted">
+                    Automatically monitors your social media accounts for new comments and replies when you're idle.
+                  </p>
+
+                  {/* Enable/Disable Toggle */}
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-chroma-black/40 border border-chroma-gold/10">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2 h-2 rounded-full ${monitoringEnabled ? 'bg-chroma-gold animate-pulse' : 'bg-chroma-muted/30'}`} />
+                      <span className="text-sm font-ui text-white">
+                        {monitoringEnabled ? 'Monitoring Active' : 'Monitoring Disabled'}
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleMonitoringToggle}
+                      disabled={monitoringLoading}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-ui font-semibold uppercase tracking-wider transition-all ${
+                        monitoringEnabled
+                          ? 'bg-chroma-gold/20 text-chroma-gold border border-chroma-gold/30 hover:bg-chroma-gold/30'
+                          : 'bg-chroma-teal/20 text-chroma-teal border border-chroma-teal/30 hover:bg-chroma-teal/30'
+                      } disabled:opacity-50`}
+                    >
+                      {monitoringLoading ? '...' : monitoringEnabled ? 'Disable' : 'Enable'}
+                    </button>
+                  </div>
+
+                  {/* Interval Selector */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-ui uppercase tracking-wider text-chroma-muted">Check Interval</span>
+                    <select
+                      value={monitoringInterval}
+                      onChange={(e) => setMonitoringInterval(Number(e.target.value))}
+                      className="px-3 py-1 bg-chroma-black/60 border border-chroma-teal/20 rounded-lg text-sm font-mono text-white focus:outline-none focus:border-chroma-teal/50"
+                    >
+                      <option value={5}>5 min</option>
+                      <option value={10}>10 min</option>
+                      <option value={15}>15 min</option>
+                      <option value={30}>30 min</option>
+                      <option value={60}>1 hour</option>
+                    </select>
+                  </div>
+
+                  {/* Platform Checkboxes */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-ui uppercase tracking-wider text-chroma-muted">Platforms</span>
+                    <div className="flex gap-3 flex-wrap">
+                      {['twitter', 'linkedin', 'youtube', 'facebook'].map(platform => (
+                        <label key={platform} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={monitoringPlatforms.includes(platform)}
+                            onChange={() => handlePlatformToggle(platform)}
+                            className="w-3.5 h-3.5 rounded border-chroma-teal/30 bg-chroma-black/40 text-chroma-teal focus:ring-chroma-teal/30"
+                          />
+                          <span className="text-xs font-ui text-chroma-muted capitalize">{platform}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 </div>
 

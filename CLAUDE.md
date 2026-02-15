@@ -7,7 +7,19 @@
 
 ---
 
-## Recent Changes (v1.21.0 — 2026-02-15)
+## Recent Changes (v1.22.0 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Added: Social Media Monitoring — always-on background monitoring for comments/mentions with auto-reply, configurable via Settings or AI chat | `electron/main.ts`, `electron/preload.ts`, `src/vite-env.d.ts` |
+| Added: Settings UI — Social Monitoring section with enable/disable toggle, interval selector (5/10/15/30/60 min), platform checkboxes (Twitter, LinkedIn, YouTube, Facebook) | `src/components/SettingsModal.tsx` |
+| Added: TitleBar monitoring indicator — gold pulsing LED + "MON" label when monitoring is active | `src/components/TitleBar.tsx` |
+| Added: `GET /monitoring/idle-status` endpoint — Brain checks user idle time before monitoring cycles | `electron/main.ts` |
+| Added: User activity tracking — `/chat/send` updates lastUserActivity timestamp for idle detection | `electron/main.ts` |
+| Added: 4 IPC handlers — monitoring:getStatus, monitoring:toggle, monitoring:getLog + onMonitoringStatus event | `electron/main.ts`, `electron/preload.ts` |
+| Updated: Brain dist v1.8.0 — SocialMonitor, monitoring tools, DB migration v3, REST endpoints | `resources/brain/dist/` |
+
+## Changes (v1.21.0 — 2026-02-15)
 
 | Change | File |
 |--------|------|
