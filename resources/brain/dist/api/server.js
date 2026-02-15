@@ -3853,6 +3853,32 @@ app.post('/api/client-context/media/:id/primary', (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+app.get('/api/client-context/media/file/:id', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const assets = storage.getMediaAssets(clientId);
+        const asset = assets.find((a) => a.id === req.params.id);
+        if (!asset) {
+            res.status(404).json({ success: false, error: 'Asset not found' });
+            return;
+        }
+        if (!fs.existsSync(asset.storedPath)) {
+            res.status(404).json({ success: false, error: 'File not found on disk' });
+            return;
+        }
+        res.setHeader('Content-Type', asset.mimeType);
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        fs.createReadStream(asset.storedPath).pipe(res);
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // --- Strategy ---
 app.post('/api/client-context/strategy/generate', async (req, res) => {
     try {

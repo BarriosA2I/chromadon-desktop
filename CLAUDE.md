@@ -7,7 +7,17 @@
 
 ---
 
-## Recent Changes (v1.25.3 — 2026-02-15)
+## Recent Changes (v1.25.4 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Added: Brand Assets thumbnail previews — images and videos now show actual visual thumbnails in a responsive grid layout instead of emoji icons | `src/components/documents/MediaAssetCard.tsx`, `src/components/documents/BrandAssets.tsx` |
+| Added: Video play icon overlay on video thumbnails | `src/components/documents/MediaAssetCard.tsx` |
+| Added: Primary Logo badge overlaid on thumbnail (gold, top-left) | `src/components/documents/MediaAssetCard.tsx` |
+| Added: Hover overlay with Set Logo / Delete actions on thumbnails | `src/components/documents/MediaAssetCard.tsx` |
+| Updated: Brain dist v1.10.4 — `GET /api/client-context/media/file/:id` endpoint for serving media files | `resources/brain/dist/` |
+
+## Changes (v1.25.3 — 2026-02-15)
 
 | Change | File |
 |--------|------|

@@ -91,31 +91,35 @@ export default function BrandAssets({ clientId }: Props) {
 
         {/* Images */}
         {imageAssets.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-[10px] uppercase tracking-wider text-white/30">Images ({imageAssets.length})</div>
-            {imageAssets.map(asset => (
-              <MediaAssetCard
-                key={asset.id}
-                asset={asset}
-                onDelete={handleDelete}
-                onSetPrimary={handleSetPrimary}
-              />
-            ))}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-white/30 mb-2">Images ({imageAssets.length})</div>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+              {imageAssets.map(asset => (
+                <MediaAssetCard
+                  key={asset.id}
+                  asset={asset}
+                  onDelete={handleDelete}
+                  onSetPrimary={handleSetPrimary}
+                />
+              ))}
+            </div>
           </div>
         )}
 
         {/* Videos */}
         {videoAssets.length > 0 && (
-          <div className="space-y-2">
-            <div className="text-[10px] uppercase tracking-wider text-white/30">Videos ({videoAssets.length})</div>
-            {videoAssets.map(asset => (
-              <MediaAssetCard
-                key={asset.id}
-                asset={asset}
-                onDelete={handleDelete}
-                onSetPrimary={handleSetPrimary}
-              />
-            ))}
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-white/30 mb-2">Videos ({videoAssets.length})</div>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+              {videoAssets.map(asset => (
+                <MediaAssetCard
+                  key={asset.id}
+                  asset={asset}
+                  onDelete={handleDelete}
+                  onSetPrimary={handleSetPrimary}
+                />
+              ))}
+            </div>
           </div>
         )}
 
