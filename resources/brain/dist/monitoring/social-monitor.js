@@ -164,7 +164,9 @@ class SocialMonitor {
         try {
             const { context, pageContext } = await this.contextFactory();
             // Use undefined sessionId = fresh session (no interference with user chat)
-            await this.orchestrator.chat(undefined, prompt, writer, context, pageContext);
+            await this.orchestrator.chat(undefined, prompt, writer, context, pageContext, {
+                systemPromptOverride: 'You are a background monitoring agent for CHROMADON. Follow the user instructions precisely. Use the browser tools available to you. Be silent — do not greet or ask questions. Output only the JSON result described in the instructions.',
+            });
             const responseText = writer.getText();
             this.parseAndLog(platform, responseText);
         }

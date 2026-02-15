@@ -22,6 +22,15 @@ const PLATFORM_URLS = {
     pinterest: 'https://www.pinterest.com',
     google: 'https://www.google.com',
 };
+function getPlatformDomain(platform) {
+    const url = PLATFORM_URLS[platform];
+    try {
+        return new URL(url).hostname.replace('www.', '');
+    }
+    catch {
+        return platform + '.com';
+    }
+}
 // ============================================================================
 // PLATFORM-SPECIFIC ACTION PROMPTS
 // ============================================================================
@@ -95,8 +104,13 @@ function generateSocialPrompt(ctx) {
     const actionTemplate = PLATFORM_ACTIONS[ctx.platform]?.[ctx.action];
     // Build the base instruction
     let prompt = '';
-    // Pre-check instruction
-    prompt += `IMPORTANT: First, use get_page_context to check the current page. If you are not already on ${platformUrl}, navigate there first. If the page shows a login screen or "Sign in" prompt, report "AUTH_WALL:${ctx.platform}" — the system will attempt automatic session restore. If session restore fails and you still see a login page, STOP and report that the user is not authenticated on ${ctx.platform}.\n\n`;
+    // Pre-check instruction — tab-aware (reuse existing authenticated tabs)
+    const domain = getPlatformDomain(ctx.platform);
+    prompt += `IMPORTANT: First, call list_tabs() to see all open browser tabs. Look for a tab whose URL contains "${domain}".
+- If you find a matching tab: call switch_tab with that tab's ID to switch to it.
+- If NO matching tab exists: call navigate to go to ${platformUrl}.
+Do NOT create a new tab if one already exists for this platform.
+If the page shows a login screen or "Sign in" prompt, report "AUTH_WALL:${ctx.platform}" — the system will attempt automatic session restore. If session restore fails and you still see a login page, STOP and report that the user is not authenticated on ${ctx.platform}.\n\n`;
     if (ctx.action === 'custom' && ctx.customInstructions) {
         prompt += `TASK: ${ctx.customInstructions}\n`;
         prompt += `Platform: ${ctx.platform} (${platformUrl})\n`;

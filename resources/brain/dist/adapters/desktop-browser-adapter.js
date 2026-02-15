@@ -26,6 +26,32 @@ class DesktopBrowserAdapter {
         }
     }
     /**
+     * List all open browser tabs
+     */
+    async listTabs() {
+        const response = await fetch(`${this.baseUrl}/tabs`);
+        const data = await response.json();
+        return data.tabs;
+    }
+    /**
+     * Switch to a specific tab by ID
+     */
+    async switchTab(tabId) {
+        await fetch(`${this.baseUrl}/tabs/focus`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: tabId }),
+        });
+        this.activeTabId = tabId;
+    }
+    /**
+     * Find a tab whose URL contains the given domain
+     */
+    async findTabByDomain(domain) {
+        const tabs = await this.listTabs();
+        return tabs.find(t => t.url.includes(domain)) || null;
+    }
+    /**
      * Get or create active tab ID
      */
     async getActiveTabId() {

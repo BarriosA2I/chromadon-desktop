@@ -4559,6 +4559,7 @@ async function checkScheduledTasks(): Promise<void> {
     task.status = 'queued'
 
     // Auto-execute via AI assistant chat (same path clients use)
+    log(`[Scheduler] Executing task ${task.id}: ${task.platform} — ${task.action} — "${(task.content || '').slice(0, 50)}..."`)
     try {
       const chatPrompt = `Execute this scheduled social media task NOW:\nPlatform: ${task.platform}\nAction: ${task.action}\nContent: ${task.content}${task.hashtags?.length ? `\nHashtags: ${task.hashtags.join(' ')}` : ''}${task.mediaUrls?.length ? `\nMedia files: ${task.mediaUrls.join(', ')}` : ''}${task.targetUrl ? `\nTarget URL: ${task.targetUrl}` : ''}`
 

@@ -60,7 +60,9 @@ export declare class AgenticOrchestrator {
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
      */
-    chat(sessionId: string | undefined, userMessage: string, writer: SSEWriter, context: ExecutionContext, pageContext?: PageContext): Promise<void>;
+    chat(sessionId: string | undefined, userMessage: string, writer: SSEWriter, context: ExecutionContext, pageContext?: PageContext, options?: {
+        systemPromptOverride?: string;
+    }): Promise<void>;
     getSession(sessionId: string): OrchestratorSession | undefined;
     clearSession(sessionId: string): boolean;
     getSessionCount(): number;

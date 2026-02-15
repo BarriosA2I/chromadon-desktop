@@ -55,6 +55,12 @@ interface CDPController {
     refresh(): Promise<void>;
     send(method: string, params?: any): Promise<any>;
 }
+interface TabInfo {
+    id: number;
+    url: string;
+    title: string;
+    isActive: boolean;
+}
 export declare class DesktopBrowserAdapter implements CDPController {
     private baseUrl;
     private activeTabId;
@@ -63,6 +69,18 @@ export declare class DesktopBrowserAdapter implements CDPController {
      * Health check - verify Desktop is running
      */
     healthCheck(): Promise<boolean>;
+    /**
+     * List all open browser tabs
+     */
+    listTabs(): Promise<TabInfo[]>;
+    /**
+     * Switch to a specific tab by ID
+     */
+    switchTab(tabId: number): Promise<void>;
+    /**
+     * Find a tab whose URL contains the given domain
+     */
+    findTabByDomain(domain: string): Promise<TabInfo | null>;
     /**
      * Get or create active tab ID
      */

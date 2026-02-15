@@ -94,7 +94,7 @@ class AgenticOrchestrator {
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
      */
-    async chat(sessionId, userMessage, writer, context, pageContext) {
+    async chat(sessionId, userMessage, writer, context, pageContext, options) {
         // 1. Session management
         let session;
         if (sessionId && this.sessions.has(sessionId)) {
@@ -183,10 +183,12 @@ class AgenticOrchestrator {
                     : userMessage;
                 const modelTier = this.useGemini ? (0, cost_router_1.selectModelForTask)(lastUserMsg, lastExecutedToolName) : null;
                 const selectedModel = modelTier ? (0, cost_router_1.resolveModel)(modelTier) : currentModel;
-                // Select system prompt: compact for FAST tier, full for everything else
-                const effectiveSystemPrompt = (modelTier && (0, cost_router_1.shouldUseCompactPrompt)(modelTier))
-                    ? (0, orchestrator_system_prompt_1.buildCompactSystemPrompt)()
-                    : finalSystemPrompt;
+                // Select system prompt: override if provided, compact for FAST tier, full for everything else
+                const effectiveSystemPrompt = options?.systemPromptOverride
+                    ? options.systemPromptOverride
+                    : (modelTier && (0, cost_router_1.shouldUseCompactPrompt)(modelTier))
+                        ? (0, orchestrator_system_prompt_1.buildCompactSystemPrompt)()
+                        : finalSystemPrompt;
                 let stream;
                 if (this.useGemini && this.geminiProvider) {
                     try {

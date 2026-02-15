@@ -270,7 +270,7 @@ export interface ContentRequest {
     includeEmoji?: boolean;
     includeCallToAction?: boolean;
 }
-export type ContentType = 'business_description' | 'profile_bio' | 'social_post' | 'product_description' | 'review_response' | 'email' | 'tagline';
+export type ContentType = 'business_description' | 'profile_bio' | 'social_post' | 'product_description' | 'review_response' | 'email' | 'tagline' | 'comment' | 'reply' | 'direct_message';
 export type ContentTone = 'professional' | 'friendly' | 'casual' | 'luxury' | 'playful' | 'authoritative' | 'empathetic';
 export interface AgentError {
     type: ErrorType;

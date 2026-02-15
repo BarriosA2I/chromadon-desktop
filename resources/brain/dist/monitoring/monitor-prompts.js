@@ -63,6 +63,13 @@ For each new comment or mention (max 5 per cycle):
 4. Type your reply in the text input that appears
 5. Click the Post/Send/Submit button
 
+When composing a reply:
+- Keep it brief (1-2 sentences max)
+- Be professional and helpful
+- Match the brand voice (friendly, knowledgeable, not salesy)
+- Acknowledge what the person said before responding
+- Never be argumentative or defensive
+
 ${platformInstructions}
 
 == SAFETY RULES (MANDATORY) ==

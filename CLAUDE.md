@@ -7,7 +7,20 @@
 
 ---
 
-## Recent Changes (v1.23.1 — 2026-02-15)
+## Recent Changes (v1.23.2 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Scheduled posts never execute — social prompts now use `list_tabs` + `switch_tab` to find client's existing authenticated tabs instead of navigating to fresh URLs that hit login walls | Brain `src/core/social-prompts.ts` |
+| Fixed: CRITICAL — Tab duplication — social prompts and monitoring no longer open new tabs when platform tab already exists | Brain `src/core/social-prompts.ts` |
+| Fixed: CRITICAL — Monitoring scrolls aimlessly — monitoring now uses focused 2-sentence system prompt via `systemPromptOverride` instead of 40KB prompt that drowns instructions | Brain `src/core/agentic-orchestrator.ts`, `src/monitoring/social-monitor.ts` |
+| Added: Scheduler dispatch logging — task ID, platform, action logged before and after dispatch | `electron/main.ts` |
+| Added: TheContentGenerator new methods — `generateComment()`, `generateReply()`, `generateMessage()` for agent-composed social replies | Brain `src/agents/tier2-execution.ts` |
+| Changed: TheContentGenerator switched from Anthropic to Gemini 2.5 Flash (90%+ cost reduction) | Brain `src/agents/tier2-execution.ts` |
+| Added: DesktopBrowserAdapter tab management — `listTabs()`, `switchTab()`, `findTabByDomain()` | Brain `src/adapters/desktop-browser-adapter.ts` |
+| Updated: Brain dist v1.8.3 — tab-aware posting, monitoring override, agent content generation | `resources/brain/dist/` |
+
+## Changes (v1.23.1 — 2026-02-15)
 
 | Change | File |
 |--------|------|
