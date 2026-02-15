@@ -97,6 +97,8 @@ function selectModelForTask(userMessage, lastToolName) {
         // Client Context tools — result presentation only
         'client_search_knowledge', 'client_get_info', 'client_update_info',
         'client_get_media',
+        // Trinity Research tools — result presentation only
+        'research_website', 'client_add_knowledge',
     ].includes(lastToolName)) {
         return ModelTier.FAST;
     }

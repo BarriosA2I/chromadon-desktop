@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.6 — 2026-02-15)
+## Recent Changes (v1.25.7 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Added: Brain v1.10.7 — Trinity Research tools: AI assistant can now research any website and save content to client knowledge vault for permanent RAG retrieval. "Learn barriosa2i.com" crawls full site and saves real pricing/services. | `resources/brain/dist/` |
+
+## Changes (v1.25.6 — 2026-02-15)
 
 | Change | File |
 |--------|------|

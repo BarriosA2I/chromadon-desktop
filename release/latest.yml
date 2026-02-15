@@ -1,8 +1,8 @@
-version: 1.25.3
+version: 1.25.7
 files:
-  - url: CHROMADON-Setup-1.25.3.exe
-    sha512: Fis/lQuQVpnX21lD/pums8kmZVJryeCX8GzVvmG5h1vps+5IDAq4cM0yVbmncd82sHeDGG3VoSlpdSBD5G9RQA==
-    size: 168339415
-path: CHROMADON-Setup-1.25.3.exe
-sha512: Fis/lQuQVpnX21lD/pums8kmZVJryeCX8GzVvmG5h1vps+5IDAq4cM0yVbmncd82sHeDGG3VoSlpdSBD5G9RQA==
-releaseDate: '2026-02-15T11:30:11.673Z'
+  - url: CHROMADON-Setup-1.25.7.exe
+    sha512: Dxat4IUCmLnJCse5rLoSbXRaPmXoLMQcupjtHM36NlPV8FHMj3HpbxeShS99woTpgQ2JBeFApz6yGdOW97FDMg==
+    size: 168353328
+path: CHROMADON-Setup-1.25.7.exe
+sha512: Dxat4IUCmLnJCse5rLoSbXRaPmXoLMQcupjtHM36NlPV8FHMj3HpbxeShS99woTpgQ2JBeFApz6yGdOW97FDMg==
+releaseDate: '2026-02-15T12:57:02.981Z'

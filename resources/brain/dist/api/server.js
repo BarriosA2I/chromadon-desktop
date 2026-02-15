@@ -77,6 +77,8 @@ const obs_1 = require("../obs");
 const monitoring_1 = require("../monitoring");
 // THE_SCHEDULER imports
 const scheduler_1 = require("../scheduler");
+// Trinity Research imports
+const trinity_1 = require("../trinity");
 // Circuit Breaker for Desktop API calls
 const circuit_breaker_1 = require("../core/circuit-breaker");
 // 27-Agent System imports (runtime load to avoid type conflicts)
@@ -4118,7 +4120,11 @@ async function startServer() {
             catch (err) {
                 console.log(`[CHROMADON] ⚠️ OBS init failed (non-critical): ${err.message}`);
             }
-            // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS + monitoring + scheduler
+            // Trinity Research executor
+            const trinityExec = (clientStorage && knowledgeVault)
+                ? (0, trinity_1.createTrinityExecutor)(clientStorage, knowledgeVault)
+                : null;
+            // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS + monitoring + scheduler + trinity
             // Filter out schedule_post and get_scheduled_posts from MARKETING_TOOLS — scheduler replaces them
             const schedulerReplacedTools = new Set(['schedule_post', 'get_scheduled_posts']);
             const filteredMarketingTools = marketing_tools_1.MARKETING_TOOLS.filter(t => !schedulerReplacedTools.has(t.name));
@@ -4131,6 +4137,7 @@ async function startServer() {
                 ...(obsExec ? obs_1.OBS_TOOLS : []),
                 ...monitoring_1.MONITORING_TOOLS,
                 ...scheduler_1.SCHEDULER_TOOLS,
+                ...(trinityExec ? trinity_1.TRINITY_TOOLS : []),
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
@@ -4153,6 +4160,8 @@ async function startServer() {
                     const monitoringExec = (0, monitoring_1.createMonitoringExecutor)(socialMonitor, analyticsDb);
                     return monitoringExec(toolName, input);
                 }
+                if (trinity_1.TRINITY_TOOL_NAMES.has(toolName) && trinityExec)
+                    return trinityExec(toolName, input);
                 if (clientContextExec?.canHandle(toolName))
                     return clientContextExec.execute(toolName, input);
                 if (skillExec && skillToolNames.has(toolName))
@@ -4198,6 +4207,8 @@ async function startServer() {
             console.log(`[CHROMADON]    - ${scheduler_1.SCHEDULER_TOOLS.length} Scheduler tools registered`);
             if (obsExec)
                 console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
+            if (trinityExec)
+                console.log(`[CHROMADON]    - ${trinity_1.TRINITY_TOOLS.length} Trinity Research tools registered`);
             // Initialize Social Overlord (queue execution engine)
             try {
                 socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);

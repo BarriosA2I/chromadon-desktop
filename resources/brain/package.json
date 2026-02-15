@@ -1,6 +1,6 @@
 {
   "name": "chromadon-brain",
-  "version": "1.10.6",
+  "version": "1.10.7",
   "description": "CHROMADON Autonomous Brain - Mission-based browser automation with self-healing",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -76,6 +76,7 @@
     "@opentelemetry/sdk-node": "^0.45.0",
     "@opentelemetry/semantic-conventions": "^1.18.0",
     "better-sqlite3": "^12.6.2",
+    "chrono-node": "^2.9.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
