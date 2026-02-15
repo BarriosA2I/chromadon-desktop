@@ -9,5 +9,5 @@
  */
 import { TheScheduler } from './the-scheduler';
 export type SchedulerExecutor = (toolName: string, input: Record<string, any>) => Promise<string>;
-export declare function createSchedulerExecutor(scheduler: TheScheduler): SchedulerExecutor;
+export declare function createSchedulerExecutor(scheduler: TheScheduler, getAuthenticatedPlatforms?: () => Promise<string[]>): SchedulerExecutor;
 //# sourceMappingURL=scheduler-executor.d.ts.map

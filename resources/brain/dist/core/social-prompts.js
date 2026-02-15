@@ -36,7 +36,10 @@ function getPlatformDomain(platform) {
 // ============================================================================
 const PLATFORM_ACTIONS = {
     twitter: {
-        post: `Navigate to x.com. Click the compose/post button (look for "Post" or the feather/quill icon in the sidebar, or the compose area). Type the provided content into the tweet composer. If hashtags are provided, append them at the end with spaces. Click the "Post" button to publish. After posting, verify the tweet appeared by checking for a success indicator or navigating to your profile.`,
+        post: `Navigate to x.com. Click the compose/post button (look for "Post" or the feather/quill icon in the sidebar, or the compose area).
+If media needs uploading: Click the image/media icon (mountain/photo icon) in the composer toolbar FIRST. Call upload_file with the media file path. Wait for the image preview to appear in the composer.
+Then type the provided content into the tweet composer. If hashtags are provided, append them at the end with spaces.
+Click the "Post" button to publish. After posting, verify the tweet appeared by checking for a success indicator or navigating to your profile.`,
         comment: `Navigate to the target URL. Find the reply/comment area below the tweet. Click on it and type the provided content. Click "Reply" to submit. Verify the reply appeared.`,
         like: `Navigate to the target URL. Find and click the heart/like button on the tweet. Verify it turned red/filled to confirm the like.`,
         follow: `Navigate to the target URL (user profile). Find and click the "Follow" button. Verify it changed to "Following".`,
@@ -45,7 +48,16 @@ const PLATFORM_ACTIONS = {
         scrape: `Navigate to the target URL. Extract all visible content including text, engagement metrics (likes, retweets, replies), timestamps, and author information. Scroll down to capture more content if needed.`,
     },
     linkedin: {
-        post: `Navigate to linkedin.com. Click "Start a post" in the share box at the top of the feed. Type the provided content into the post editor. If hashtags are provided, append them at the end. Click the "Post" button to publish. Verify the post appeared in your feed.`,
+        post: `Navigate to linkedin.com. Click "Start a post" in the share box at the top of the feed to open the post composer modal.
+If media needs uploading:
+  1. In the composer modal, look for the image/photo icon (mountain/landscape icon) in the toolbar at the bottom.
+  2. Click the image icon to open the file upload dialog.
+  3. Call upload_file with the media file path.
+  4. Wait for the image/video preview to appear in the composer.
+  5. If a "Next" or "Done" button appears, click it.
+Type the provided content into the post editor text area. If hashtags are provided, append them at the end with spaces.
+Click the blue "Post" button to publish.
+After posting, take a screenshot to verify. If the composer closed or you see the post in the feed, it succeeded.`,
         comment: `Navigate to the target URL. Scroll to find the comment section. Click the comment input area. Type the provided content. Press Enter or click Post to submit. Verify the comment appeared.`,
         like: `Navigate to the target URL. Find and click the "Like" button (thumbs up icon). Verify it shows as liked.`,
         follow: `Navigate to the target URL (user or company profile). Click "Follow" or "Connect". If connecting, add a note if content is provided. Verify the action completed.`,
@@ -54,7 +66,16 @@ const PLATFORM_ACTIONS = {
         scrape: `Navigate to the target URL. Extract all visible content including post text, engagement (reactions, comments, reposts), author info, and timestamps.`,
     },
     instagram: {
-        post: `This platform requires mobile or the Instagram web creator tools. Navigate to instagram.com. Look for the Create/New Post option (+ icon). If available, upload content and add a caption with the provided text and hashtags.`,
+        post: `Navigate to instagram.com. Look for the Create/New Post button (+ icon in the sidebar or top navigation).
+Click the Create/New Post button to open the post creation flow.
+If media needs uploading:
+  1. The first screen should prompt for photo/video selection. Click "Select from computer" or the upload area.
+  2. Call upload_file with the media file path.
+  3. Wait for the image/video to load in the preview.
+  4. Click "Next" to proceed to filters/editing. Click "Next" again to reach the caption screen.
+Type the caption with the provided content. If hashtags are provided, append them at the end.
+Click "Share" to publish the post.
+Take a screenshot to verify the post was published successfully.`,
         comment: `Navigate to the target URL. Find the comment input field. Type the provided content. Press Enter or click Post to submit.`,
         like: `Navigate to the target URL. Find and click the heart/like button on the post. Verify it turned red.`,
         follow: `Navigate to the target URL (user profile). Click the "Follow" button. Verify it changed to "Following".`,
@@ -63,7 +84,16 @@ const PLATFORM_ACTIONS = {
         scrape: `Navigate to the target URL. Extract visible content including post images/descriptions, likes, comments, and author info.`,
     },
     facebook: {
-        post: `Navigate to facebook.com. Find the "What's on your mind?" composer. Click it. Type the provided content. Click "Post" to publish. Verify it appeared in your feed.`,
+        post: `Navigate to facebook.com. Find the "What's on your mind?" composer area and click on it to open the post creation dialog.
+If media needs uploading:
+  1. In the composer dialog, look for the "Photo/video" option (green camera/photo icon) — it may be in the toolbar at the bottom of the composer or as a button inside the dialog.
+  2. Click the "Photo/video" button to open the file picker.
+  3. Call upload_file with the media file path.
+  4. Wait for the upload preview (image thumbnail or video) to appear inside the composer.
+  5. If a "Next" or "Done" button appears after uploading, click it to proceed back to the text composer.
+Now type the post content into the "What's on your mind?" text area. If hashtags are provided, append them at the end.
+Click the blue "Post" button at the bottom of the composer dialog to publish.
+IMPORTANT: After clicking "Post", wait 3-5 seconds. Take a screenshot to verify the post was published. If you see the post in the feed, the composer has closed, or you see a success notification, the post is DONE. Do NOT attempt to post again.`,
         comment: `Navigate to the target URL. Find the comment input. Type the provided content. Press Enter to submit.`,
         like: `Navigate to the target URL. Find and click the "Like" button. Verify it shows as liked.`,
         follow: `Navigate to the target URL. Click "Follow" or "Add Friend" depending on the profile type.`,

@@ -4088,7 +4088,19 @@ async function startServer() {
             // Initialize THE_SCHEDULER (Agent 0.2) — zero-cost when idle
             try {
                 theScheduler = new scheduler_1.TheScheduler(orchestrator, buildExecutionContext, CHROMADON_DESKTOP_URL, socialMonitor || undefined);
-                schedulerExec = (0, scheduler_1.createSchedulerExecutor)(theScheduler);
+                schedulerExec = (0, scheduler_1.createSchedulerExecutor)(theScheduler, desktopAvailable ? async () => {
+                    try {
+                        const resp = await fetch(`${CHROMADON_DESKTOP_URL}/sessions`, { signal: AbortSignal.timeout(2000) });
+                        const data = await resp.json();
+                        const sessions = data.sessions || [];
+                        return sessions
+                            .filter((s) => s.isAuthenticated && s.platform !== 'google')
+                            .map((s) => s.platform.toLowerCase());
+                    }
+                    catch {
+                        return [];
+                    }
+                } : undefined);
                 theScheduler.start();
                 const status = theScheduler.getStatus();
                 console.log(`[CHROMADON] ✅ TheScheduler initialized + STARTED (${status.pendingCount} pending task(s))`);

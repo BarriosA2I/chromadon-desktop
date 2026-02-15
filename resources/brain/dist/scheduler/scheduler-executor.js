@@ -72,7 +72,7 @@ function toEST(d) {
     const time = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
     return `${days[est.getUTCDay()]} ${months[est.getUTCMonth()]} ${est.getUTCDate()} at ${time} EST`;
 }
-function createSchedulerExecutor(scheduler) {
+function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms) {
     return async (toolName, input) => {
         switch (toolName) {
             // ==================================================================
@@ -97,8 +97,20 @@ function createSchedulerExecutor(scheduler) {
             // SOCIAL POST ALIAS (backward compat)
             // ==================================================================
             case 'schedule_post': {
-                const { platforms, content, hashtags, scheduled_time, recurrence, topic } = input;
+                let { platforms, content, hashtags, scheduled_time, recurrence, topic } = input;
                 const media_urls = input.media_urls;
+                // Filter out unauthenticated platforms (AI may include platforms not in linked list)
+                if (getAuthenticatedPlatforms && platforms?.length) {
+                    try {
+                        const authed = await getAuthenticatedPlatforms();
+                        if (authed.length > 0) {
+                            const filtered = platforms.filter((p) => authed.includes(p.toLowerCase()));
+                            if (filtered.length > 0)
+                                platforms = filtered;
+                        }
+                    }
+                    catch { /* fallback to all platforms if check fails */ }
+                }
                 // CHROMADON auto-media: detect if this is a CHROMADON/Barrios post and auto-attach assets
                 const CHROMADON_VIDEO = 'G:\\My Drive\\Logo\\Barrios a2i new website\\Chromadon\\Logo first video.mp4';
                 const CHROMADON_IMAGE = 'G:\\My Drive\\Logo\\Barrios a2i new website\\Chromadon\\Chromadon Logo.jfif';
@@ -137,7 +149,10 @@ function createSchedulerExecutor(scheduler) {
                         const hashtagStr = hashtags?.length
                             ? hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ')
                             : autoHashtags;
-                        const platformGenInstruction = `Generate an engaging ${platform} post about: ${topicStr}. Then post it to ${platform}.${hashtagStr ? ' Include hashtags: ' + hashtagStr : ''}${isChromadonPost ? ' Include link: barriosa2i.com' : ''}${platformMedia.length ? ' Attach media: ' + platformMedia.join(', ') : ''}`;
+                        const mediaInstruction = platformMedia.length
+                            ? ` MEDIA UPLOAD: Before typing any post content, you MUST upload media first. Click the platform's photo/media/image upload button, then call upload_file with filePath="${platformMedia[0]}". Wait for the upload preview to appear in the composer, then type the post content.`
+                            : '';
+                        const platformGenInstruction = `Generate an engaging ${platform} post about: ${topicStr}. Then post it to ${platform}.${hashtagStr ? ' Include hashtags: ' + hashtagStr : ''}${isChromadonPost ? ' Include link: barriosa2i.com' : ''}${mediaInstruction}`;
                         const taskId = scheduler.addTask({
                             instruction: platformGenInstruction,
                             taskType: 'social_post',
@@ -160,8 +175,7 @@ function createSchedulerExecutor(scheduler) {
                 let instruction = `Post to ${platformList}: ${content}`;
                 if (hashtags?.length)
                     instruction += ` ${hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ')}`;
-                if (media_urls?.length)
-                    instruction += `. Attach media: ${media_urls.join(', ')}`;
+                // Note: media upload instructions are added per-platform via mediaUploadNote below
                 const scheduledTimeUtc = parseTime(scheduled_time);
                 const isImmediate = !scheduled_time || scheduled_time === 'null';
                 const batchId = platforms.length > 1
@@ -172,9 +186,12 @@ function createSchedulerExecutor(scheduler) {
                 for (let i = 0; i < platforms.length; i++) {
                     const platform = platforms[i];
                     const platformMedia = getMediaForPlatform(platform, media_urls);
+                    const mediaUploadNote = platformMedia.length
+                        ? `. MEDIA UPLOAD: Before typing text, click the photo/media button, then call upload_file with filePath="${platformMedia[0]}". Wait for upload preview, then type content.`
+                        : '';
                     const platformInstruction = platforms.length > 1
-                        ? `Post to ${platform}: ${content}${hashtags?.length ? ' ' + hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ') : ''}${platformMedia.length ? '. Attach media: ' + platformMedia.join(', ') : ''}`
-                        : (platformMedia.length && !media_urls?.length ? instruction + `. Attach media: ${platformMedia.join(', ')}` : instruction);
+                        ? `Post to ${platform}: ${content}${hashtags?.length ? ' ' + hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ') : ''}${mediaUploadNote}`
+                        : `${instruction}${mediaUploadNote}`;
                     const taskId = scheduler.addTask({
                         instruction: platformInstruction,
                         taskType: 'social_post',

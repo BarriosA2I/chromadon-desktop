@@ -7,7 +7,16 @@
 
 ---
 
-## Recent Changes (v1.25.0 — 2026-02-15)
+## Recent Changes (v1.25.1 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain v1.10.1 — Scheduled posts now include explicit `upload_file` tool instructions with file paths | `release/win-unpacked/resources/brain/dist/` |
+| Fixed: CRITICAL — Brain TAB MANAGEMENT rule prevents duplicate tabs — AI must list_tabs() before navigating to social media | `release/win-unpacked/resources/brain/dist/` |
+| Fixed: CRITICAL — Facebook posting completes — template now includes media upload, "Next" button, and "Post" button steps | `release/win-unpacked/resources/brain/dist/` |
+| Fixed: LinkedIn + Instagram post templates rewritten with full media upload flows | `release/win-unpacked/resources/brain/dist/` |
+
+## Changes (v1.25.0 — 2026-02-15)
 
 | Change | File |
 |--------|------|
