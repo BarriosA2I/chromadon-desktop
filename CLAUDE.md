@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.24.0 — 2026-02-15)
+## Recent Changes (v1.24.1 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Bundled Brain package.json version was 1.8.2 (stale) — now correctly shows 1.9.0 in health endpoint | `resources/brain/package.json` |
+| Fixed: Fresh Brain dist rebuild ensures all scheduler code is current | `resources/brain/dist/` |
+
+## Changes (v1.24.0 — 2026-02-15)
 
 | Change | File |
 |--------|------|
