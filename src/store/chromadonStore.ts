@@ -333,6 +333,7 @@ export const useChromadonStore = create<ChromadonState>((set) => ({
     audience: {},
     competitors: null,
     schedule: [],
+    trinity: null,
   },
   analyticsLoading: false,
   analyticsError: null,

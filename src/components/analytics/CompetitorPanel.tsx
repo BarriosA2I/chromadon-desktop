@@ -36,6 +36,8 @@ export function CompetitorPanel() {
   })
   const subjects = competitors.comparison.map(c => c.name)
 
+  const trinityInsights = analyticsData.trinity?.competitorInsights || []
+
   return (
     <div className="space-y-5">
       {/* Radar Comparison */}
@@ -120,6 +122,34 @@ export function CompetitorPanel() {
             )
           })}
         </div>
+      </motion.div>
+
+      {/* Trinity Vault Insights */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="relative rounded-xl border border-[#00CED1]/10 bg-[#00CED1]/[0.03] p-4 overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-6 h-[1px] bg-gradient-to-r from-[#00CED1]/40 to-transparent" />
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-1 h-3 rounded-full bg-[#00CED1]" />
+          <h3 className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Vault Research Insights</h3>
+        </div>
+        {trinityInsights.length > 0 ? (
+          <div className="space-y-2">
+            {trinityInsights.slice(0, 3).map((insight, i) => (
+              <div key={i} className="text-[11px] text-gray-400 line-clamp-3 pl-2 border-l border-[#00CED1]/20">
+                {insight.length > 200 ? insight.substring(0, 200) + '...' : insight}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-gray-500 font-mono">
+            Use "research website" in the AI chat to learn competitor sites. Insights will appear here.
+          </p>
+        )}
+        <div className="text-[10px] text-[#00CED1]/40 mt-3 font-mono">Powered by Trinity Intelligence</div>
       </motion.div>
     </div>
   )

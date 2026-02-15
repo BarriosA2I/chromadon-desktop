@@ -141,6 +141,75 @@ export function OverviewPanel() {
           />
         </motion.div>
       )}
+
+      {/* Trinity Market Intelligence */}
+      <TrinityInsightsSection />
     </div>
+  )
+}
+
+function TrinityInsightsSection() {
+  const { analyticsData } = useChromadonStore()
+  const trinity = analyticsData.trinity
+  const hasTrends = trinity?.trends && trinity.trends.length > 0
+  const hasAudience = trinity?.audienceProfile?.usps?.length || trinity?.audienceProfile?.targetAudiences?.length
+
+  if (!hasTrends && !hasAudience) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6 }}
+        className="relative rounded-xl border border-[#00CED1]/10 bg-[#00CED1]/[0.03] p-4 overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-6 h-[1px] bg-gradient-to-r from-[#00CED1]/40 to-transparent" />
+        <SectionHeader title="Market Intelligence" />
+        <p className="text-[11px] text-gray-500 font-mono">
+          Research industry sites in the AI chat to unlock market intelligence.
+          Try: "Learn everything about [competitor-site].com"
+        </p>
+        <div className="text-[10px] text-[#00CED1]/40 mt-2 font-mono">Powered by Trinity Intelligence</div>
+      </motion.div>
+    )
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.6 }}
+      className="relative rounded-xl border border-[#00CED1]/10 bg-[#00CED1]/[0.03] p-4 overflow-hidden"
+    >
+      <div className="absolute top-0 left-0 w-6 h-[1px] bg-gradient-to-r from-[#00CED1]/40 to-transparent" />
+      <SectionHeader title="Market Intelligence" />
+
+      {hasTrends && (
+        <div className="mb-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-[#00CED1]/60 mb-1.5">Trending in Your Industry</div>
+          <div className="space-y-1">
+            {trinity!.trends.slice(0, 3).map((trend, i) => (
+              <div key={i} className="text-[11px] text-gray-400 line-clamp-2 pl-2 border-l border-[#00CED1]/20">
+                {trend.length > 150 ? trend.substring(0, 150) + '...' : trend}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasAudience && trinity?.audienceProfile && (
+        <div>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]/60 mb-1.5">Your Positioning</div>
+          <div className="flex flex-wrap gap-1.5">
+            {trinity.audienceProfile.usps?.slice(0, 4).map((usp, i) => (
+              <span key={i} className="text-[10px] px-2 py-0.5 rounded border border-[#D4AF37]/20 text-[#D4AF37]/70 font-mono">
+                {typeof usp === 'string' ? usp : String(usp)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="text-[10px] text-[#00CED1]/40 mt-3 font-mono">Powered by Trinity Intelligence</div>
+    </motion.div>
   )
 }

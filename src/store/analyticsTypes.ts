@@ -135,6 +135,20 @@ export interface ScheduledPost {
   post_id: number | null
 }
 
+export interface TrinityData {
+  trends: string[]
+  audienceProfile: {
+    industry: string
+    targetAudiences: Array<{ name: string; demographics: string }>
+    brandVoice: { tone: string[]; personality: string[]; formality: string }
+    products: any[]
+    services: any[]
+    usps: string[]
+    vaultInsights: string[]
+  } | null
+  competitorInsights: string[]
+}
+
 export interface AnalyticsState {
   overview: OverviewData | null
   platforms: Record<string, PlatformData>
@@ -142,4 +156,5 @@ export interface AnalyticsState {
   audience: Record<string, AudienceData>
   competitors: CompetitorData | null
   schedule: ScheduledPost[]
+  trinity: TrinityData | null
 }

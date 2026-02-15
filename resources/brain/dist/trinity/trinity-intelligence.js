@@ -25,6 +25,42 @@ class TrinityIntelligence {
         return this.storage.getActiveClientId();
     }
     // =========================================================================
+    // SOURCE FILTERING — Exclude client's own content from market analysis
+    // =========================================================================
+    extractDomain(url) {
+        if (!url)
+            return null;
+        try {
+            return new URL(url.startsWith('http') ? url : `https://${url}`).hostname.replace(/^www\./, '');
+        }
+        catch {
+            return null;
+        }
+    }
+    isClientOwnContent(hit, clientDomain, businessName) {
+        // Check sourceUrl in metadata (new chunks have this)
+        const sourceUrl = hit.chunk.metadata.sourceUrl;
+        if (sourceUrl && clientDomain) {
+            const sourceDomain = this.extractDomain(sourceUrl);
+            if (sourceDomain && sourceDomain === clientDomain)
+                return true;
+        }
+        // Heuristic for legacy chunks without sourceUrl: check if documentFilename contains business name
+        if (!sourceUrl && businessName) {
+            const nameLower = businessName.toLowerCase();
+            const filenameLower = hit.documentFilename.toLowerCase();
+            if (filenameLower.includes(nameLower))
+                return true;
+        }
+        return false;
+    }
+    filterExternalContent(hits, clientId) {
+        const profile = this.storage.getProfile(clientId);
+        const clientDomain = this.extractDomain(profile?.website);
+        const businessName = profile?.businessName || null;
+        return hits.filter(hit => !this.isClientOwnContent(hit, clientDomain, businessName));
+    }
+    // =========================================================================
     // AGENT 1: Competitor Analyst
     // =========================================================================
     async getCompetitorContent(platform, topic) {
@@ -38,8 +74,9 @@ class TrinityIntelligence {
         ];
         const results = [];
         for (const q of queries) {
-            const hits = this.vault.searchKnowledge(clientId, q, 3);
-            for (const hit of hits) {
+            const hits = this.vault.searchKnowledge(clientId, q, 10);
+            const external = this.filterExternalContent(hits, clientId);
+            for (const hit of external) {
                 if (hit.chunk.content && !results.includes(hit.chunk.content)) {
                     results.push(hit.chunk.content);
                 }
@@ -63,10 +100,12 @@ class TrinityIntelligence {
         ];
         const topics = [];
         for (const q of queries) {
-            const hits = this.vault.searchKnowledge(clientId, q, 3);
-            for (const hit of hits) {
-                if (hit.chunk.content)
+            const hits = this.vault.searchKnowledge(clientId, q, 10);
+            const external = this.filterExternalContent(hits, clientId);
+            for (const hit of external) {
+                if (hit.chunk.content && !topics.includes(hit.chunk.content)) {
                     topics.push(hit.chunk.content);
+                }
             }
         }
         return topics.slice(0, 5);
@@ -92,9 +131,10 @@ class TrinityIntelligence {
         const profile = this.storage.getProfile(clientId);
         const personas = this.storage.getPersonas(clientId);
         const voice = this.storage.getVoice(clientId);
-        // Search vault for audience-related content
-        const hits = this.vault.searchKnowledge(clientId, `target audience customers ${platform}`, 3);
-        const vaultInsights = hits.map(h => h.chunk.content).filter(Boolean);
+        // Search vault for audience-related content (external sources only)
+        const hits = this.vault.searchKnowledge(clientId, `target audience customers ${platform}`, 10);
+        const external = this.filterExternalContent(hits, clientId);
+        const vaultInsights = external.map(h => h.chunk.content).filter(Boolean);
         return {
             industry: profile?.industry || 'unknown',
             targetAudiences: personas.map(p => ({ name: p.name, demographics: p.demographics })),

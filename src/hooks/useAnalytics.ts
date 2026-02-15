@@ -54,11 +54,12 @@ export function useAnalytics() {
         axios.get(`${BRAIN_API}/api/analytics/overview`, { params: { days }, signal }),
         axios.get(`${BRAIN_API}/api/analytics/content`, { params: { days }, signal }),
         axios.get(`${BRAIN_API}/api/analytics/competitors`, { signal }),
+        axios.get(`${BRAIN_API}/api/analytics/trinity`, { signal }),
       ])
 
       if (signal.aborted) return
 
-      const [overviewRes, contentRes, competitorsRes] = results
+      const [overviewRes, contentRes, competitorsRes, trinityRes] = results
 
       const update: Record<string, any> = {}
 
@@ -70,6 +71,9 @@ export function useAnalytics() {
       }
       if (competitorsRes.status === 'fulfilled' && competitorsRes.value.data?.success) {
         update.competitors = competitorsRes.value.data.data
+      }
+      if (trinityRes.status === 'fulfilled' && trinityRes.value.data?.success) {
+        update.trinity = trinityRes.value.data.data
       }
 
       // Fetch platform-specific data for selected platforms (or all from overview)

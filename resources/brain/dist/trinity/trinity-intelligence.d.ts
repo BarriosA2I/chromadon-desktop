@@ -20,6 +20,9 @@ export declare class TrinityIntelligence implements TrinityInsights {
     private vault;
     constructor(storage: ClientStorage, vault: KnowledgeVault);
     private getClientId;
+    private extractDomain;
+    private isClientOwnContent;
+    private filterExternalContent;
     getCompetitorContent(platform: SocialPlatform, topic: string): Promise<string[]>;
     getTrendingTopics(platform: SocialPlatform): Promise<string[]>;
     getOptimalPostingTime(platform: SocialPlatform): Promise<string>;

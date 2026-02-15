@@ -203,7 +203,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
                         const tempPath = path.join(docDir, tempFilename);
                         fs.writeFileSync(tempPath, `Source: ${url}\n\n${combinedContent}`, 'utf-8');
                         try {
-                            const result = await vault.uploadDocument(clientId, tempPath, `${vaultTitle}.txt`, 'text/plain');
+                            const result = await vault.uploadDocument(clientId, tempPath, `${vaultTitle}.txt`, 'text/plain', { sourceUrl: url });
                             vaultResult = { document_id: result.document.id, chunks_created: result.chunksCreated };
                             console.log(`[Trinity] Saved to vault: "${vaultTitle}" (${result.chunksCreated} chunks)`);
                         }
@@ -269,7 +269,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
                     : content;
                 fs.writeFileSync(tempPath, fullContent, 'utf-8');
                 try {
-                    const result = await vault.uploadDocument(clientId, tempPath, `${title}.txt`, 'text/plain');
+                    const result = await vault.uploadDocument(clientId, tempPath, `${title}.txt`, 'text/plain', sourceUrl ? { sourceUrl } : undefined);
                     console.log(`[Trinity] Added to knowledge vault: "${title}" (${result.chunksCreated} chunks)`);
                     return JSON.stringify({
                         status: 'success',

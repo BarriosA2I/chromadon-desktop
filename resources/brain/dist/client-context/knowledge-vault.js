@@ -55,7 +55,7 @@ class KnowledgeVault {
     // =========================================================================
     // UPLOAD & INDEX
     // =========================================================================
-    async uploadDocument(clientId, sourcePath, originalFilename, mimeType) {
+    async uploadDocument(clientId, sourcePath, originalFilename, mimeType, options) {
         const startTime = Date.now();
         const docId = (0, uuid_1.v4)();
         const resolvedMime = mimeType || document_processor_1.DocumentProcessor.getMimeType(originalFilename);
@@ -105,6 +105,7 @@ class KnowledgeVault {
                     filename: originalFilename,
                     startChar: tc.startChar,
                     endChar: tc.endChar,
+                    ...(options?.sourceUrl ? { sourceUrl: options.sourceUrl } : {}),
                 },
                 createdAt: new Date().toISOString(),
             }));

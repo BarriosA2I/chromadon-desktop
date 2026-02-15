@@ -15,7 +15,9 @@ export declare class KnowledgeVault {
     private readonly storage;
     private readonly vectorStores;
     constructor(storage: ClientStorage);
-    uploadDocument(clientId: string, sourcePath: string, originalFilename: string, mimeType?: string): Promise<DocumentUploadResult>;
+    uploadDocument(clientId: string, sourcePath: string, originalFilename: string, mimeType?: string, options?: {
+        sourceUrl?: string;
+    }): Promise<DocumentUploadResult>;
     searchKnowledge(clientId: string, query: string, topK?: number): SearchResult[];
     listDocuments(clientId: string): KnowledgeDocument[];
     getDocument(clientId: string, documentId: string): KnowledgeDocument | null;

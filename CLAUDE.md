@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.25.8 — 2026-02-15)
+## Recent Changes (v1.25.9 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain v1.10.9 — `get_trending_topics` and `analyze_competitors` no longer return client's own business content — source filtering excludes client's own domain from market analysis | `resources/brain/dist/` |
+| Added: Trinity Intelligence wired to Analytics Dashboard — Overview shows market trends, Competitors shows vault research insights, Audience shows full audience profile (personas, brand voice, USPs) | `src/components/analytics/OverviewPanel.tsx`, `CompetitorPanel.tsx`, `AudiencePanel.tsx` |
+| Added: `trinityData` field in analytics state — fetched from new Brain endpoint `GET /api/analytics/trinity` | `src/hooks/useAnalytics.ts`, `src/store/analyticsTypes.ts` |
+
+## Changes (v1.25.8 — 2026-02-15)
 
 | Change | File |
 |--------|------|

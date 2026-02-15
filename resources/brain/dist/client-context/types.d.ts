@@ -190,6 +190,7 @@ export interface ChunkMetadata {
     sectionTitle?: string;
     startChar: number;
     endChar: number;
+    sourceUrl?: string;
 }
 export interface SearchResult {
     chunk: DocumentChunk;

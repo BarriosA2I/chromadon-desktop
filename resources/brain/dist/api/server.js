@@ -3440,6 +3440,30 @@ app.post('/api/analytics/collect', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+app.get('/api/analytics/trinity', async (_req, res) => {
+    try {
+        if (!trinityIntelligence) {
+            res.json({ success: true, data: { trends: [], audienceProfile: null, competitorInsights: [] } });
+            return;
+        }
+        const [trends, audience, competitors] = await Promise.allSettled([
+            trinityIntelligence.getTrendingTopics('linkedin'),
+            trinityIntelligence.getAudienceInsights('linkedin'),
+            trinityIntelligence.getCompetitorContent('linkedin', 'competitor'),
+        ]);
+        res.json({
+            success: true,
+            data: {
+                trends: trends.status === 'fulfilled' ? trends.value : [],
+                audienceProfile: audience.status === 'fulfilled' ? audience.value : null,
+                competitorInsights: competitors.status === 'fulfilled' ? competitors.value : [],
+            },
+        });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ============================================================================
 // CLIENT CONTEXT ENDPOINTS
 // ============================================================================

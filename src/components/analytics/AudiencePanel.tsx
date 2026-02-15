@@ -93,6 +93,102 @@ export function AudiencePanel() {
           )}
         </>
       )}
+
+      {/* Trinity Audience Profile */}
+      <TrinityAudienceProfile />
     </div>
+  )
+}
+
+function TrinityAudienceProfile() {
+  const { analyticsData } = useChromadonStore()
+  const profile = analyticsData.trinity?.audienceProfile
+
+  const hasData = profile && (
+    profile.targetAudiences?.length > 0 ||
+    profile.brandVoice?.tone?.length > 0 ||
+    profile.products?.length > 0 ||
+    profile.services?.length > 0
+  )
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.4 }}
+      className="relative rounded-xl border border-[#00CED1]/10 bg-[#00CED1]/[0.03] p-4 overflow-hidden"
+    >
+      <div className="absolute top-0 left-0 w-6 h-[1px] bg-gradient-to-r from-[#00CED1]/40 to-transparent" />
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-1 h-3 rounded-full bg-[#00CED1]" />
+        <h3 className="text-[11px] font-bold uppercase tracking-widest text-gray-400">Audience Profile</h3>
+        {profile?.industry && profile.industry !== 'unknown' && (
+          <span className="text-[10px] text-[#00CED1]/60 font-mono capitalize">{profile.industry}</span>
+        )}
+      </div>
+
+      {!hasData ? (
+        <p className="text-[11px] text-gray-500 font-mono">
+          Complete client onboarding to build your audience profile. Target audiences, brand voice, and positioning will appear here.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {profile!.targetAudiences.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-[#D4AF37]/60 mb-1">Target Audiences</div>
+              <div className="flex flex-wrap gap-1.5">
+                {profile!.targetAudiences.map((a, i) => (
+                  <span key={i} className="text-[10px] px-2 py-0.5 rounded border border-[#D4AF37]/20 text-[#D4AF37]/70 font-mono">
+                    {a.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {profile!.brandVoice?.tone?.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-[#8B5CF6]/60 mb-1">Brand Voice</div>
+              <div className="flex flex-wrap gap-1.5">
+                {profile!.brandVoice.tone.map((t, i) => (
+                  <span key={i} className="text-[10px] px-2 py-0.5 rounded border border-[#8B5CF6]/20 text-[#8B5CF6]/70 font-mono">
+                    {t}
+                  </span>
+                ))}
+                <span className="text-[10px] px-2 py-0.5 rounded border border-white/10 text-gray-500 font-mono capitalize">
+                  {profile!.brandVoice.formality}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {(profile!.products?.length > 0 || profile!.services?.length > 0) && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-[#10B981]/60 mb-1">Products & Services</div>
+              <div className="text-[11px] text-gray-400 font-mono">
+                {[...(profile!.products || []), ...(profile!.services || [])].map(item =>
+                  typeof item === 'string' ? item : (item as any)?.name || String(item)
+                ).join(', ')}
+              </div>
+            </div>
+          )}
+
+          {profile!.usps?.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-[#EF4444]/60 mb-1">Unique Selling Points</div>
+              <div className="space-y-1">
+                {profile!.usps.slice(0, 3).map((usp, i) => (
+                  <div key={i} className="text-[11px] text-gray-400 pl-2 border-l border-[#EF4444]/20">
+                    {typeof usp === 'string' ? usp : String(usp)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="text-[10px] text-[#00CED1]/40 mt-3 font-mono">Powered by Trinity Intelligence</div>
+    </motion.div>
   )
 }
