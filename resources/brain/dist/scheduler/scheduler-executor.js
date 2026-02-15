@@ -97,9 +97,66 @@ function createSchedulerExecutor(scheduler) {
             // SOCIAL POST ALIAS (backward compat)
             // ==================================================================
             case 'schedule_post': {
-                const { platforms, content, hashtags, media_urls, scheduled_time, recurrence } = input;
-                // Build NL instruction from structured fields
-                const platformList = platforms.join(' and ');
+                const { platforms, content, hashtags, scheduled_time, recurrence, topic } = input;
+                const media_urls = input.media_urls;
+                // CHROMADON auto-media: detect if this is a CHROMADON/Barrios post and auto-attach assets
+                const CHROMADON_VIDEO = 'G:\\My Drive\\Logo\\Barrios a2i new website\\Chromadon\\Logo first video.mp4';
+                const CHROMADON_IMAGE = 'G:\\My Drive\\Logo\\Barrios a2i new website\\Chromadon\\Chromadon Logo.jfif';
+                const combinedText = `${content || ''} ${topic || ''}`.toLowerCase();
+                const isChromadonPost = combinedText.includes('chromadon') || combinedText.includes('barrios') || combinedText.includes('a2i');
+                function getMediaForPlatform(platform, userMedia) {
+                    if (userMedia && userMedia.length > 0)
+                        return userMedia;
+                    if (!isChromadonPost)
+                        return [];
+                    const p = platform.toLowerCase();
+                    return (p === 'tiktok' || p === 'youtube') ? [CHROMADON_VIDEO] : [CHROMADON_IMAGE];
+                }
+                const platformList = (platforms || []).join(' and ');
+                // If no content provided, build a generation instruction from topic
+                if (!content && (topic || !content)) {
+                    const topicStr = topic || 'the latest update';
+                    let genInstruction = `Generate an engaging social media post about: ${topicStr}. Then post it to ${platformList}.`;
+                    if (hashtags?.length)
+                        genInstruction += ` Include hashtags: ${hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ')}`;
+                    if (media_urls?.length)
+                        genInstruction += ` Attach media: ${media_urls.join(', ')}`;
+                    const scheduledTimeUtc = parseTime(scheduled_time);
+                    const isImmediate = !scheduled_time || scheduled_time === 'null';
+                    const batchId = platforms.length > 1
+                        ? `batch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+                        : undefined;
+                    const results = [];
+                    for (let i = 0; i < platforms.length; i++) {
+                        const platform = platforms[i];
+                        const platformMedia = getMediaForPlatform(platform, media_urls);
+                        // Auto-include CHROMADON hashtags for CHROMADON-related posts
+                        const autoHashtags = isChromadonPost && (!hashtags || hashtags.length === 0)
+                            ? '#CHROMADON #BarriosA2I #AIAutomation #SocialMediaAI'
+                            : '';
+                        const hashtagStr = hashtags?.length
+                            ? hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ')
+                            : autoHashtags;
+                        const platformGenInstruction = `Generate an engaging ${platform} post about: ${topicStr}. Then post it to ${platform}.${hashtagStr ? ' Include hashtags: ' + hashtagStr : ''}${isChromadonPost ? ' Include link: barriosa2i.com' : ''}${platformMedia.length ? ' Attach media: ' + platformMedia.join(', ') : ''}`;
+                        const taskId = scheduler.addTask({
+                            instruction: platformGenInstruction,
+                            taskType: 'social_post',
+                            scheduledTimeUtc,
+                            recurrence: recurrence || 'none',
+                            platforms: [platform],
+                            mediaUrls: platformMedia.length > 0 ? platformMedia : undefined,
+                            batchId,
+                            batchSequence: i,
+                        });
+                        results.push({ platform, taskId });
+                    }
+                    const timeLabel = isImmediate ? 'now' : toEST(new Date(scheduledTimeUtc));
+                    const hasMedia = isChromadonPost || (media_urls && media_urls.length > 0);
+                    const mediaNote = hasMedia ? ' with CHROMADON media' : '';
+                    const recLabel = recurrence && recurrence !== 'none' ? ` (${recurrence})` : '';
+                    return `${isImmediate ? 'Queued' : 'Scheduled'} ${results.length} post(s) for ${timeLabel} on ${results.map(r => r.platform).join(', ')} about "${topicStr}"${mediaNote}${recLabel}. Content will be generated at execution time.`;
+                }
+                // Build NL instruction from structured fields (content IS provided)
                 let instruction = `Post to ${platformList}: ${content}`;
                 if (hashtags?.length)
                     instruction += ` ${hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ')}`;
@@ -114,9 +171,10 @@ function createSchedulerExecutor(scheduler) {
                 const results = [];
                 for (let i = 0; i < platforms.length; i++) {
                     const platform = platforms[i];
+                    const platformMedia = getMediaForPlatform(platform, media_urls);
                     const platformInstruction = platforms.length > 1
-                        ? `Post to ${platform}: ${content}${hashtags?.length ? ' ' + hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ') : ''}${media_urls?.length ? '. Attach media: ' + media_urls.join(', ') : ''}`
-                        : instruction;
+                        ? `Post to ${platform}: ${content}${hashtags?.length ? ' ' + hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ') : ''}${platformMedia.length ? '. Attach media: ' + platformMedia.join(', ') : ''}`
+                        : (platformMedia.length && !media_urls?.length ? instruction + `. Attach media: ${platformMedia.join(', ')}` : instruction);
                     const taskId = scheduler.addTask({
                         instruction: platformInstruction,
                         taskType: 'social_post',
@@ -125,7 +183,7 @@ function createSchedulerExecutor(scheduler) {
                         platforms: [platform],
                         content,
                         hashtags,
-                        mediaUrls: media_urls,
+                        mediaUrls: platformMedia.length > 0 ? platformMedia : media_urls,
                         batchId,
                         batchSequence: i,
                     });

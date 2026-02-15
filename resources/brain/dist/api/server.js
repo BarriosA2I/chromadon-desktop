@@ -4007,7 +4007,22 @@ async function startServer() {
                 if (!activeId)
                     return null;
                 return knowledgeVault.getClientContextSummary(activeId);
-            } : () => null);
+            } : () => null, 
+            // Linked platforms — fetch authenticated social media sessions from Desktop
+            desktopAvailable ? async () => {
+                try {
+                    const resp = await fetch(`${CHROMADON_DESKTOP_URL}/sessions`, { signal: AbortSignal.timeout(2000) });
+                    const data = await resp.json();
+                    const sessions = data.sessions || [];
+                    const authenticated = sessions.filter((s) => s.isAuthenticated && s.platform !== 'google');
+                    if (authenticated.length === 0)
+                        return '';
+                    return authenticated.map((s) => `- ${s.platform}${s.accountName ? ' (' + s.accountName + ')' : ''} (authenticated)`).join('\n');
+                }
+                catch {
+                    return '';
+                }
+            } : async () => '');
             orchestratorInitError = null; // Clear any previous error
             console.log('[CHROMADON] ✅ Agentic Orchestrator initialized (Claude tool-use mode)');
             if (analyticsDb)

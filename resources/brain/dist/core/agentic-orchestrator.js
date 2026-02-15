@@ -65,8 +65,9 @@ class AgenticOrchestrator {
     additionalToolNames;
     getSkillsForPrompt;
     getClientKnowledge;
+    getLinkedPlatforms;
     hasAnthropicKey;
-    constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge) {
+    constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge, getLinkedPlatforms) {
         this.hasAnthropicKey = apiKey !== 'gemini-only-no-anthropic-fallback';
         this.client = new sdk_1.default({ apiKey: this.hasAnthropicKey ? apiKey : 'dummy', timeout: 120_000, maxRetries: 0 });
         // Gemini as primary provider (Anthropic as fallback)
@@ -88,6 +89,7 @@ class AgenticOrchestrator {
         this.additionalToolNames = new Set(this.additionalTools.map(t => t.name));
         this.getSkillsForPrompt = getSkillsForPrompt || null;
         this.getClientKnowledge = getClientKnowledge || null;
+        this.getLinkedPlatforms = getLinkedPlatforms || null;
         // Prune expired sessions every 5 minutes
         this.pruneInterval = setInterval(() => this.pruneExpiredSessions(), 5 * 60 * 1000);
     }
@@ -121,10 +123,15 @@ class AgenticOrchestrator {
         writer.writeEvent('session_id', { sessionId: session.id });
         // 2. Add user message to session
         session.messages.push({ role: 'user', content: userMessage });
-        // 3. Build system prompt with current page context + skill memory + client knowledge
+        // 3. Build system prompt with current page context + skill memory + client knowledge + linked platforms
         const skillsJson = this.getSkillsForPrompt ? this.getSkillsForPrompt() : '';
         const clientKnowledge = this.getClientKnowledge ? this.getClientKnowledge() : null;
-        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson, clientKnowledge || undefined);
+        let linkedPlatforms = '';
+        try {
+            linkedPlatforms = this.getLinkedPlatforms ? await this.getLinkedPlatforms() : '';
+        }
+        catch { /* ignore — non-critical */ }
+        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson, clientKnowledge || undefined, linkedPlatforms || undefined);
         // Inject video tracking blacklist so AI knows what's already done
         let finalSystemPrompt = systemPrompt;
         if (session.videoTracker.allVideoIds.length > 0) {
@@ -187,7 +194,7 @@ class AgenticOrchestrator {
                 const effectiveSystemPrompt = options?.systemPromptOverride
                     ? options.systemPromptOverride
                     : (modelTier && (0, cost_router_1.shouldUseCompactPrompt)(modelTier))
-                        ? (0, orchestrator_system_prompt_1.buildCompactSystemPrompt)()
+                        ? (0, orchestrator_system_prompt_1.buildCompactSystemPrompt)(linkedPlatforms || undefined)
                         : finalSystemPrompt;
                 let stream;
                 if (this.useGemini && this.geminiProvider) {

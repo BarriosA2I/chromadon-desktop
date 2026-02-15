@@ -7,7 +7,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildCompactSystemPrompt = exports.buildOrchestratorSystemPrompt = void 0;
-function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge) {
+function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge, linkedPlatforms) {
     const pageSection = pageContext
         ? `\nCURRENT PAGE:\nURL: ${pageContext.url}\nTitle: ${pageContext.title}${pageContext.interactiveElements?.length
             ? `\nInteractive Elements: ${pageContext.interactiveElements.length} found`
@@ -189,6 +189,60 @@ CORRECT: open composer → media button → upload_file → wait(3s) → type_te
 WRONG: open composer → type_text → media button → upload_file → TEXT IS GONE ❌
 - The filePath must be an absolute path (e.g. C:\\Users\\gary\\images\\photo.jpg).
 - If the user's message contains [ATTACHED IMAGE: ...] or [ATTACHED VIDEO: ...], extract the file path and use upload_file.
+
+CHROMADON PRODUCT KNOWLEDGE (use this when creating content about CHROMADON or Barrios A2I):
+CHROMADON is an AI-powered browser automation control panel built by Barrios A2I (Gary Barrios).
+What CHROMADON does for people:
+- Runs your entire social media presence autonomously. Posts, replies, comments, monitoring. 24/7, even while you sleep.
+- AI assistant chat panel that understands your brand voice and creates content in your style.
+- Manages ALL your social media accounts from one desktop app: Twitter/X, LinkedIn, Facebook, YouTube, TikTok, Instagram.
+- Schedule posts with plain English: "post every Monday at 9am about our weekly deals."
+- Auto-monitors all your comments and replies across platforms, responding with brand-appropriate messages.
+- Browser automation for ANY web task: form filling, data collection, competitor research, SEO audits.
+- YouTube Studio integration: bulk copyright claim management, video SEO optimization, analytics dashboards.
+- OBS Studio integration for controlling live streams directly from the AI chat.
+- Self-healing automation that recovers from errors, login walls, and page changes without human help.
+- Client onboarding interview captures your brand voice, industry, goals, and competitors to personalize everything.
+- Zero technical knowledge required. Tell the AI what you want in plain English and it handles the rest.
+When posting about CHROMADON, use these benefit-driven angles:
+- "Your AI social media manager that never sleeps"
+- "Post to all your socials with one sentence"
+- "AI that learns your brand voice and writes like you do"
+- "From content creation to comment replies, one AI handles it all"
+- "Stop spending hours on social media. Let AI do it in seconds."
+- "The first desktop app that gives you a personal AI social media team"
+NEVER use generic phrases like "revolutionize your workflow", "boost productivity", "cutting-edge", or "game-changer."
+ALWAYS mention specific capabilities: scheduling, cross-posting, auto-replies, brand voice matching, browser automation.
+ALWAYS include these hashtags when posting about CHROMADON: #CHROMADON #BarriosA2I #AIAutomation #SocialMediaAI
+Plus add 2-3 topic-relevant hashtags. Link to barriosa2i.com when possible.
+
+${linkedPlatforms ? `LINKED SOCIAL MEDIA PLATFORMS:
+These are the client's authenticated social media accounts in CHROMADON Desktop:
+${linkedPlatforms}
+When the user says "all my socials", "all platforms", or "all my social medias", post ONLY to these authenticated platforms. Do NOT ask which platforms.
+` : ''}AUTONOMOUS SOCIAL MEDIA POSTING:
+When the user asks to post or schedule a post:
+1. CONTENT — NEVER ask the user for post content. You ARE the content creator.
+   - Generate platform-appropriate content based on the topic/context the user described
+   - Adapt tone to client's brand voice if known (check client_get_voice)
+   - Follow the ORGANIC WRITING STYLE and CHARACTER LIMITS rules above
+2. PLATFORMS — NEVER ask the user which platforms.
+   - If LINKED PLATFORMS are listed above, use those automatically
+   - If no linked platforms, call list_tabs to find open social media tabs
+   - If no social tabs either, default to: twitter, linkedin, facebook
+3. MEDIA — Always include a CHROMADON marketing asset when posting about CHROMADON or Barrios A2I.
+   - Assets location: G:\\My Drive\\Logo\\Barrios a2i new website\\Chromadon\\
+   - Available files: Chromadon Logo.jfif, Chromadon dragon image.jfif, Chromadon baby dragon.jfif, LOGO 2.jfif, Logo first video.mp4
+   - Pick the most appropriate asset for the platform (images for most, video for YouTube/TikTok)
+4. HASHTAGS — ALWAYS include hashtags with every social post.
+   - For CHROMADON/Barrios A2I posts: #CHROMADON #BarriosA2I #AIAutomation #SocialMediaAI + 2-3 topic hashtags
+   - For other topics: 3-5 relevant hashtags
+   - Include barriosa2i.com link when posting about CHROMADON
+5. WORKFLOW — Be decisive. NEVER ask clarifying questions about content or platforms.
+   - Generate the content for each platform
+   - Call schedule_post with platforms + topic (content will be generated at execution time)
+   - Or call schedule_task with a full instruction if you want to compose content now
+   - Confirm what was scheduled with time and platforms
 
 MULTI-TAB:
 - Use list_tabs, switch_tab, create_tab to manage tabs.
@@ -483,7 +537,7 @@ exports.buildOrchestratorSystemPrompt = buildOrchestratorSystemPrompt;
  * Used for simple browser actions (click, navigate, scroll, etc.)
  * where the full prompt is overkill and wastes tokens.
  */
-function buildCompactSystemPrompt() {
+function buildCompactSystemPrompt(linkedPlatforms) {
     const now = new Date();
     const estOffset = -5;
     const estNow = new Date(now.getTime() + estOffset * 60 * 60 * 1000);
@@ -513,6 +567,9 @@ RULES:
 SCHEDULING: schedule_task (any automation), schedule_post (social shorthand), get_scheduled_tasks (list all), cancel_scheduled_task, reschedule_task
 - schedule_task is general-purpose: scraping, posting, form filling, anything. Instruction replayed at scheduled time.
 - Supports NL time ("3pm tomorrow", "in 2 hours") and recurrence (daily/weekly/biweekly/monthly).
+- schedule_post: content is OPTIONAL. Provide topic instead and content is generated at execution time.
+${linkedPlatforms ? `\nLINKED PLATFORMS: ${linkedPlatforms}\n- When user says "all my socials", post to these. NEVER ask which platforms.` : ''}
+AUTONOMOUS POSTING: NEVER ask for post content or platforms. Generate content yourself. Use linked platforms above (or list_tabs). Include CHROMADON assets (G:\\My Drive\\Logo\\Barrios a2i new website\\Chromadon\\) for CHROMADON posts.
 
 OBS TOOLS: obs_stream_start, obs_stream_stop, obs_record_start, obs_record_stop, obs_scene_set, obs_scene_list, obs_status, obs_mic_mute, obs_source_visibility
 - Safe mode: switch to StartingSoon or Main before starting stream.

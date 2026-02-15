@@ -52,6 +52,19 @@ class DesktopBrowserAdapter {
         return tabs.find(t => t.url.includes(domain)) || null;
     }
     /**
+     * Get all platform sessions from Desktop (authenticated social media accounts)
+     */
+    async getPlatformSessions() {
+        try {
+            const response = await fetch(`${this.baseUrl}/sessions`);
+            const data = await response.json();
+            return data.sessions || [];
+        }
+        catch {
+            return [];
+        }
+    }
+    /**
      * Get or create active tab ID
      */
     async getActiveTabId() {

@@ -68,7 +68,11 @@ exports.SCHEDULER_TOOLS = [
                 },
                 content: {
                     type: 'string',
-                    description: 'The post content/text',
+                    description: 'The post content/text. Optional — if omitted, provide a topic and content will be generated at execution time.',
+                },
+                topic: {
+                    type: 'string',
+                    description: 'Topic for the post. If content is not provided, the AI will generate platform-appropriate content about this topic at execution time.',
                 },
                 scheduled_time: {
                     type: 'string',
@@ -90,7 +94,7 @@ exports.SCHEDULER_TOOLS = [
                     description: 'Local file paths of images or videos to upload. Provide absolute paths (e.g. "G:\\\\My Drive\\\\Logo\\\\image.jfif").',
                 },
             },
-            required: ['platforms', 'content'],
+            required: ['platforms'],
         },
     },
     {

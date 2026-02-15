@@ -82,6 +82,14 @@ export declare class DesktopBrowserAdapter implements CDPController {
      */
     findTabByDomain(domain: string): Promise<TabInfo | null>;
     /**
+     * Get all platform sessions from Desktop (authenticated social media accounts)
+     */
+    getPlatformSessions(): Promise<Array<{
+        platform: string;
+        isAuthenticated: boolean;
+        accountName?: string;
+    }>>;
+    /**
      * Get or create active tab ID
      */
     private getActiveTabId;

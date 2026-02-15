@@ -133,6 +133,13 @@ If the page shows a login screen or "Sign in" prompt, report "AUTH_WALL:${ctx.pl
     if (ctx.content) {
         prompt += `\nCONTENT TO USE:\n${ctx.content}\n`;
     }
+    else {
+        prompt += `\nNO CONTENT PROVIDED — YOU MUST GENERATE IT:
+Compose an engaging, platform-appropriate ${ctx.platform} post${ctx.customInstructions ? ` about: ${ctx.customInstructions}` : ''}.
+You are an expert social media content creator. Write compelling, authentic posts (not placeholders).
+Follow the ORGANIC WRITING STYLE rules: no em dashes, no corporate AI tone, 1-3 emojis max.
+Respect character limits: Twitter 280, LinkedIn 3000, Facebook 500, Instagram 2200.\n`;
+    }
     if (ctx.targetUrl) {
         prompt += `\nTARGET URL: ${ctx.targetUrl}\n`;
     }

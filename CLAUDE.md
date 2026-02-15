@@ -7,7 +7,19 @@
 
 ---
 
-## Recent Changes (v1.24.2 — 2026-02-15)
+## Recent Changes (v1.25.0 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.10.0 — Autonomous social posting, linked platforms, CHROMADON product knowledge | `resources/brain/dist/` |
+| Brain: AI no longer asks for content, platforms, or media — generates content at execution time | Brain `scheduler-executor.ts`, `orchestrator-system-prompt.ts` |
+| Brain: Platform sessions from Desktop injected into system prompt — AI knows which platforms are authenticated | Brain `server.ts`, `agentic-orchestrator.ts` |
+| Brain: Executor auto-filters unauthenticated platforms (e.g., Instagram when not linked) | Brain `scheduler-executor.ts` |
+| Brain: Auto-attaches CHROMADON media assets — Logo.jfif for social, video for TikTok/YouTube | Brain `scheduler-executor.ts` |
+| Brain: Auto-includes #CHROMADON #BarriosA2I hashtags + barriosa2i.com link on CHROMADON posts | Brain `scheduler-executor.ts` |
+| Brain: CHROMADON product knowledge in full + compact system prompts for quality content generation | Brain `orchestrator-system-prompt.ts` |
+
+## Changes (v1.24.2 — 2026-02-15)
 
 | Change | File |
 |--------|------|
