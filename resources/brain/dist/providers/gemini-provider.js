@@ -436,6 +436,17 @@ class GeminiProvider {
                 });
                 return;
             }
+            // Handle STOP with 0 output tokens — Gemini sometimes returns empty
+            // on tool-result continuations. Flag for orchestrator retry.
+            if ((finishReason === 'STOP' || !finishReason) && allParts.length === 0 && outputTokens === 0) {
+                console.warn(`[Gemini] 0-token STOP response — flagging for retry`);
+                resolve({
+                    content: [{ type: 'text', text: '' }],
+                    stop_reason: 'end_turn',
+                    usage: { input_tokens: inputTokens, output_tokens: 0 },
+                });
+                return;
+            }
             // Convert all accumulated parts to Anthropic format
             const anthropicContent = convertGeminiResponseToAnthropic(allParts);
             // Determine stop reason

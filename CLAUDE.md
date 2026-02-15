@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.5 — 2026-02-15)
+## Recent Changes (v1.25.6 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain v1.10.6 — Gemini empty responses on tool calls (document search, client info) now retry automatically — users see actual results instead of blank chat | `resources/brain/dist/` |
+
+## Changes (v1.25.5 — 2026-02-15)
 
 | Change | File |
 |--------|------|

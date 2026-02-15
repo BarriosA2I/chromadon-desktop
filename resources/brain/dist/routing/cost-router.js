@@ -94,6 +94,9 @@ function selectModelForTask(userMessage, lastToolName) {
         'obs_scene_set', 'obs_scene_list', 'obs_status', 'obs_mic_mute', 'obs_source_visibility',
         // Social Monitoring tools
         'social_monitor', 'monitoring_log',
+        // Client Context tools — result presentation only
+        'client_search_knowledge', 'client_get_info', 'client_update_info',
+        'client_get_media',
     ].includes(lastToolName)) {
         return ModelTier.FAST;
     }

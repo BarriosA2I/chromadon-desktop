@@ -156,6 +156,7 @@ class AgenticOrchestrator {
         const noOpDetector = new NoOpDetector();
         let usingGemini = false;
         let lastExecutedToolName = ''; // Tracks last tool for cost router continuation routing
+        let emptyRetries = 0; // Capped retries for Gemini 0-token responses
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
                 break;
@@ -311,6 +312,16 @@ class AgenticOrchestrator {
                     const sessionCost = (sessionInputTokens / 1_000_000) * inputCostPerM + (sessionOutputTokens / 1_000_000) * outputCostPerM;
                     const providerTag = usingGemini ? `Gemini/${selectedModel}` : `Anthropic/${currentModel}`;
                     console.log(`[COST] Call ${loopCount} (${providerTag}): ${inTok}in/${outTok}out ($${callCost.toFixed(4)}) | Session: ${sessionInputTokens}in/${sessionOutputTokens}out ($${sessionCost.toFixed(4)})`);
+                }
+                // 6b. Retry if Gemini returned 0 output tokens (empty response)
+                const emptyOutTok = finalMessage.usage?.output_tokens || 0;
+                const hasAnyText = finalMessage.content.some((b) => b.type === 'text' && b.text?.trim());
+                if (usingGemini && emptyOutTok === 0 && !hasAnyText && emptyRetries < 2) {
+                    emptyRetries++;
+                    console.warn(`[Orchestrator] Empty Gemini response (attempt ${emptyRetries}/2) — injecting continuation`);
+                    session.messages.push({ role: 'assistant', content: [{ type: 'text', text: 'Let me check that for you.' }] });
+                    session.messages.push({ role: 'user', content: 'Present the results to the user. Do not call any tools. Just summarize what you found.' });
+                    continue;
                 }
                 // 7. Push assistant message to session history
                 session.messages.push({ role: 'assistant', content: finalMessage.content });
