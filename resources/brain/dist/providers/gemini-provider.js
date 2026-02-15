@@ -393,9 +393,16 @@ class GeminiProvider {
                 inputTokens = aggregated.usageMetadata.promptTokenCount || inputTokens;
                 outputTokens = aggregated.usageMetadata.candidatesTokenCount || outputTokens;
             }
+            // Debug: log response details when output is 0 tokens
+            const finishReason = aggregated.candidates?.[0]?.finishReason;
+            if (outputTokens === 0 || allParts.length === 0) {
+                console.log(`[Gemini] DEBUG 0-token response:`);
+                console.log(`  finishReason: ${finishReason}`);
+                console.log(`  allParts.length: ${allParts.length}`);
+                console.log(`  candidates: ${JSON.stringify(aggregated.candidates?.map((c) => ({ finishReason: c.finishReason, finishMessage: c.finishMessage?.substring(0, 200), partsCount: c.content?.parts?.length })))}`);
+            }
             // Handle MALFORMED_FUNCTION_CALL — Gemini tried to compute values via code
             // instead of outputting a proper function call JSON. Parse the intent and retry.
-            const finishReason = aggregated.candidates?.[0]?.finishReason;
             if (finishReason === 'MALFORMED_FUNCTION_CALL' && allParts.length === 0) {
                 const finishMessage = aggregated.candidates?.[0]?.finishMessage || '';
                 console.log(`[Gemini] MALFORMED_FUNCTION_CALL detected. Attempting recovery...`);

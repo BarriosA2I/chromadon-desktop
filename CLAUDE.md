@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.19.7 — 2026-02-15)
+## Recent Changes (v1.19.8 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Empty AI response for browser navigation — Brain v1.5.7 removes `LLM_MODEL` override that forced thinking model | `resources/brain/.env` |
+| Updated: Brain dist v1.5.7 — FAST tier now correctly uses `gemini-2.0-flash` for browser actions | `resources/brain/dist/` |
+
+## Changes (v1.19.7 — 2026-02-15)
 
 | Change | File |
 |--------|------|
