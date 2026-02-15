@@ -58,5 +58,14 @@ exports.CLIENT_CONTEXT_TOOLS = [
             required: [],
         },
     },
+    {
+        name: 'client_get_media',
+        description: 'Get the active client\'s brand assets (logos, images, videos) for social media posts. Returns file paths to use with upload_file tool. Call this before scheduling or posting to use the client\'s own branding instead of defaults.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+            required: [],
+        },
+    },
 ];
 //# sourceMappingURL=context-tools.js.map

@@ -54,6 +54,21 @@ export interface KnowledgeDocument {
   processedAt?: string
 }
 
+export type AssetType = 'image' | 'video'
+
+export interface BrandAsset {
+  id: string
+  clientId: string
+  filename: string
+  originalFilename: string
+  storedPath: string
+  mimeType: string
+  fileSize: number
+  assetType: AssetType
+  isPrimaryLogo: boolean
+  uploadedAt: string
+}
+
 export interface SearchResult {
   content: string
   score: number

@@ -59,6 +59,24 @@ class ClientContextExecutor {
                     return JSON.stringify({ status: 'no_strategy', message: 'No growth strategy set up yet. Help the user with their immediate request using the details they provided.' });
                 return JSON.stringify(strategy);
             }
+            case 'client_get_media': {
+                const assets = this.storage.getMediaAssets(clientId);
+                if (assets.length === 0) {
+                    return JSON.stringify({ status: 'no_media', message: 'No brand assets uploaded yet. The client has not provided any logos, images, or videos. Use default CHROMADON media if available.' });
+                }
+                const primaryLogo = assets.find(a => a.isPrimaryLogo);
+                return JSON.stringify({
+                    primaryLogo: primaryLogo ? { path: primaryLogo.storedPath, filename: primaryLogo.originalFilename } : null,
+                    assets: assets.map(a => ({
+                        id: a.id,
+                        path: a.storedPath,
+                        filename: a.originalFilename,
+                        type: a.assetType,
+                        isPrimaryLogo: a.isPrimaryLogo,
+                    })),
+                    total: assets.length,
+                });
+            }
             default:
                 return JSON.stringify({ error: `Unknown client context tool: ${toolName}` });
         }

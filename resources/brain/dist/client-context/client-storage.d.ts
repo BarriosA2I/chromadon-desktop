@@ -6,7 +6,7 @@
  *
  * @author Barrios A2I
  */
-import type { BusinessProfile, BrandVoiceProfile, AudiencePersona, CompetitorProfile, GrowthStrategy, InterviewState, KnowledgeDocument, ClientInfo, ClientContext } from './types';
+import type { BusinessProfile, BrandVoiceProfile, AudiencePersona, CompetitorProfile, GrowthStrategy, InterviewState, KnowledgeDocument, BrandAsset, ClientInfo, ClientContext } from './types';
 export declare class ClientStorage {
     private readonly baseDir;
     private readonly metaPath;
@@ -37,6 +37,12 @@ export declare class ClientStorage {
     removeDocument(clientId: string, docId: string): boolean;
     getDocumentStoragePath(clientId: string): string;
     getChunksDbPath(clientId: string): string;
+    getMediaAssets(clientId: string): BrandAsset[];
+    addMediaAsset(clientId: string, asset: BrandAsset): void;
+    removeMediaAsset(clientId: string, assetId: string): boolean;
+    setPrimaryLogo(clientId: string, assetId: string): boolean;
+    getPrimaryLogo(clientId: string): BrandAsset | null;
+    getMediaStoragePath(clientId: string): string;
     getFullContext(clientId: string): ClientContext | null;
     private getClientDir;
     private readJson;

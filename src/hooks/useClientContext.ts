@@ -15,6 +15,7 @@ import type {
   KnowledgeDocument,
   SearchResult,
   GrowthStrategy,
+  BrandAsset,
 } from '../store/clientContextTypes'
 
 const BRAIN_URL = 'http://127.0.0.1:3001'
@@ -300,6 +301,71 @@ export function useClientContext() {
   }, [])
 
   // =========================================================================
+  // BRAND ASSETS (MEDIA VAULT)
+  // =========================================================================
+
+  const [mediaAssets, setMediaAssets] = useState<BrandAsset[]>([])
+
+  const fetchMediaAssets = useCallback(async (clientId: string) => {
+    try {
+      const res = await fetch(`${BRAIN_URL}/api/client-context/media/list?clientId=${clientId}`)
+      const data = await res.json()
+      if (data.success) setMediaAssets(data.data.assets || [])
+    } catch (e) {
+      console.error('[useClientContext] fetchMediaAssets failed:', e)
+    }
+  }, [])
+
+  const uploadMediaAsset = useCallback(async (clientId: string, file: File) => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('clientId', clientId)
+      const res = await fetch(`${BRAIN_URL}/api/client-context/media/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.success) {
+        await fetchMediaAssets(clientId)
+        return data.data
+      }
+      return null
+    } catch (e) {
+      console.error('[useClientContext] uploadMediaAsset failed:', e)
+      return null
+    }
+  }, [fetchMediaAssets])
+
+  const deleteMediaAsset = useCallback(async (clientId: string, assetId: string) => {
+    try {
+      const res = await fetch(`${BRAIN_URL}/api/client-context/media/${assetId}?clientId=${clientId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) await fetchMediaAssets(clientId)
+      return data.success
+    } catch (e) {
+      console.error('[useClientContext] deleteMediaAsset failed:', e)
+      return false
+    }
+  }, [fetchMediaAssets])
+
+  const setPrimaryLogo = useCallback(async (clientId: string, assetId: string) => {
+    try {
+      const res = await fetch(`${BRAIN_URL}/api/client-context/media/${assetId}/primary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId }),
+      })
+      const data = await res.json()
+      if (data.success) await fetchMediaAssets(clientId)
+      return data.success
+    } catch (e) {
+      console.error('[useClientContext] setPrimaryLogo failed:', e)
+      return false
+    }
+  }, [fetchMediaAssets])
+
+  // =========================================================================
   // STRATEGY
   // =========================================================================
 
@@ -379,6 +445,7 @@ export function useClientContext() {
     interviewProgress,
     interviewLoading,
     documents,
+    mediaAssets,
     searchResults,
     strategy,
     strategyLoading,
@@ -400,6 +467,12 @@ export function useClientContext() {
     uploadDocument,
     deleteDocument,
     searchKnowledge,
+
+    // Brand Assets
+    fetchMediaAssets,
+    uploadMediaAsset,
+    deleteMediaAsset,
+    setPrimaryLogo,
 
     // Strategy
     generateStrategy,

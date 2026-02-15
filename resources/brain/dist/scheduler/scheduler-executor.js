@@ -72,7 +72,7 @@ function toEST(d) {
     const time = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
     return `${days[est.getUTCDay()]} ${months[est.getUTCMonth()]} ${est.getUTCDate()} at ${time} EST`;
 }
-function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms) {
+function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClientMedia) {
     return async (toolName, input) => {
         switch (toolName) {
             // ==================================================================
@@ -117,8 +117,21 @@ function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms) {
                 const combinedText = `${content || ''} ${topic || ''}`.toLowerCase();
                 const isChromadonPost = combinedText.includes('chromadon') || combinedText.includes('barrios') || combinedText.includes('a2i');
                 function getMediaForPlatform(platform, userMedia) {
+                    // Priority 1: User-provided media_urls
                     if (userMedia && userMedia.length > 0)
                         return userMedia;
+                    // Priority 2: Client's brand assets (primary logo/video)
+                    if (getClientMedia) {
+                        const clientMedia = getClientMedia();
+                        if (clientMedia) {
+                            const p = platform.toLowerCase();
+                            if ((p === 'tiktok' || p === 'youtube') && clientMedia.primaryVideo)
+                                return [clientMedia.primaryVideo];
+                            if (clientMedia.primaryLogo)
+                                return [clientMedia.primaryLogo];
+                        }
+                    }
+                    // Priority 3: CHROMADON defaults (only for CHROMADON-related posts)
                     if (!isChromadonPost)
                         return [];
                     const p = platform.toLowerCase();

@@ -61,6 +61,7 @@ class ClientStorage {
         const clientDir = this.getClientDir(id);
         fs.mkdirSync(clientDir, { recursive: true });
         fs.mkdirSync(path.join(clientDir, 'documents'), { recursive: true });
+        fs.mkdirSync(path.join(clientDir, 'media'), { recursive: true });
         const info = {
             id,
             name,
@@ -317,6 +318,58 @@ class ClientStorage {
         return path.join(this.getClientDir(clientId), 'chunks.db');
     }
     // =========================================================================
+    // BRAND ASSETS (MEDIA VAULT)
+    // =========================================================================
+    getMediaAssets(clientId) {
+        return this.readJson(this.getClientDir(clientId), 'media-assets.json') || [];
+    }
+    addMediaAsset(clientId, asset) {
+        const assets = this.getMediaAssets(clientId);
+        assets.push(asset);
+        this.writeJson(this.getClientDir(clientId), 'media-assets.json', assets);
+        this.touchClient(clientId);
+    }
+    removeMediaAsset(clientId, assetId) {
+        const assets = this.getMediaAssets(clientId);
+        const target = assets.find(a => a.id === assetId);
+        if (!target)
+            return false;
+        const filtered = assets.filter(a => a.id !== assetId);
+        this.writeJson(this.getClientDir(clientId), 'media-assets.json', filtered);
+        // Delete the actual file
+        try {
+            if (fs.existsSync(target.storedPath)) {
+                fs.unlinkSync(target.storedPath);
+            }
+        }
+        catch { /* file may already be gone */ }
+        this.touchClient(clientId);
+        return true;
+    }
+    setPrimaryLogo(clientId, assetId) {
+        const assets = this.getMediaAssets(clientId);
+        const target = assets.find(a => a.id === assetId);
+        if (!target)
+            return false;
+        for (const a of assets) {
+            a.isPrimaryLogo = a.id === assetId;
+        }
+        this.writeJson(this.getClientDir(clientId), 'media-assets.json', assets);
+        this.touchClient(clientId);
+        return true;
+    }
+    getPrimaryLogo(clientId) {
+        const assets = this.getMediaAssets(clientId);
+        return assets.find(a => a.isPrimaryLogo) || null;
+    }
+    getMediaStoragePath(clientId) {
+        const mediaDir = path.join(this.getClientDir(clientId), 'media');
+        if (!fs.existsSync(mediaDir)) {
+            fs.mkdirSync(mediaDir, { recursive: true });
+        }
+        return mediaDir;
+    }
+    // =========================================================================
     // FULL CONTEXT
     // =========================================================================
     getFullContext(clientId) {
@@ -331,6 +384,7 @@ class ClientStorage {
             strategy: this.getStrategy(clientId),
             interviewState: this.getInterviewState(clientId),
             documents: this.getDocuments(clientId),
+            mediaAssets: this.getMediaAssets(clientId),
         };
     }
     // =========================================================================

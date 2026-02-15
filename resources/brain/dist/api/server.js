@@ -41,6 +41,7 @@ dotenv.config();
 dotenv.config({ path: '.env.local', override: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const api_1 = require("@opentelemetry/api");
 // Neural RAG Brain v3.0 imports
@@ -3718,6 +3719,124 @@ app.post('/api/client-context/knowledge/search', (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// --- Brand Assets (Media Vault) ---
+const SUPPORTED_MEDIA_EXTENSIONS = new Set([
+    '.png', '.jpg', '.jpeg', '.webp', '.gif', '.jfif',
+    '.mp4', '.mov', '.avi', '.webm',
+]);
+function getAssetType(filename) {
+    const ext = path.extname(filename).toLowerCase();
+    if (['.png', '.jpg', '.jpeg', '.webp', '.gif', '.jfif'].includes(ext))
+        return 'image';
+    if (['.mp4', '.mov', '.avi', '.webm'].includes(ext))
+        return 'video';
+    return null;
+}
+app.post('/api/client-context/media/upload', upload.single('file'), async (req, res) => {
+    try {
+        const clientId = req.body?.clientId;
+        const file = req.file;
+        if (!clientId || !file) {
+            res.status(400).json({ success: false, error: 'clientId and file required' });
+            return;
+        }
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (!SUPPORTED_MEDIA_EXTENSIONS.has(ext)) {
+            res.status(400).json({ success: false, error: `Unsupported media type: ${ext}. Supported: ${[...SUPPORTED_MEDIA_EXTENSIONS].join(', ')}` });
+            return;
+        }
+        const assetType = getAssetType(file.originalname);
+        if (!assetType) {
+            res.status(400).json({ success: false, error: 'Could not determine asset type' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const mediaDir = storage.getMediaStoragePath(clientId);
+        const storedFilename = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const storedPath = path.join(mediaDir, storedFilename);
+        fs.copyFileSync(file.path, storedPath);
+        try {
+            fs.unlinkSync(file.path);
+        }
+        catch { /* temp file cleanup */ }
+        const stats = fs.statSync(storedPath);
+        const { v4: uuid } = await import('uuid');
+        const asset = {
+            id: uuid(),
+            clientId,
+            filename: storedFilename,
+            originalFilename: file.originalname,
+            storedPath,
+            mimeType: file.mimetype || `${assetType}/${ext.slice(1)}`,
+            fileSize: stats.size,
+            assetType: assetType,
+            isPrimaryLogo: false,
+            uploadedAt: new Date().toISOString(),
+        };
+        storage.addMediaAsset(clientId, asset);
+        // If this is the first image asset, auto-set as primary logo
+        const allAssets = storage.getMediaAssets(clientId);
+        const imageAssets = allAssets.filter(a => a.assetType === 'image');
+        if (imageAssets.length === 1 && assetType === 'image') {
+            storage.setPrimaryLogo(clientId, asset.id);
+            asset.isPrimaryLogo = true;
+        }
+        res.json({ success: true, data: asset });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/client-context/media/list', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const assets = storage.getMediaAssets(clientId);
+        const primaryLogo = assets.find(a => a.isPrimaryLogo) || null;
+        res.json({ success: true, data: { assets, primaryLogo, total: assets.length } });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.delete('/api/client-context/media/:id', (req, res) => {
+    try {
+        const clientId = req.query.clientId;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId query param required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const deleted = storage.removeMediaAsset(clientId, req.params.id);
+        res.json({ success: deleted });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.post('/api/client-context/media/:id/primary', (req, res) => {
+    try {
+        const { clientId } = req.body;
+        if (!clientId) {
+            res.status(400).json({ success: false, error: 'clientId required in body' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const success = storage.setPrimaryLogo(clientId, req.params.id);
+        if (!success) {
+            res.status(404).json({ success: false, error: 'Asset not found' });
+            return;
+        }
+        res.json({ success: true });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // --- Strategy ---
 app.post('/api/client-context/strategy/generate', async (req, res) => {
     try {
@@ -4100,6 +4219,17 @@ async function startServer() {
                     catch {
                         return [];
                     }
+                } : undefined, clientStorage ? () => {
+                    const activeId = clientStorage.getActiveClientId();
+                    if (!activeId)
+                        return null;
+                    const primaryLogo = clientStorage.getPrimaryLogo(activeId);
+                    const assets = clientStorage.getMediaAssets(activeId);
+                    const primaryVideo = assets.find(a => a.assetType === 'video');
+                    return {
+                        primaryLogo: primaryLogo?.storedPath || null,
+                        primaryVideo: primaryVideo?.storedPath || null,
+                    };
                 } : undefined);
                 theScheduler.start();
                 const status = theScheduler.getStatus();

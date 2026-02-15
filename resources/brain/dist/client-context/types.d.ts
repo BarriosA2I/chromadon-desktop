@@ -269,6 +269,19 @@ export interface RiskAssessment {
     impact: 'high' | 'medium' | 'low';
     mitigation: string;
 }
+export type AssetType = 'image' | 'video';
+export interface BrandAsset {
+    id: string;
+    clientId: string;
+    filename: string;
+    originalFilename: string;
+    storedPath: string;
+    mimeType: string;
+    fileSize: number;
+    assetType: AssetType;
+    isPrimaryLogo: boolean;
+    uploadedAt: string;
+}
 export interface ClientInfo {
     id: string;
     name: string;
@@ -287,6 +300,7 @@ export interface ClientContext {
     strategy: GrowthStrategy | null;
     interviewState: InterviewState | null;
     documents: KnowledgeDocument[];
+    mediaAssets: BrandAsset[];
 }
 export interface InterviewStartRequest {
     clientName: string;

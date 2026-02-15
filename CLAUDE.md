@@ -7,7 +7,19 @@
 
 ---
 
-## Recent Changes (v1.25.1 — 2026-02-15)
+## Recent Changes (v1.25.2 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Added: Client Media Vault — Brand Assets tab in Document Vault for per-client logos, images, and videos | `src/components/documents/BrandAssets.tsx` (NEW), `src/components/documents/MediaAssetCard.tsx` (NEW) |
+| Added: Tab switcher in Document Vault — "Documents" and "Brand Assets" tabs with teal active styling | `src/components/documents/DocumentVault.tsx` |
+| Added: `BrandAsset` type definition for client brand media | `src/store/clientContextTypes.ts` |
+| Added: 4 media API methods — `fetchMediaAssets`, `uploadMediaAsset`, `deleteMediaAsset`, `setPrimaryLogo` | `src/hooks/useClientContext.ts` |
+| Added: Drag-and-drop upload for brand assets (PNG, JPG, WEBP, GIF, JFIF, MP4, MOV, AVI, WEBM) | `src/components/documents/BrandAssets.tsx` |
+| Added: Primary Logo designation — gold badge, "Set Logo" button on hover | `src/components/documents/MediaAssetCard.tsx` |
+| Updated: Brain dist v1.10.2 — `client_get_media` AI tool, media API endpoints, scheduler media priority chain | `resources/brain/dist/` |
+
+## Changes (v1.25.1 — 2026-02-15)
 
 | Change | File |
 |--------|------|
