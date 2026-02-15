@@ -7,7 +7,20 @@
 
 ---
 
-## Recent Changes (v1.20.2 — 2026-02-15)
+## Recent Changes (v1.21.0 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain "green then red" crash loop for clients — better-sqlite3 native module now rebuilt for Electron's Node.js ABI | `resources/brain/node_modules/better-sqlite3` |
+| Fixed: CRITICAL — better-sqlite3 lazy-loaded at runtime instead of top-level import — native module crash no longer kills Brain process | `resources/brain/dist/analytics/database.js`, `resources/brain/dist/client-context/vector-store.js` |
+| Fixed: Health check now supports Gemini-only clients (was checking Anthropic key only, ignoring Gemini clients entirely) | `electron/main.ts` |
+| Fixed: Health check restart loop — added 60s cooldown and max 3 health-triggered restarts per session (was infinite with counter reset) | `electron/main.ts` |
+| Fixed: Brain crash restarts use exponential backoff (3s→6s→12s→24s→30s cap) instead of fixed 3s delay | `electron/main.ts` |
+| Increased: Max Brain restart attempts from 5 to 10 | `electron/main.ts` |
+| Added: Brain startup verification — Desktop confirms HTTP server actually responds after fork (25s timeout) | `electron/main.ts` |
+| Added: Brain crash status sent to UI with attempt count and error details | `electron/main.ts` |
+
+## Changes (v1.20.2 — 2026-02-15)
 
 | Change | File |
 |--------|------|

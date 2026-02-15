@@ -238,7 +238,13 @@ let brainProcess: ChildProcess | null = null
 let cachedApiKey: string | null = null
 let brainRestarting = false
 let brainRestartCount = 0
-const BRAIN_MAX_RESTARTS = 5
+const BRAIN_MAX_RESTARTS = 10
+
+// Health-check-triggered restart tracking (separate from crash restarts)
+let healthRestartCount = 0
+const MAX_HEALTH_RESTARTS = 3
+let lastHealthRestart = 0
+const HEALTH_RESTART_COOLDOWN = 60_000 // 1 minute between health-triggered restarts
 
 // Crash alert via Resend.com — notify Gary when a client's brain is down
 const CRASH_ALERT_EMAIL = 'alienation2innovation@gmail.com'
@@ -354,16 +360,51 @@ function startBrainServer(apiKey?: string): void {
     // Auto-restart on crash (not on clean shutdown), with limit to prevent infinite loops
     if (code !== 0 && code !== null) {
       brainRestartCount++
+      // Notify UI of crash status
+      mainWindow?.webContents.send('brain-status', {
+        running: false,
+        restarting: brainRestartCount <= BRAIN_MAX_RESTARTS,
+        attempt: brainRestartCount,
+        maxAttempts: BRAIN_MAX_RESTARTS,
+        error: `Brain crashed (exit code ${code}). ${brainRestartCount <= BRAIN_MAX_RESTARTS ? 'Restarting...' : 'Check logs.'}`,
+      })
       if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
-        log(`Restarting in 3s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})... (cached API key: ${cachedApiKey ? 'YES' : 'NO'})`)
-        setTimeout(() => startBrainServer(cachedApiKey || undefined), 3000)
+        // Exponential backoff: 3s, 6s, 12s, 24s, 30s (capped), ...
+        const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
+        log(`Restarting in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})... (Anthropic key: ${cachedApiKey ? 'YES' : 'NO'}, Gemini key: ${cachedGeminiKey ? 'YES' : 'NO'})`)
+        setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
       } else {
         log(`Brain crashed ${brainRestartCount} times — giving up. Check brain-debug.log for errors.`)
-        mainWindow?.webContents.send('brain-status', { running: false, error: 'Brain server crashed repeatedly. Check logs.' })
         sendCrashAlert(code, signal, brainRestartCount)
       }
     }
   })
+
+  // Verify Brain HTTP server actually starts listening (async, non-blocking)
+  ;(async () => {
+    let verified = false
+    for (let i = 0; i < 25; i++) { // 25 attempts × 1s = 25s max wait
+      if (!brainProcess) break // Process already exited
+      await new Promise(r => setTimeout(r, 1000))
+      try {
+        const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(2000) })
+        if (res.ok) {
+          const data = await res.json() as any
+          verified = true
+          log(`Brain HTTP server verified (orchestrator: ${data.orchestrator})`)
+          mainWindow?.webContents.send('brain-status', {
+            running: true,
+            orchestrator: data.orchestrator,
+            error: data.orchestratorError || null,
+          })
+          break
+        }
+      } catch { /* still starting */ }
+    }
+    if (!verified && brainProcess) {
+      log('Brain fork succeeded but HTTP server never started (25s timeout) — possible native module crash')
+    }
+  })()
 }
 
 function restartBrainServer(apiKey?: string): void {
@@ -403,16 +444,35 @@ let brainHealthInterval: NodeJS.Timeout | null = null
 function startBrainHealthCheck(): void {
   if (brainHealthInterval) clearInterval(brainHealthInterval)
   brainHealthInterval = setInterval(async () => {
-    if (!brainProcess || !cachedApiKey) return
+    if (!brainProcess) return
+    // Support Gemini-only clients (cachedApiKey is Anthropic only)
+    const hasAnyKey = cachedApiKey || cachedGeminiKey
+    if (!hasAnyKey) return
     try {
-      const res = await fetch('http://127.0.0.1:3001/health')
+      const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(5000) })
       const data = await res.json() as any
-      if (!data.orchestrator && cachedApiKey) {
-        console.log('[Desktop] Brain lost orchestrator — restarting with cached API key')
-        restartBrainServer(cachedApiKey)
+      if (!data.orchestrator && hasAnyKey) {
+        // Cooldown: don't restart more than once per minute
+        const now = Date.now()
+        if (now - lastHealthRestart < HEALTH_RESTART_COOLDOWN) return
+        // Max health-triggered restarts per session
+        if (healthRestartCount >= MAX_HEALTH_RESTARTS) {
+          console.log(`[Desktop] Brain health-restart limit reached (${MAX_HEALTH_RESTARTS}) — showing error to user`)
+          mainWindow?.webContents.send('brain-status', {
+            running: false,
+            error: data.orchestratorError
+              ? `Brain failed to start: ${data.orchestratorError}`
+              : 'Brain failed to initialize. Check your API key in Settings.',
+          })
+          return
+        }
+        healthRestartCount++
+        lastHealthRestart = now
+        console.log(`[Desktop] Brain lost orchestrator — health restart ${healthRestartCount}/${MAX_HEALTH_RESTARTS}`)
+        restartBrainServer(cachedApiKey || undefined)
       }
     } catch {
-      // Brain unreachable — will auto-restart via exit handler
+      // Brain unreachable — will auto-restart via exit handler if process crashed
     }
   }, 30_000)
 }

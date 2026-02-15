@@ -30,25 +30,30 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VectorStore = void 0;
-const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+// Lazy-load better-sqlite3 — see database.ts for rationale
+let Database = null;
+function getDatabase() {
+    if (!Database) {
+        Database = require('better-sqlite3');
+    }
+    return Database;
+}
 // ============================================================================
 // VECTOR STORE
 // ============================================================================
 class VectorStore {
     db;
     constructor(dbPath) {
+        const Db = getDatabase();
         const dir = path.dirname(dbPath);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-        this.db = new better_sqlite3_1.default(dbPath);
+        this.db = new Db(dbPath);
         this.db.pragma('journal_mode = WAL');
         this.db.pragma('foreign_keys = ON');
         this.initSchema();

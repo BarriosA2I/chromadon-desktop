@@ -29,27 +29,34 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AnalyticsDatabase = void 0;
-const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const schema_1 = require("./schema");
+// Lazy-load better-sqlite3 to prevent native module crash from killing the Brain process.
+// If the native binding is compiled for a different Node.js ABI (e.g., system Node vs Electron),
+// the require() will throw inside the constructor's try/catch instead of crashing on import.
+let Database = null;
+function getDatabase() {
+    if (!Database) {
+        Database = require('better-sqlite3');
+    }
+    return Database;
+}
 // ============================================================================
 // DATABASE CLASS
 // ============================================================================
 class AnalyticsDatabase {
     db;
     constructor(dbPath) {
+        const Db = getDatabase();
         const resolvedPath = dbPath || this.getDefaultPath();
         const dir = path.dirname(resolvedPath);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-        this.db = new better_sqlite3_1.default(resolvedPath);
+        this.db = new Db(resolvedPath);
         this.db.pragma('journal_mode = WAL');
         this.db.pragma('foreign_keys = ON');
         (0, schema_1.runMigrations)(this.db);
