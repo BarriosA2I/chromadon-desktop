@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.19.6 — 2026-02-14)
+## Recent Changes (v1.19.7 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Internal provider retry/fallback messages no longer leak to user chat stream | `resources/brain/dist/core/agentic-orchestrator.js` |
+| Removed: "Rate limited", "Switching providers", "Switching to backup model", "Retrying", "Anthropic key issue" text from user-visible SSE stream | `resources/brain/dist/core/agentic-orchestrator.js` |
+
+## Changes (v1.19.6 — 2026-02-14)
 
 | Change | File |
 |--------|------|

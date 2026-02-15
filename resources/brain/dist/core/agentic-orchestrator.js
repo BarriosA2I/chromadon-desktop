@@ -701,9 +701,6 @@ class AgenticOrchestrator {
                         if (rateLimitRetryCount <= 2) {
                             const waitMs = Math.min(retryDelaySec * 1000, 30000);
                             console.warn(`[PROVIDER] Gemini 429 — waiting ${waitMs}ms before retry (${rateLimitRetryCount}/2)`);
-                            if (!writer.isClosed()) {
-                                writer.writeEvent('text_delta', { text: `\n\nRate limited. Waiting ${retryDelaySec}s...\n` });
-                            }
                             await new Promise(resolve => setTimeout(resolve, waitMs));
                             continue;
                         }
@@ -715,9 +712,6 @@ class AgenticOrchestrator {
                         console.warn(`[PROVIDER] Gemini error — falling back to Anthropic (bounce ${providerBounceCount})`);
                         this.useGemini = false;
                         usingGemini = false;
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: '\n\nSwitching providers...\n' });
-                        }
                         continue;
                     }
                     else {
@@ -766,9 +760,6 @@ class AgenticOrchestrator {
                             ? Math.min(parseInt(String(retryAfterHeader), 10) * 1000, 15000)
                             : Math.min(2000 * Math.pow(2, rateLimitRetryCount - 1), 15000);
                         console.warn(`[CHROMADON Orchestrator] Rate limited (429) — retry ${rateLimitRetryCount}/3, waiting ${retryAfterMs}ms`);
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: `\n\nBrief pause... resuming in ${Math.ceil(retryAfterMs / 1000)}s.\n` });
-                        }
                         await new Promise(resolve => setTimeout(resolve, retryAfterMs));
                         continue;
                     }
@@ -780,9 +771,6 @@ class AgenticOrchestrator {
                             ? 'claude-3-haiku-20240307'
                             : 'claude-3-5-haiku-20241022';
                         console.warn(`[CHROMADON Orchestrator] Rate limit retries exhausted — switching to ${currentModel}`);
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: `\n\nSwitching to backup model...\n` });
-                        }
                         continue;
                     }
                     // Both models rate limited — give up
@@ -801,9 +789,6 @@ class AgenticOrchestrator {
                     overloadedRetryCount++;
                     const waitMs = 3000;
                     console.warn(`[CHROMADON Orchestrator] API overloaded — retrying in ${waitMs}ms`);
-                    if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: `\n\nRetrying...\n` });
-                    }
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
@@ -816,9 +801,6 @@ class AgenticOrchestrator {
                             ? 'claude-3-haiku-20240307'
                             : 'claude-3-5-haiku-20241022';
                         console.warn(`[CHROMADON Orchestrator] Primary model overloaded — switching to ${currentModel}`);
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: `\n\nSwitching to backup model...\n` });
-                        }
                         continue;
                     }
                     // Both models failed — give up
@@ -841,9 +823,6 @@ class AgenticOrchestrator {
                     transientRetryCount++;
                     const waitMs = Math.min(3000 * Math.pow(2, transientRetryCount - 1), 15000);
                     console.warn(`[CHROMADON Orchestrator] Transient error (attempt ${transientRetryCount}/3) — waiting ${waitMs}ms: ${errorMsg}`);
-                    if (!writer.isClosed()) {
-                        writer.writeEvent('text_delta', { text: `\n\nConnection issue. Retrying (${transientRetryCount}/3)...\n` });
-                    }
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
@@ -855,9 +834,6 @@ class AgenticOrchestrator {
                         console.warn(`[PROVIDER] Anthropic billing/auth error — re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;
                         providerBounceCount++;
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: '\n\nAnthropic key issue. Switching back to primary provider...\n' });
-                        }
                         continue;
                     }
                     // Too many bounces — both providers are failing
@@ -873,9 +849,6 @@ class AgenticOrchestrator {
                         console.warn(`[PROVIDER] Anthropic auth failed — re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;
                         providerBounceCount++;
-                        if (!writer.isClosed()) {
-                            writer.writeEvent('text_delta', { text: '\n\nAnthropic key invalid. Switching back to primary provider...\n' });
-                        }
                         continue;
                     }
                     console.error(`[PROVIDER] Both providers failing after ${providerBounceCount} bounces — giving up`);
