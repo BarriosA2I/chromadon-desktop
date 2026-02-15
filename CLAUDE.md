@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.19.11 — 2026-02-15)
+## Recent Changes (v1.20.0 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Added: OBS Studio integration — 9 AI chat tools for live streaming control (start/stop stream, record, scenes, mic, sources) | `resources/brain/dist/obs/` |
+| Added: OBS env vars (OBS_WS_HOST, OBS_WS_PORT, OBS_WS_PASSWORD, OBS_SAFE_MODE, OBS_SAFE_SCENES) passed to Brain fork | `electron/main.ts` |
+| Updated: Brain dist v1.6.0 — OBS WebSocket client + tools + executor + system prompt updates | `resources/brain/dist/` |
+
+## Changes (v1.19.11 — 2026-02-15)
 
 | Change | File |
 |--------|------|

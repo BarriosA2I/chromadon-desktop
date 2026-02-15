@@ -70,6 +70,8 @@ const skills_1 = require("../skills");
 // Marketing Queue imports
 const marketing_tools_1 = require("../marketing/marketing-tools");
 const marketing_executor_1 = require("../marketing/marketing-executor");
+// OBS Studio imports
+const obs_1 = require("../obs");
 // Circuit Breaker for Desktop API calls
 const circuit_breaker_1 = require("../core/circuit-breaker");
 // 27-Agent System imports (runtime load to avoid type conflicts)
@@ -133,6 +135,8 @@ let dataCollector = null;
 // YouTube State
 let youtubeTokenManager = null;
 let youtubeExec = null;
+// OBS Studio State
+let obsClientInstance = null;
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -3715,6 +3719,16 @@ async function cleanup() {
     else if (connectionMode === 'CDP') {
         console.log('[CHROMADON] CDP mode - browser left running');
     }
+    // Disconnect OBS WebSocket
+    if (obsClientInstance) {
+        try {
+            await obsClientInstance.disconnect();
+            console.log('[CHROMADON] OBS disconnected');
+        }
+        catch (e) {
+            // Ignore
+        }
+    }
     process.exit(0);
 }
 process.on('SIGINT', cleanup);
@@ -3792,13 +3806,19 @@ async function startServer() {
             const strategyEngine = new client_context_1.StrategyEngine(clientStorage, knowledgeVault);
             const clientContextExec = new client_context_1.ClientContextExecutor(clientStorage, knowledgeVault);
             console.log('[CHROMADON] ✅ Client Context Layer initialized');
-            // Merge additional tools: analytics + YouTube + skills + client context + marketing
+            // Initialize OBS Studio client (non-blocking — server starts even if OBS is offline)
+            obsClientInstance = new obs_1.OBSClient();
+            obsClientInstance.connect().catch(err => console.log('[CHROMADON] OBS not available:', err.message));
+            const obsExec = (0, obs_1.createObsExecutor)(obsClientInstance);
+            const obsToolNames = new Set(obs_1.OBS_TOOLS.map(t => t.name));
+            // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS
             const additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
                 ...skills_1.SKILL_TOOLS,
                 ...client_context_1.CLIENT_CONTEXT_TOOLS,
                 ...marketing_tools_1.MARKETING_TOOLS,
+                ...obs_1.OBS_TOOLS,
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
@@ -3807,6 +3827,8 @@ async function startServer() {
             const marketingExec = (0, marketing_executor_1.createMarketingExecutor)(CHROMADON_DESKTOP_URL, analyticsDb);
             const marketingToolNames = new Set(marketing_tools_1.MARKETING_TOOLS.map(t => t.name));
             const combinedExecutor = async (toolName, input) => {
+                if (obsToolNames.has(toolName))
+                    return obsExec(toolName, input);
                 if (marketingToolNames.has(toolName))
                     return marketingExec(toolName, input);
                 if (clientContextExec.canHandle(toolName))
@@ -3833,6 +3855,7 @@ async function startServer() {
             console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
             console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
             console.log(`[CHROMADON]    - ${marketing_tools_1.MARKETING_TOOLS.length} Marketing Queue tools registered`);
+            console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
             // Initialize Social Overlord (queue execution engine)
             socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);
             console.log('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');

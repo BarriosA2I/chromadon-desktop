@@ -317,6 +317,12 @@ function startBrainServer(apiKey?: string): void {
         NODE_ENV: 'production',
         ...(resolvedKey ? { ANTHROPIC_API_KEY: resolvedKey } : {}),
         ...(resolvedGeminiKey ? { GEMINI_API_KEY: resolvedGeminiKey } : {}),
+        // OBS Studio WebSocket connection
+        OBS_WS_HOST: process.env.OBS_WS_HOST || '127.0.0.1',
+        OBS_WS_PORT: process.env.OBS_WS_PORT || '4455',
+        OBS_WS_PASSWORD: process.env.OBS_WS_PASSWORD || '',
+        OBS_SAFE_MODE: process.env.OBS_SAFE_MODE || 'true',
+        OBS_SAFE_SCENES: process.env.OBS_SAFE_SCENES || 'StartingSoon,Main',
       },
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     })

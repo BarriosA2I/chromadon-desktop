@@ -75,6 +75,9 @@ function selectModelForTask(userMessage, lastToolName) {
         'video_analytics', 'comment_manager', 'seo_optimizer',
         'thumbnail_test', 'community_post', 'revenue_report',
         'playlist_manager', 'upload_scheduler',
+        // OBS Studio tools
+        'obs_stream_start', 'obs_stream_stop', 'obs_record_start', 'obs_record_stop',
+        'obs_scene_set', 'obs_scene_list', 'obs_status', 'obs_mic_mute', 'obs_source_visibility',
     ].includes(lastToolName)) {
         return ModelTier.FAST;
     }

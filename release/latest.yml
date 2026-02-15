@@ -1,8 +1,8 @@
-version: 1.19.7
+version: 1.20.0
 files:
-  - url: CHROMADON-Setup-1.19.7.exe
-    sha512: DCndkrSZb8crL/ixoBKrHhaxtMoKMDXI3A/9OnOZzUgXB3NWiZn/RJBne94d2+D9+dTMyQv/AUwN567tWXuSOg==
-    size: 137051459
-path: CHROMADON-Setup-1.19.7.exe
-sha512: DCndkrSZb8crL/ixoBKrHhaxtMoKMDXI3A/9OnOZzUgXB3NWiZn/RJBne94d2+D9+dTMyQv/AUwN567tWXuSOg==
-releaseDate: '2026-02-15T03:30:10.903Z'
+  - url: CHROMADON-Setup-1.20.0.exe
+    sha512: WZ4rZ0DL8W6YvoMnPR2ck+89JKjoH72uhoiF/kgcHM6kOhAevY9R4gbKs2WX1sye3dRVhGO+F+PZ5b0l92nfGg==
+    size: 155893520
+path: CHROMADON-Setup-1.20.0.exe
+sha512: WZ4rZ0DL8W6YvoMnPR2ck+89JKjoH72uhoiF/kgcHM6kOhAevY9R4gbKs2WX1sye3dRVhGO+F+PZ5b0l92nfGg==
+releaseDate: '2026-02-15T05:29:30.446Z'
