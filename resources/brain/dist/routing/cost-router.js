@@ -53,14 +53,28 @@ function selectModelForTask(userMessage, lastToolName) {
         input.match(/\b(done|continue|resume|next|yes|ok|confirm)\b/)) {
         return ModelTier.FAST;
     }
+    // FAST: Marketing queue queries — simple tool calls that retrieve and display data
+    if (input.match(/\b(scheduled|schedule|queue|calendar)\b.*\b(post|posts|status|show|list|all)\b/) ||
+        input.match(/\b(show|list|get|check)\b.*\b(scheduled|queue|posts|calendar)\b/)) {
+        return ModelTier.FAST;
+    }
     // FAST: Continuation loops — when the AI is in a tool-use loop,
-    // the "user" messages are just tool results, not new instructions
+    // the "user" messages are just tool results, not new instructions.
+    // After tool execution, the AI just needs to present results — no thinking needed.
     if (lastToolName && [
         'click', 'navigate', 'scroll', 'type_text', 'wait', 'extract_text',
         'get_page_context', 'get_interactive_elements', 'hover', 'press_key',
         'hover_and_click', 'click_table_row', 'create_tab', 'switch_tab',
         'list_tabs', 'close_tab', 'upload_file', 'select_option',
         'get_video_ids', 'check_page_health', 'wait_for_result',
+        // Marketing & scheduling tools — result presentation only
+        'schedule_post', 'get_scheduled_posts', 'content_calendar',
+        'repurpose_content', 'hashtag_research', 'engagement_report',
+        'competitor_watch', 'auto_reply', 'lead_capture', 'campaign_tracker',
+        // YouTube Studio tools
+        'video_analytics', 'comment_manager', 'seo_optimizer',
+        'thumbnail_test', 'community_post', 'revenue_report',
+        'playlist_manager', 'upload_scheduler',
     ].includes(lastToolName)) {
         return ModelTier.FAST;
     }

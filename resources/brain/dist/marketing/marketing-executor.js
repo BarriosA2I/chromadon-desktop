@@ -89,17 +89,30 @@ function createMarketingExecutor(desktopUrl, analyticsDb) {
                     }
                     const lines = [];
                     const mediaNote = media_urls?.length ? ` with ${media_urls.length} media file(s)` : '';
+                    // Format readable date/time
+                    let timeLabel = 'immediately';
                     if (scheduled_time && scheduled_time !== 'null') {
-                        lines.push(`Scheduled ${results.length} post(s) for ${scheduled_time}${mediaNote}:`);
+                        try {
+                            const d = new Date(scheduled_time);
+                            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                            const h = d.getUTCHours();
+                            const m = d.getUTCMinutes();
+                            const ampm = h >= 12 ? 'pm' : 'am';
+                            const h12 = h % 12 || 12;
+                            const timeStr = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+                            timeLabel = `${days[d.getUTCDay()]} ${months[d.getUTCMonth()]} ${d.getUTCDate()} at ${timeStr}`;
+                        }
+                        catch { /* fallback to ISO */
+                            timeLabel = scheduled_time;
+                        }
+                    }
+                    const platformList = results.map(r => r.platform).join(', ');
+                    if (scheduled_time && scheduled_time !== 'null') {
+                        lines.push(`Scheduled ${results.length} post(s) for ${timeLabel} on ${platformList}${mediaNote}.`);
                     }
                     else {
-                        lines.push(`Added ${results.length} task(s) to queue for immediate execution${mediaNote}:`);
-                    }
-                    for (const r of results) {
-                        lines.push(`  - ${r.platform}: task ${r.taskId} (${r.status})`);
-                    }
-                    if (batchId) {
-                        lines.push(`Cross-post batch: ${batchId}`);
+                        lines.push(`Added ${results.length} task(s) to queue for immediate execution on ${platformList}${mediaNote}.`);
                     }
                     return lines.join('\n');
                 }
@@ -120,24 +133,50 @@ function createMarketingExecutor(desktopUrl, analyticsDb) {
                             .join(' ');
                         return `No ${filterDesc} tasks in the marketing queue.`;
                     }
-                    const stats = data.stats || {};
-                    const lines = [
-                        `Marketing Queue: ${tasks.length} task(s)`,
-                        `Stats: ${stats.queued || 0} queued, ${stats.scheduled || 0} scheduled, ${stats.running || 0} running, ${stats.completed || 0} completed, ${stats.failed || 0} failed`,
-                        '',
-                    ];
+                    // Group tasks by date — show platforms + times only, no content
+                    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    const dateGroups = new Map();
+                    let immediateCount = 0;
                     for (const task of tasks) {
-                        const scheduledInfo = task.scheduledTime
-                            ? ` | Scheduled: ${task.scheduledTime}`
-                            : '';
-                        const batchInfo = task.batchId ? ` | Batch: ${task.batchId}` : '';
-                        lines.push(`[${task.status.toUpperCase()}] ${task.platform} ${task.action} (ID: ${task.id})${scheduledInfo}${batchInfo}`);
-                        if (task.content) {
-                            lines.push(`  Content: ${task.content.slice(0, 100)}${task.content.length > 100 ? '...' : ''}`);
+                        if (!task.scheduledTime) {
+                            immediateCount++;
+                            continue;
                         }
-                        if (task.error) {
-                            lines.push(`  Error: ${task.error}`);
+                        try {
+                            const d = new Date(task.scheduledTime);
+                            const dateKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+                            const h = d.getUTCHours();
+                            const m = d.getUTCMinutes();
+                            const ampm = h >= 12 ? 'pm' : 'am';
+                            const h12 = h % 12 || 12;
+                            const timeStr = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+                            if (!dateGroups.has(dateKey)) {
+                                dateGroups.set(dateKey, {
+                                    label: `${dayNames[d.getUTCDay()]} ${monthNames[d.getUTCMonth()]} ${d.getUTCDate()}`,
+                                    sortKey: d.getTime(),
+                                    platforms: new Map(),
+                                });
+                            }
+                            const group = dateGroups.get(dateKey);
+                            const key = `${timeStr} ${task.platform}`;
+                            group.platforms.set(key, (group.platforms.get(key) || 0) + 1);
                         }
+                        catch {
+                            immediateCount++;
+                        }
+                    }
+                    const lines = [`Marketing Queue: ${tasks.length} post(s)`];
+                    // Sort date groups chronologically, cap at 15
+                    const sorted = [...dateGroups.values()].sort((a, b) => a.sortKey - b.sortKey).slice(0, 15);
+                    for (const group of sorted) {
+                        const platformList = [...group.platforms.entries()]
+                            .map(([key, count]) => count > 1 ? `${key} (x${count})` : key)
+                            .join(', ');
+                        lines.push(`  ${group.label}: ${platformList}`);
+                    }
+                    if (immediateCount > 0) {
+                        lines.push(`  Immediate: ${immediateCount} queued`);
                     }
                     return lines.join('\n');
                 }

@@ -148,6 +148,7 @@ class AgenticOrchestrator {
         let sessionOutputTokens = 0;
         const noOpDetector = new NoOpDetector();
         let usingGemini = false;
+        let lastExecutedToolName = ''; // Tracks last tool for cost router continuation routing
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
                 break;
@@ -176,11 +177,11 @@ class AgenticOrchestrator {
                 }
                 // 6. Call LLM API with streaming (browser tools + any additional tools)
                 const allTools = [...browser_tools_1.BROWSER_TOOLS, ...this.additionalTools];
-                // Cost router: select model tier based on user message
+                // Cost router: select model tier based on user message + last tool name
                 const lastUserMsg = typeof session.messages[session.messages.length - 1]?.content === 'string'
                     ? session.messages[session.messages.length - 1].content
                     : userMessage;
-                const modelTier = this.useGemini ? (0, cost_router_1.selectModelForTask)(lastUserMsg) : null;
+                const modelTier = this.useGemini ? (0, cost_router_1.selectModelForTask)(lastUserMsg, lastExecutedToolName) : null;
                 const selectedModel = modelTier ? (0, cost_router_1.resolveModel)(modelTier) : currentModel;
                 // Select system prompt: compact for FAST tier, full for everything else
                 const effectiveSystemPrompt = (modelTier && (0, cost_router_1.shouldUseCompactPrompt)(modelTier))
@@ -621,6 +622,7 @@ class AgenticOrchestrator {
                             });
                         }
                         prevToolName = toolName;
+                        lastExecutedToolName = toolName; // Persist across loop iterations for cost router
                     }
                     // If aborted during tool execution, break out
                     if (context.abortSignal?.aborted)

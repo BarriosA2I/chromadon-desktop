@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.19.8 — 2026-02-15)
+## Recent Changes (v1.19.9 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: AI says "Done." for scheduled posts instead of showing schedule — Brain v1.5.8 routes scheduling queries to FAST tier | `resources/brain/dist/` |
+| Fixed: `get_scheduled_posts` now returns compact date-grouped summary (no content echo) | `resources/brain/dist/marketing/` |
+| Updated: Brain dist v1.5.8 — cost router continuation routing + compact schedule responses | `resources/brain/dist/` |
+
+## Changes (v1.19.8 — 2026-02-15)
 
 | Change | File |
 |--------|------|
