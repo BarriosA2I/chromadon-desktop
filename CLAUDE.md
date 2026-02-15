@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.25.9 — 2026-02-15)
+## Recent Changes (v1.25.10 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain v1.10.10 — Scheduled posts now generate actual text content before posting — two-phase execution pre-generates post text via LLM, then sends browser-only instructions with pre-written content | `resources/brain/dist/` |
+| Fixed: Brain v1.10.10 — Source filter for legacy vault chunks now parses Source URL from chunk content text + domain diversity fallback when no client profile exists | `resources/brain/dist/` |
+
+## Changes (v1.25.9 — 2026-02-15)
 
 | Change | File |
 |--------|------|

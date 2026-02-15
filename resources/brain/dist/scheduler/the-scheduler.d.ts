@@ -82,6 +82,17 @@ export declare class TheScheduler {
         taskType?: string;
     }): ScheduledTask[];
     getStatus(): SchedulerStatus;
+    /**
+     * Pre-generate post content via direct LLM call.
+     * This runs BEFORE browser actions so the AI doesn't need to "think" about
+     * content while also doing click/type/upload actions.
+     */
+    private preGenerateContent;
+    /**
+     * Build a browser-only instruction with pre-generated content.
+     * The AI just needs to navigate, upload media, type the text, and post.
+     */
+    private buildPostingInstruction;
     private persist;
 }
 export {};

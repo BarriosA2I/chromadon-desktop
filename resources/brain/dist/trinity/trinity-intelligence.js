@@ -37,19 +37,25 @@ class TrinityIntelligence {
             return null;
         }
     }
+    /** Parse "Source: <url>" from chunk text content (research_website always embeds this) */
+    extractSourceUrlFromContent(content) {
+        if (!content)
+            return null;
+        const match = content.match(/^Source:\s*(https?:\/\/\S+)/m);
+        return match ? match[1] : null;
+    }
     isClientOwnContent(hit, clientDomain, businessName) {
-        // Check sourceUrl in metadata (new chunks have this)
-        const sourceUrl = hit.chunk.metadata.sourceUrl;
+        // Get effective source URL: metadata first, then parse from chunk content (legacy chunks)
+        const sourceUrl = hit.chunk.metadata.sourceUrl || this.extractSourceUrlFromContent(hit.chunk.content);
         if (sourceUrl && clientDomain) {
             const sourceDomain = this.extractDomain(sourceUrl);
             if (sourceDomain && sourceDomain === clientDomain)
                 return true;
         }
-        // Heuristic for legacy chunks without sourceUrl: check if documentFilename contains business name
-        if (!sourceUrl && businessName) {
+        // Heuristic: check if documentFilename contains business name
+        if (businessName) {
             const nameLower = businessName.toLowerCase();
-            const filenameLower = hit.documentFilename.toLowerCase();
-            if (filenameLower.includes(nameLower))
+            if (hit.documentFilename.toLowerCase().includes(nameLower))
                 return true;
         }
         return false;
@@ -58,7 +64,24 @@ class TrinityIntelligence {
         const profile = this.storage.getProfile(clientId);
         const clientDomain = this.extractDomain(profile?.website);
         const businessName = profile?.businessName || null;
-        return hits.filter(hit => !this.isClientOwnContent(hit, clientDomain, businessName));
+        // Normal path: filter by known client domain/name
+        if (clientDomain || businessName) {
+            return hits.filter(hit => !this.isClientOwnContent(hit, clientDomain, businessName));
+        }
+        // Fallback: no profile info at all — use domain diversity check
+        // If all chunks come from a single domain, it's likely the client's own site
+        const domains = new Set();
+        for (const hit of hits) {
+            const url = hit.chunk.metadata.sourceUrl || this.extractSourceUrlFromContent(hit.chunk.content);
+            const domain = this.extractDomain(url);
+            if (domain)
+                domains.add(domain);
+        }
+        // Single domain (or no domains) = likely all from client's own site → no external data
+        if (domains.size <= 1)
+            return [];
+        // Multiple domains = some diversity exists → return all
+        return hits;
     }
     // =========================================================================
     // AGENT 1: Competitor Analyst

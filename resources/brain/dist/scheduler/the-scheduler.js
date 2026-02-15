@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TheScheduler = void 0;
 const scheduler_types_1 = require("./scheduler-types");
 const scheduler_persistence_1 = require("./scheduler-persistence");
+const llm_helper_1 = require("../client-context/llm-helper");
 /**
  * Silent writer that captures orchestrator output without sending to user chat.
  * Same pattern as SocialMonitor's MonitorWriter.
@@ -145,11 +146,26 @@ class TheScheduler {
             }
             // 2. Coordinate with SocialMonitor — wait if it's active
             await this.coordinateWithMonitor();
-            // 3. Execute via orchestrator.chat() — THIS is where credits are spent
+            // 3. Pre-generate content for social posts (two-phase execution)
+            // Phase 1: Generate text content via direct LLM call (BALANCED model)
+            // Phase 2: Replace instruction with browser-only actions + pre-written content
+            if (task.taskType === 'social_post' && task.instruction.match(/^Generate an engaging/i)) {
+                try {
+                    const generated = await this.preGenerateContent(task);
+                    if (generated) {
+                        console.log(`[TheScheduler] Pre-generated content (${generated.length} chars): ${generated.slice(0, 80)}...`);
+                        task.instruction = this.buildPostingInstruction(task, generated);
+                    }
+                }
+                catch (err) {
+                    console.warn('[TheScheduler] Content pre-generation failed, using original instruction:', err.message);
+                }
+            }
+            // 4. Execute via orchestrator.chat() — THIS is where credits are spent
             const writer = new CollectorWriter();
             const { context, pageContext } = await this.contextFactory();
             await this.orchestrator.chat(undefined, // fresh session
-            task.instruction, // the NL instruction the user gave
+            task.instruction, // the NL instruction (now with pre-generated content)
             writer, context, pageContext, { systemPromptOverride: undefined });
             // 4. Capture result
             task.resultSummary = writer.getText().slice(0, 500);
@@ -339,6 +355,57 @@ class TheScheduler {
             nextTaskDescription: nextTask ? nextTask.instruction.slice(0, 80) : null,
             stats: { ...this.state.stats },
         };
+    }
+    // ===========================================================================
+    // CONTENT PRE-GENERATION (Scriptwriter Phase)
+    // ===========================================================================
+    /**
+     * Pre-generate post content via direct LLM call.
+     * This runs BEFORE browser actions so the AI doesn't need to "think" about
+     * content while also doing click/type/upload actions.
+     */
+    async preGenerateContent(task) {
+        // Extract topic from instruction: "Generate an engaging {platform} post about: {topic}. Then post..."
+        const topicMatch = task.instruction.match(/post about:\s*(.+?)\.\s*Then post/i);
+        const topic = topicMatch ? topicMatch[1].trim() : 'the latest update';
+        const platform = task.platforms?.[0] || 'social media';
+        const systemPrompt = `You are a professional social media content writer for CHROMADON by Barrios A2I (barriosa2i.com).
+Write engaging, authentic social media posts. NO em dashes. NO corporate jargon. 1-3 emojis max.
+Platform limits: Twitter 280 chars, LinkedIn 3000, Facebook 500, Instagram 2200.
+NEVER use: "revolutionize", "game-changer", "boost productivity", "leverage", "synergy".
+When writing about CHROMADON: be specific — "Your AI social media manager that never sleeps", "Post to all your socials with one sentence."
+Always include relevant hashtags at the end.`;
+        const userPrompt = `Write a ${platform} post about: ${topic}.
+${task.hashtags?.length ? `Include these hashtags: ${task.hashtags.join(' ')}` : 'Add 3-5 relevant hashtags.'}
+Include the link barriosa2i.com if relevant.
+Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
+        const content = await (0, llm_helper_1.callLLM)(systemPrompt, userPrompt, 500);
+        if (!content || content.length < 10)
+            return null;
+        return content.trim();
+    }
+    /**
+     * Build a browser-only instruction with pre-generated content.
+     * The AI just needs to navigate, upload media, type the text, and post.
+     */
+    buildPostingInstruction(task, content) {
+        const platform = task.platforms?.[0] || 'LinkedIn';
+        const mediaPath = task.mediaUrls?.[0];
+        let instruction = `Post the following content to ${platform}:\n\n${content}\n\nSteps:\n`;
+        instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise navigate to ${platform}.\n`;
+        instruction += `2. Click the compose/create post button.\n`;
+        if (mediaPath) {
+            instruction += `3. Click the photo/media/image upload button in the compose area.\n`;
+            instruction += `4. Call upload_file with filePath="${mediaPath}". Wait for the upload preview to appear.\n`;
+            instruction += `5. Click in the text input area and type the EXACT post content shown above. Do NOT modify it.\n`;
+            instruction += `6. Click the Post/Share button to publish.\n`;
+        }
+        else {
+            instruction += `3. Type the EXACT post content shown above into the compose text area.\n`;
+            instruction += `4. Click the Post/Share button to publish.\n`;
+        }
+        instruction += `\nCRITICAL: You MUST type the full post text into the compose box. The post is NOT complete without text content.`;
+        return instruction;
     }
     // ===========================================================================
     // PERSISTENCE

@@ -21,6 +21,8 @@ export declare class TrinityIntelligence implements TrinityInsights {
     constructor(storage: ClientStorage, vault: KnowledgeVault);
     private getClientId;
     private extractDomain;
+    /** Parse "Source: <url>" from chunk text content (research_website always embeds this) */
+    private extractSourceUrlFromContent;
     private isClientOwnContent;
     private filterExternalContent;
     getCompetitorContent(platform: SocialPlatform, topic: string): Promise<string[]>;
