@@ -72,7 +72,7 @@ function toEST(d) {
     const time = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
     return `${days[est.getUTCDay()]} ${months[est.getUTCMonth()]} ${est.getUTCDate()} at ${time} EST`;
 }
-function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClientMedia) {
+function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClientMedia, trinityIntel) {
     return async (toolName, input) => {
         switch (toolName) {
             // ==================================================================
@@ -146,6 +146,18 @@ function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClient
                         genInstruction += ` Include hashtags: ${hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ')}`;
                     if (media_urls?.length)
                         genInstruction += ` Attach media: ${media_urls.join(', ')}`;
+                    // Inject Trinity market intelligence if available
+                    if (trinityIntel) {
+                        try {
+                            const trinityContext = await trinityIntel.getContentIntelligence((platforms[0] || 'linkedin'), topicStr);
+                            if (trinityContext) {
+                                genInstruction += `\n\nUse this market intelligence to make the content more relevant and competitive:\n${trinityContext}`;
+                            }
+                        }
+                        catch (e) {
+                            console.log('[CHROMADON] Trinity intelligence unavailable:', e.message);
+                        }
+                    }
                     const scheduledTimeUtc = parseTime(scheduled_time);
                     const isImmediate = !scheduled_time || scheduled_time === 'null';
                     const batchId = platforms.length > 1

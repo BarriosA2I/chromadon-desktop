@@ -8,9 +8,10 @@
  * @author Barrios A2I
  */
 import { TheScheduler } from './the-scheduler';
+import type { TrinityIntelligence } from '../trinity/trinity-intelligence';
 export type SchedulerExecutor = (toolName: string, input: Record<string, any>) => Promise<string>;
 export declare function createSchedulerExecutor(scheduler: TheScheduler, getAuthenticatedPlatforms?: () => Promise<string[]>, getClientMedia?: () => {
     primaryLogo: string | null;
     primaryVideo: string | null;
-} | null): SchedulerExecutor;
+} | null, trinityIntel?: TrinityIntelligence | null): SchedulerExecutor;
 //# sourceMappingURL=scheduler-executor.d.ts.map

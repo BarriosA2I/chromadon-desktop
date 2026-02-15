@@ -99,6 +99,8 @@ function selectModelForTask(userMessage, lastToolName) {
         'client_get_media',
         // Trinity Research tools — result presentation only
         'research_website', 'client_add_knowledge',
+        // Trinity Intelligence tools — result presentation only
+        'analyze_competitors', 'get_trending_topics', 'get_audience_insights',
     ].includes(lastToolName)) {
         return ModelTier.FAST;
     }

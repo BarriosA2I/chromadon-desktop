@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.7 — 2026-02-15)
+## Recent Changes (v1.25.8 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Added: Brain v1.10.8 — Full Trinity Intelligence Pipeline: 3 new AI chat tools (analyze_competitors, get_trending_topics, get_audience_insights) for vault-powered market analysis. Auto-injects market intelligence into social content generation. | `resources/brain/dist/` |
+
+## Changes (v1.25.7 — 2026-02-15)
 
 | Change | File |
 |--------|------|

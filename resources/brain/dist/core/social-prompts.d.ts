@@ -18,6 +18,7 @@ export interface SocialPromptContext {
     hashtags?: string[];
     mentions?: string[];
     customInstructions?: string;
+    trinityContext?: string;
 }
 export declare function generateSocialPrompt(ctx: SocialPromptContext): string;
 //# sourceMappingURL=social-prompts.d.ts.map

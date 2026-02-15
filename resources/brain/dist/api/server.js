@@ -148,6 +148,8 @@ let obsClientInstance = null;
 // Social Media Monitoring State
 let socialMonitor = null;
 let theScheduler = null;
+// Trinity Intelligence State
+let trinityIntelligence = null;
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -2871,8 +2873,8 @@ async function initializeCortexRouter() {
         // Create Social Media bridge if SocialOverlord is available
         let socialBridge;
         if (socialOverlord) {
-            socialBridge = new social_tool_bridge_1.SocialMediaToolBridge(socialOverlord);
-            console.log('[CHROMADON] ✅ Social Media Tool Bridge connected');
+            socialBridge = new social_tool_bridge_1.SocialMediaToolBridge(socialOverlord, trinityIntelligence || undefined);
+            console.log('[CHROMADON] ✅ Social Media Tool Bridge connected' + (trinityIntelligence ? ' (with Trinity Intelligence)' : ''));
         }
         cortexRouter = new cortex_router_1.CortexRouter({
             cortex: agentSystem.getCortex(),
@@ -4120,9 +4122,12 @@ async function startServer() {
             catch (err) {
                 console.log(`[CHROMADON] ⚠️ OBS init failed (non-critical): ${err.message}`);
             }
-            // Trinity Research executor
+            // Trinity Intelligence + Research executor
+            if (clientStorage && knowledgeVault) {
+                trinityIntelligence = new trinity_1.TrinityIntelligence(clientStorage, knowledgeVault);
+            }
             const trinityExec = (clientStorage && knowledgeVault)
-                ? (0, trinity_1.createTrinityExecutor)(clientStorage, knowledgeVault)
+                ? (0, trinity_1.createTrinityExecutor)(clientStorage, knowledgeVault, trinityIntelligence || undefined)
                 : null;
             // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS + monitoring + scheduler + trinity
             // Filter out schedule_post and get_scheduled_posts from MARKETING_TOOLS — scheduler replaces them
@@ -4137,7 +4142,7 @@ async function startServer() {
                 ...(obsExec ? obs_1.OBS_TOOLS : []),
                 ...monitoring_1.MONITORING_TOOLS,
                 ...scheduler_1.SCHEDULER_TOOLS,
-                ...(trinityExec ? trinity_1.TRINITY_TOOLS : []),
+                ...(trinityExec ? [...trinity_1.TRINITY_TOOLS, ...trinity_1.TRINITY_INTELLIGENCE_TOOLS] : []),
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
@@ -4160,7 +4165,7 @@ async function startServer() {
                     const monitoringExec = (0, monitoring_1.createMonitoringExecutor)(socialMonitor, analyticsDb);
                     return monitoringExec(toolName, input);
                 }
-                if (trinity_1.TRINITY_TOOL_NAMES.has(toolName) && trinityExec)
+                if ((trinity_1.TRINITY_TOOL_NAMES.has(toolName) || trinity_1.TRINITY_INTELLIGENCE_TOOL_NAMES.has(toolName)) && trinityExec)
                     return trinityExec(toolName, input);
                 if (clientContextExec?.canHandle(toolName))
                     return clientContextExec.execute(toolName, input);
@@ -4208,7 +4213,7 @@ async function startServer() {
             if (obsExec)
                 console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
             if (trinityExec)
-                console.log(`[CHROMADON]    - ${trinity_1.TRINITY_TOOLS.length} Trinity Research tools registered`);
+                console.log(`[CHROMADON]    - ${trinity_1.TRINITY_TOOLS.length + trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} Trinity tools registered (${trinity_1.TRINITY_TOOLS.length} research + ${trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} intelligence)`);
             // Initialize Social Overlord (queue execution engine)
             try {
                 socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);
@@ -4283,7 +4288,7 @@ async function startServer() {
                         primaryLogo: primaryLogo?.storedPath || null,
                         primaryVideo: primaryVideo?.storedPath || null,
                     };
-                } : undefined);
+                } : undefined, trinityIntelligence);
                 theScheduler.start();
                 const status = theScheduler.getStatus();
                 console.log(`[CHROMADON] ✅ TheScheduler initialized + STARTED (${status.pendingCount} pending task(s))`);

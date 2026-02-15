@@ -169,6 +169,9 @@ Compose an engaging, platform-appropriate ${ctx.platform} post${ctx.customInstru
 You are an expert social media content creator. Write compelling, authentic posts (not placeholders).
 Follow the ORGANIC WRITING STYLE rules: no em dashes, no corporate AI tone, 1-3 emojis max.
 Respect character limits: Twitter 280, LinkedIn 3000, Facebook 500, Instagram 2200.\n`;
+        if (ctx.trinityContext) {
+            prompt += `\nMARKET INTELLIGENCE (use this to inform your content — reference real products, services, and differentiators):\n${ctx.trinityContext}\n`;
+        }
     }
     if (ctx.targetUrl) {
         prompt += `\nTARGET URL: ${ctx.targetUrl}\n`;

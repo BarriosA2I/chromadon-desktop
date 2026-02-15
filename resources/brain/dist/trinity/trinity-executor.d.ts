@@ -8,5 +8,6 @@
  */
 import { ClientStorage } from '../client-context/client-storage';
 import { KnowledgeVault } from '../client-context/knowledge-vault';
-export declare function createTrinityExecutor(storage: ClientStorage, vault: KnowledgeVault): (toolName: string, input: Record<string, any>) => Promise<string>;
+import { TrinityIntelligence } from './trinity-intelligence';
+export declare function createTrinityExecutor(storage: ClientStorage, vault: KnowledgeVault, intelligence?: TrinityIntelligence): (toolName: string, input: Record<string, any>) => Promise<string>;
 //# sourceMappingURL=trinity-executor.d.ts.map

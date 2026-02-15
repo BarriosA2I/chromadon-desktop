@@ -35,6 +35,7 @@ exports.createTrinityExecutor = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const uuid_1 = require("uuid");
+const trinity_intelligence_1 = require("./trinity-intelligence");
 // ============================================================================
 // HTML TEXT EXTRACTION
 // ============================================================================
@@ -131,7 +132,8 @@ async function fetchPage(url, timeoutMs = 15000) {
 // ============================================================================
 // EXECUTOR
 // ============================================================================
-function createTrinityExecutor(storage, vault) {
+function createTrinityExecutor(storage, vault, intelligence) {
+    const trinity = intelligence || new trinity_intelligence_1.TrinityIntelligence(storage, vault);
     return async (toolName, input) => {
         switch (toolName) {
             // ====================================================================
@@ -290,6 +292,61 @@ function createTrinityExecutor(storage, vault) {
                     }
                     catch { /* already moved/deleted */ }
                 }
+            }
+            // ====================================================================
+            // ANALYZE COMPETITORS
+            // ====================================================================
+            case 'analyze_competitors': {
+                const topic = input.topic;
+                if (!topic)
+                    return JSON.stringify({ error: 'Missing required parameter: topic' });
+                const platform = input.platform || 'linkedin';
+                console.log(`[Trinity] Analyzing competitors: "${topic}" on ${platform}`);
+                const competitors = await trinity.getCompetitorContent(platform, topic);
+                return JSON.stringify({
+                    topic,
+                    platform,
+                    competitors_found: competitors.length,
+                    insights: competitors,
+                    message: competitors.length > 0
+                        ? `Found ${competitors.length} relevant competitor insight(s) from the knowledge vault.`
+                        : 'No competitor data found in the knowledge vault. Use research_website to learn competitor websites first.',
+                });
+            }
+            // ====================================================================
+            // GET TRENDING TOPICS
+            // ====================================================================
+            case 'get_trending_topics': {
+                const platform = input.platform || 'linkedin';
+                console.log(`[Trinity] Getting trending topics for ${platform}`);
+                const trends = await trinity.getTrendingTopics(platform);
+                const clientId = storage.getActiveClientId();
+                const profile = clientId ? storage.getProfile(clientId) : null;
+                const industry = profile?.industry || 'technology';
+                return JSON.stringify({
+                    industry,
+                    platform,
+                    trends_found: trends.length,
+                    trends,
+                    message: trends.length > 0
+                        ? `Found ${trends.length} trending topic(s) in ${industry} from the knowledge vault.`
+                        : `No trend data found for ${industry}. Use research_website to learn industry news sites first.`,
+                });
+            }
+            // ====================================================================
+            // GET AUDIENCE INSIGHTS
+            // ====================================================================
+            case 'get_audience_insights': {
+                const platform = input.platform || 'linkedin';
+                console.log(`[Trinity] Getting audience insights for ${platform}`);
+                const insights = await trinity.getAudienceInsights(platform);
+                return JSON.stringify({
+                    platform,
+                    ...insights,
+                    message: (insights.products?.length || insights.services?.length)
+                        ? 'Audience profile built from client onboarding data and knowledge vault.'
+                        : 'Limited audience data available. Complete client onboarding or use research_website to learn more.',
+                });
             }
             default:
                 return JSON.stringify({ error: `Unknown Trinity tool: ${toolName}` });
