@@ -7,7 +7,22 @@
 
 ---
 
-## Recent Changes (v1.22.1 — 2026-02-15)
+## Recent Changes (v1.23.0 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Zombie Brain processes never detected or killed — health check now kills unreachable Brain after 3 consecutive failures (90s) and restarts | `electron/main.ts` |
+| Fixed: CRITICAL — Brain HTTP server verification (25s probe) now kills zombie process and triggers restart instead of just logging | `electron/main.ts` |
+| Fixed: Brain `startBrainServer()` always resets `brainRestarting` flag on exit/error — prevents permanent hung state | `electron/main.ts` |
+| Fixed: Brain process 'error' event now triggers restart with backoff (was only logging) | `electron/main.ts` |
+| Fixed: Brain clean exit (code 0) now notifies UI instead of silent failure | `electron/main.ts` |
+| Fixed: Missing `brainRestarting = false` when Brain entry file not found — prevents permanent hang | `electron/main.ts` |
+| Fixed: Brain `app.listen()` errors now properly reject the startup promise (was hanging forever on port conflicts) | Brain `src/api/server.ts` |
+| Fixed: Brain `startServer().catch()` now exits with code 1 so Desktop restarts it (was just logging) | Brain `src/api/server.ts` |
+| Fixed: EADDRINUSE exits with code 1 instead of code 0 — Desktop now properly restarts on port conflicts | Brain `src/api/server.ts` |
+| Fixed: SocialMonitor timer callbacks wrapped with `.catch()` — prevents unhandled promise rejections from destabilizing process | Brain `src/monitoring/social-monitor.ts` |
+
+## Changes (v1.22.1 — 2026-02-15)
 
 | Change | File |
 |--------|------|

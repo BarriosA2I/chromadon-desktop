@@ -69,9 +69,13 @@ class SocialMonitor {
         const ms = intervalMs || this.config.intervalMinutes * 60 * 1000;
         this.config.enabled = true;
         console.log(`[SocialMonitor] Started (${(ms / 60000).toFixed(0)}min interval, platforms: ${this.config.platforms.join(', ')})`);
-        this.monitorInterval = setInterval(() => this.runCycle(), ms);
+        this.monitorInterval = setInterval(() => {
+            this.runCycle().catch(err => console.error('[SocialMonitor] Cycle error:', err.message));
+        }, ms);
         // Run first cycle after 30s delay (let things settle)
-        setTimeout(() => this.runCycle(), 30000);
+        setTimeout(() => {
+            this.runCycle().catch(err => console.error('[SocialMonitor] Initial cycle error:', err.message));
+        }, 30000);
     }
     stop() {
         if (this.monitorInterval) {

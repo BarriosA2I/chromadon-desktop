@@ -245,6 +245,7 @@ let healthRestartCount = 0
 const MAX_HEALTH_RESTARTS = 3
 let lastHealthRestart = 0
 const HEALTH_RESTART_COOLDOWN = 60_000 // 1 minute between health-triggered restarts
+let healthUnreachableCount = 0 // Consecutive health check failures (zombie detection)
 
 // Crash alert via Resend.com — notify Gary when a client's brain is down
 const CRASH_ALERT_EMAIL = 'alienation2innovation@gmail.com'
@@ -302,6 +303,7 @@ function startBrainServer(apiKey?: string): void {
 
   if (!fs.existsSync(brainEntry)) {
     log('Brain server not found at: ' + brainEntry)
+    brainRestarting = false
     return
   }
 
@@ -352,11 +354,21 @@ function startBrainServer(apiKey?: string): void {
 
   brainProcess.on('error', (err) => {
     log(`Process error: ${err.message}`)
+    brainProcess = null
+    brainRestarting = false
+    // Treat like a crash — restart with backoff
+    brainRestartCount++
+    if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
+      const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
+      log(`Process error restart in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
+      setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
+    }
   })
 
   brainProcess.on('exit', (code, signal) => {
     log(`Exited: code=${code} signal=${signal}`)
     brainProcess = null
+    brainRestarting = false // Always reset — process has exited
     // Auto-restart on crash (not on clean shutdown), with limit to prevent infinite loops
     if (code !== 0 && code !== null) {
       brainRestartCount++
@@ -377,6 +389,9 @@ function startBrainServer(apiKey?: string): void {
         log(`Brain crashed ${brainRestartCount} times — giving up. Check brain-debug.log for errors.`)
         sendCrashAlert(code, signal, brainRestartCount)
       }
+    } else {
+      // Clean exit (code 0) or signal kill — notify UI
+      mainWindow?.webContents.send('brain-status', { running: false, error: null })
     }
   })
 
@@ -402,7 +417,22 @@ function startBrainServer(apiKey?: string): void {
       } catch { /* still starting */ }
     }
     if (!verified && brainProcess) {
-      log('Brain fork succeeded but HTTP server never started (25s timeout) — possible native module crash')
+      log('Brain fork succeeded but HTTP server never started (25s timeout) — killing zombie')
+      try { brainProcess.kill('SIGKILL') } catch {}
+      brainProcess = null
+      // Trigger restart via crash path
+      brainRestartCount++
+      if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
+        const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
+        log(`Zombie killed — restarting in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
+        setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
+      } else {
+        log(`Brain zombie killed but restart limit reached (${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
+        mainWindow?.webContents.send('brain-status', {
+          running: false,
+          error: 'Brain failed to start after multiple attempts. Check brain-debug.log.',
+        })
+      }
     }
   })()
 }
@@ -451,6 +481,7 @@ function startBrainHealthCheck(): void {
     try {
       const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(5000) })
       const data = await res.json() as any
+      healthUnreachableCount = 0 // Reset — Brain is reachable
       if (!data.orchestrator && hasAnyKey) {
         // Cooldown: don't restart more than once per minute
         const now = Date.now()
@@ -472,7 +503,27 @@ function startBrainHealthCheck(): void {
         restartBrainServer(cachedApiKey || undefined)
       }
     } catch {
-      // Brain unreachable — will auto-restart via exit handler if process crashed
+      // Brain unreachable — detect zombie process and kill/restart
+      healthUnreachableCount++
+      if (healthUnreachableCount >= 3 && brainProcess) {
+        console.log(`[Desktop] Brain unreachable for ${healthUnreachableCount} consecutive checks — killing zombie process`)
+        try { brainProcess.kill('SIGKILL') } catch {}
+        brainProcess = null
+        healthUnreachableCount = 0
+        // Trigger restart if within limits
+        if (healthRestartCount < MAX_HEALTH_RESTARTS) {
+          healthRestartCount++
+          lastHealthRestart = Date.now()
+          console.log(`[Desktop] Zombie killed — restarting Brain (health restart ${healthRestartCount}/${MAX_HEALTH_RESTARTS})`)
+          setTimeout(() => startBrainServer(cachedApiKey || undefined), 3000)
+        } else {
+          console.log(`[Desktop] Zombie killed but health-restart limit reached — showing error`)
+          mainWindow?.webContents.send('brain-status', {
+            running: false,
+            error: 'Brain process is unresponsive. Please restart the application.',
+          })
+        }
+      }
     }
   }, 30_000)
 }

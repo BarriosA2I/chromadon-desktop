@@ -3822,7 +3822,8 @@ process.on('uncaughtException', (error) => {
     console.error('[CHROMADON] ❌ Uncaught Exception:', error);
     // For truly fatal errors, attempt graceful shutdown
     if (error.message?.includes('EADDRINUSE') || error.message?.includes('out of memory')) {
-        cleanup();
+        console.error(`[CHROMADON] ❌ Fatal error: ${error.message}`);
+        process.exit(1); // Non-zero so Desktop restarts us
     }
     // Otherwise keep running - most uncaught exceptions are recoverable
 });
@@ -4024,7 +4025,7 @@ async function startServer() {
     else {
         console.log('[CHROMADON] ⚠️ No API keys set (ANTHROPIC_API_KEY or GEMINI_API_KEY) — AI features disabled');
     }
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         const server = app.listen(PORT, () => {
             // Prevent Node.js from killing idle SSE connections (default keepAliveTimeout is 5s)
             server.keepAliveTimeout = 120_000; // 2 minutes
@@ -4135,9 +4136,16 @@ async function startServer() {
             console.log('  GET  /api/client-context/strategy          - Get strategy\n');
             resolve();
         });
+        server.on('error', (err) => {
+            console.error(`[CHROMADON] ❌ Server failed to bind port ${PORT}: ${err.message}`);
+            reject(err);
+        });
     });
 }
 exports.startServer = startServer;
-// Run if called directly
-startServer().catch(console.error);
+// Run if called directly — exit with code 1 on fatal failure so Desktop restarts us
+startServer().catch((err) => {
+    console.error('[CHROMADON] ❌ Fatal: Server failed to start:', err.message);
+    process.exit(1);
+});
 //# sourceMappingURL=server.js.map
