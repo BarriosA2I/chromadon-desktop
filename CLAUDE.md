@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.20.1 — 2026-02-15)
+## Recent Changes (v1.20.2 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Clients with valid API key still seeing "starting up" — Brain init errors now shown to user instead of swallowed | `src/hooks/useStreamingChat.ts` |
+| Fixed: Health check handles `init_error` reason — shows actual error message from Brain with recovery instructions | `src/hooks/useStreamingChat.ts` |
+| Fixed: Brain v1.6.1 — non-critical component failures no longer prevent orchestrator from starting | `resources/brain/dist/` |
+
+## Changes (v1.20.1 — 2026-02-15)
 
 | Change | File |
 |--------|------|

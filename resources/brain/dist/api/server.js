@@ -126,6 +126,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 // Agentic Orchestrator State
 let orchestrator = null;
 let socialOverlord = null;
+let orchestratorInitError = null;
 // 27-Agent System State
 let agentSystem = null;
 let cortexRouter = null;
@@ -616,6 +617,7 @@ app.get('/health', (_req, res) => {
         selectedPage: desktopAvailable ? (desktopActiveTabId ?? 0) : selectedPageIndex,
         orchestrator: !!orchestrator,
         orchestratorReason: orchestrator ? 'ready' : (process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY ? 'init_error' : 'no_api_key'),
+        orchestratorError: orchestratorInitError || undefined,
         orchestratorSessions: orchestrator?.getSessionCount() ?? 0,
         analytics: !!analyticsDb,
         desktopCircuitBreaker: desktopCircuitBreaker.getMetrics(),
@@ -3791,34 +3793,55 @@ async function startServer() {
                 console.log(`[CHROMADON] ⚠️ YouTube init failed: ${ytError.message}`);
             }
             // Initialize Skill Memory
-            const skillDataDir = process.env.CHROMADON_DATA_DIR || process.env.USERPROFILE || process.env.HOME || '.';
-            const skillDefaultsPath = path.join(process.cwd(), 'skills.json');
-            const skillMemory = new skills_1.SkillMemory(skillDataDir, skillDefaultsPath);
-            const skillExec = (0, skills_1.createSkillExecutor)(skillMemory);
+            let skillMemory = null;
+            let skillExec = null;
             const skillToolNames = new Set(skills_1.SKILL_TOOLS.map(t => t.name));
-            console.log('[CHROMADON] ✅ Skill Memory initialized');
+            try {
+                const skillDataDir = process.env.CHROMADON_DATA_DIR || process.env.USERPROFILE || process.env.HOME || '.';
+                const skillDefaultsPath = path.join(process.cwd(), 'skills.json');
+                skillMemory = new skills_1.SkillMemory(skillDataDir, skillDefaultsPath);
+                skillExec = (0, skills_1.createSkillExecutor)(skillMemory);
+                console.log('[CHROMADON] ✅ Skill Memory initialized');
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ Skill Memory init failed: ${err.message}`);
+            }
             // Initialize Agentic Orchestrator with merged tools (browser + analytics + YouTube + skills)
             const toolExecutor = (0, browser_tools_1.createToolExecutor)();
-            // Initialize Client Context Layer
-            const clientStorage = new client_context_1.ClientStorage();
-            const knowledgeVault = new client_context_1.KnowledgeVault(clientStorage);
-            const interviewEngine = new client_context_1.InterviewEngine(clientStorage);
-            const strategyEngine = new client_context_1.StrategyEngine(clientStorage, knowledgeVault);
-            const clientContextExec = new client_context_1.ClientContextExecutor(clientStorage, knowledgeVault);
-            console.log('[CHROMADON] ✅ Client Context Layer initialized');
+            // Initialize Client Context Layer (non-critical — orchestrator works without it)
+            let clientStorage = null;
+            let knowledgeVault = null;
+            let clientContextExec = null;
+            try {
+                clientStorage = new client_context_1.ClientStorage();
+                knowledgeVault = new client_context_1.KnowledgeVault(clientStorage);
+                const interviewEngine = new client_context_1.InterviewEngine(clientStorage);
+                const strategyEngine = new client_context_1.StrategyEngine(clientStorage, knowledgeVault);
+                clientContextExec = new client_context_1.ClientContextExecutor(clientStorage, knowledgeVault);
+                console.log('[CHROMADON] ✅ Client Context Layer initialized');
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ Client Context Layer init failed (non-critical): ${err.message}`);
+            }
             // Initialize OBS Studio client (non-blocking — server starts even if OBS is offline)
-            obsClientInstance = new obs_1.OBSClient();
-            obsClientInstance.connect().catch(err => console.log('[CHROMADON] OBS not available:', err.message));
-            const obsExec = (0, obs_1.createObsExecutor)(obsClientInstance);
+            let obsExec = null;
             const obsToolNames = new Set(obs_1.OBS_TOOLS.map(t => t.name));
+            try {
+                obsClientInstance = new obs_1.OBSClient();
+                obsClientInstance.connect().catch(err => console.log('[CHROMADON] OBS not available:', err.message));
+                obsExec = (0, obs_1.createObsExecutor)(obsClientInstance);
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ OBS init failed (non-critical): ${err.message}`);
+            }
             // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS
             const additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
-                ...skills_1.SKILL_TOOLS,
-                ...client_context_1.CLIENT_CONTEXT_TOOLS,
+                ...(skillMemory ? skills_1.SKILL_TOOLS : []),
+                ...(clientContextExec ? client_context_1.CLIENT_CONTEXT_TOOLS : []),
                 ...marketing_tools_1.MARKETING_TOOLS,
-                ...obs_1.OBS_TOOLS,
+                ...(obsExec ? obs_1.OBS_TOOLS : []),
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
@@ -3827,13 +3850,13 @@ async function startServer() {
             const marketingExec = (0, marketing_executor_1.createMarketingExecutor)(CHROMADON_DESKTOP_URL, analyticsDb);
             const marketingToolNames = new Set(marketing_tools_1.MARKETING_TOOLS.map(t => t.name));
             const combinedExecutor = async (toolName, input) => {
-                if (obsToolNames.has(toolName))
+                if (obsExec && obsToolNames.has(toolName))
                     return obsExec(toolName, input);
                 if (marketingToolNames.has(toolName))
                     return marketingExec(toolName, input);
-                if (clientContextExec.canHandle(toolName))
+                if (clientContextExec?.canHandle(toolName))
                     return clientContextExec.execute(toolName, input);
-                if (skillToolNames.has(toolName))
+                if (skillExec && skillToolNames.has(toolName))
                     return skillExec(toolName, input);
                 if (youtubeExec && youtubeToolNames.has(toolName))
                     return youtubeExec(toolName, input);
@@ -3841,34 +3864,55 @@ async function startServer() {
                     return analyticsExec(toolName, input);
                 return `Unknown additional tool: ${toolName}`;
             };
-            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutor, undefined, additionalTools, combinedExecutor, () => skillMemory.getSkillsJson(), () => {
+            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutor, undefined, additionalTools, combinedExecutor, skillMemory ? () => skillMemory.getSkillsJson() : () => '{}', clientStorage && knowledgeVault ? () => {
                 const activeId = clientStorage.getActiveClientId();
                 if (!activeId)
                     return null;
                 return knowledgeVault.getClientContextSummary(activeId);
-            });
+            } : () => null);
+            orchestratorInitError = null; // Clear any previous error
             console.log('[CHROMADON] ✅ Agentic Orchestrator initialized (Claude tool-use mode)');
             if (analyticsDb)
                 console.log('[CHROMADON]    - 8 Analytics tools registered');
             if (youtubeTokenManager)
                 console.log(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube tools registered`);
-            console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
-            console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
+            if (skillMemory)
+                console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
+            if (clientContextExec)
+                console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
             console.log(`[CHROMADON]    - ${marketing_tools_1.MARKETING_TOOLS.length} Marketing Queue tools registered`);
-            console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
+            if (obsExec)
+                console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
             // Initialize Social Overlord (queue execution engine)
-            socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);
-            console.log('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');
+            try {
+                socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);
+                console.log('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ Social Overlord init failed (non-critical): ${err.message}`);
+            }
             // Initialize CortexRouter (agent-first routing for /api/orchestrator/chat)
-            initializeCortexRouter();
+            try {
+                initializeCortexRouter();
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ CortexRouter init failed (non-critical): ${err.message}`);
+            }
             // Initialize Data Collector (analytics scraping)
             if (analyticsDb) {
-                dataCollector = new data_collector_1.DataCollector(orchestrator, buildExecutionContext, analyticsDb);
-                console.log('[CHROMADON] ✅ Analytics Data Collector initialized (6h schedule)');
+                try {
+                    dataCollector = new data_collector_1.DataCollector(orchestrator, buildExecutionContext, analyticsDb);
+                    console.log('[CHROMADON] ✅ Analytics Data Collector initialized (6h schedule)');
+                }
+                catch (err) {
+                    console.log(`[CHROMADON] ⚠️ Data Collector init failed (non-critical): ${err.message}`);
+                }
             }
         }
         catch (error) {
-            console.log(`[CHROMADON] ⚠️ AI Engine init failed: ${error.message}`);
+            orchestratorInitError = error.message;
+            console.error(`[CHROMADON] ❌ Orchestrator init FAILED: ${error.message}`);
+            console.error(`[CHROMADON]    Stack: ${error.stack}`);
         }
     }
     else {

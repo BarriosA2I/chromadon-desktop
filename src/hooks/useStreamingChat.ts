@@ -138,10 +138,11 @@ export function useStreamingChat() {
         }
       }
 
-      // Wait for brain to be ready (up to 10 seconds)
+      // Wait for brain to be ready (up to 15 seconds)
       let brainReady = false
       let lastReason = ''
-      for (let i = 0; i < 10; i++) {
+      let lastError = ''
+      for (let i = 0; i < 15; i++) {
         if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError')
         try {
           const healthRes = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1000) })
@@ -153,20 +154,26 @@ export function useStreamingChat() {
             }
             // Brain is running but orchestrator isn't ready — check why
             lastReason = healthData.orchestratorReason || ''
+            lastError = healthData.orchestratorError || ''
             if (lastReason === 'no_api_key') {
-              // No point waiting — key won't appear on its own
               throw new Error('No API key configured. Open Settings (gear icon) and enter your Gemini API key to get started.')
+            }
+            if (lastReason === 'init_error') {
+              throw new Error(`AI assistant failed to start: ${lastError || 'Unknown error'}. Try restarting the app or re-entering your API key in Settings.`)
             }
           }
         } catch (e) {
-          if (e instanceof Error && e.message.includes('No API key')) throw e
+          if (e instanceof Error && (e.message.includes('No API key') || e.message.includes('failed to start'))) throw e
           /* brain not ready yet */
         }
         await new Promise(r => setTimeout(r, 1000))
       }
 
       if (!brainReady) {
-        throw new Error('No API key configured. Open Settings (gear icon) and enter your Gemini API key to get started.')
+        if (lastReason === 'init_error') {
+          throw new Error(`AI assistant failed to start: ${lastError || 'Unknown error'}. Try restarting the app or re-entering your API key in Settings.`)
+        }
+        throw new Error('AI assistant is still starting up. Please try again in a moment, or check Settings for your API key.')
       }
 
       const chatPayload: RequestInit = {
