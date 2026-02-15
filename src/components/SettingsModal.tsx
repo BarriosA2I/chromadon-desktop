@@ -250,14 +250,39 @@ export default function SettingsModal({
   const handleCheckForUpdates = async () => {
     setUpdateStatus('checking')
     setUpdateError('')
-    const result = await window.electronAPI?.updaterCheckForUpdates?.()
-    if (result && !result.success) {
-      if (result.error?.includes('dev mode')) {
-        setUpdateStatus('up-to-date')
+    try {
+      const result = await window.electronAPI?.updaterCheckForUpdates?.()
+      if (!result) {
+        setUpdateStatus('error')
+        setUpdateError('Bridge unavailable')
         return
       }
+      if (!result.success) {
+        if (result.error?.includes('dev mode')) {
+          // Dev mode — check GitHub directly for latest version
+          try {
+            const res = await fetch('https://api.github.com/repos/BarriosA2I/chromadon-desktop/releases/latest')
+            const data = await res.json()
+            const latestVersion = data.tag_name?.replace('v', '')
+            const currentVersion = appVersion || '0.0.0'
+            if (latestVersion && latestVersion !== currentVersion) {
+              setUpdateStatus('available')
+              setUpdateVersion(latestVersion)
+            } else {
+              setUpdateStatus('up-to-date')
+            }
+          } catch {
+            setUpdateStatus('error')
+            setUpdateError('Dev mode — install packaged app for auto-updates')
+          }
+          return
+        }
+        setUpdateStatus('error')
+        setUpdateError(result.error || 'Check failed')
+      }
+    } catch (err: any) {
       setUpdateStatus('error')
-      setUpdateError(result.error || 'Check failed')
+      setUpdateError(err.message || 'Check failed')
     }
   }
 

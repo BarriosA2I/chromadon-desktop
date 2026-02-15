@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.24.1 — 2026-02-15)
+## Recent Changes (v1.24.2 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: "Check for Updates" button in Settings was non-functional in dev mode — now checks GitHub API directly for latest release and shows available version | `src/components/SettingsModal.tsx` |
+| Fixed: Dev mode update check no longer fakes "Up to date" — compares current version against latest GitHub release | `src/components/SettingsModal.tsx` |
+
+## Changes (v1.24.1 — 2026-02-15)
 
 | Change | File |
 |--------|------|
