@@ -58,6 +58,11 @@ function selectModelForTask(userMessage, lastToolName) {
         input.match(/\b(show|list|get|check)\b.*\b(scheduled|queue|posts|calendar)\b/)) {
         return ModelTier.FAST;
     }
+    // BALANCED: Monitoring CYCLE prompts — these are background AI cycles that need
+    // to read pages, understand content, and compose replies. FAST tier is too dumb.
+    if (input.includes('background monitoring cycle')) {
+        return ModelTier.BALANCED;
+    }
     // FAST: Social monitoring — enable/disable/status are simple tool calls
     if (input.match(/\b(monitor|monitoring)\b/) ||
         input.match(/\b(enable|disable|start|stop)\b.*\b(social|monitor)\b/) ||

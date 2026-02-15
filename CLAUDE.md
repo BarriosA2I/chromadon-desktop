@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.23.0 — 2026-02-15)
+## Recent Changes (v1.23.1 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Stale Brain processes from app crashes killed before forking new Brain (netstat + taskkill on port 3001) — prevents EADDRINUSE loop that left clients stuck with red Brain | `electron/main.ts` |
+| Fixed: .env NODE_ENV changed from development to production | `resources/brain/.env` |
+| Updated: Brain dist v1.8.2 — monitoring safety rewrite, orchestrator retry, version logging, cost router fix | `resources/brain/dist/` |
+
+## Changes (v1.23.0 — 2026-02-15)
 
 | Change | File |
 |--------|------|

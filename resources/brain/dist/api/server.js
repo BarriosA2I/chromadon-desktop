@@ -611,7 +611,7 @@ app.get('/health', (_req, res) => {
     res.json({
         status: 'healthy',
         service: 'chromadon-brain',
-        version: '4.0.0',
+        version: process.env.npm_package_version || '1.8.2',
         mode: desktopAvailable ? 'DESKTOP' : connectionMode,
         cdpEndpoint: CDP_ENDPOINT,
         desktopUrl: desktopAvailable ? CHROMADON_DESKTOP_URL : undefined,
@@ -3829,6 +3829,14 @@ process.on('uncaughtException', (error) => {
 });
 // Start server
 async function startServer() {
+    // Log version for debugging client issues
+    try {
+        const pkg = require('../../package.json');
+        console.log(`[CHROMADON] Brain version: ${pkg.version}`);
+    }
+    catch {
+        console.log('[CHROMADON] Brain version: unknown');
+    }
     // Check Desktop availability FIRST - before any browser launch
     await checkDesktopHealth();
     // Initialize browser connection (skipped in DESKTOP mode)
@@ -4020,6 +4028,25 @@ async function startServer() {
             orchestratorInitError = error.message;
             console.error(`[CHROMADON] ❌ Orchestrator init FAILED: ${error.message}`);
             console.error(`[CHROMADON]    Stack: ${error.stack}`);
+        }
+        // Retry orchestrator init if it failed (transient errors, timing issues)
+        if (!orchestrator && orchestratorInitError) {
+            const MAX_INIT_RETRIES = 2;
+            for (let attempt = 1; attempt <= MAX_INIT_RETRIES; attempt++) {
+                console.log(`[CHROMADON] Retrying orchestrator init in 5s (attempt ${attempt}/${MAX_INIT_RETRIES})...`);
+                await new Promise(r => setTimeout(r, 5000));
+                try {
+                    const toolExecutorRetry = (0, browser_tools_1.createToolExecutor)();
+                    orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutorRetry, undefined, [], // Minimal tools for retry — sub-components may not be ready
+                    async () => 'Tool not available during retry');
+                    orchestratorInitError = null;
+                    console.log(`[CHROMADON] ✅ Orchestrator initialized on retry attempt ${attempt}`);
+                    break;
+                }
+                catch (retryErr) {
+                    console.error(`[CHROMADON] ❌ Orchestrator retry ${attempt} failed: ${retryErr.message}`);
+                }
+            }
         }
     }
     else {

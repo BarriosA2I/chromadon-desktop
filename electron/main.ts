@@ -312,6 +312,22 @@ function startBrainServer(apiKey?: string): void {
   const resolvedGeminiKey = loadGeminiKey() || ''
   log(`Starting bundled Brain server... (Anthropic key ${resolvedKey ? 'provided' : 'NOT set'}, Gemini key ${resolvedGeminiKey ? 'provided' : 'NOT set'})`)
 
+  // Kill any stale Brain process from a previous crash (EADDRINUSE prevention)
+  try {
+    const { execSync } = require('child_process')
+    const output = execSync('netstat -ano | findstr :3001 | findstr LISTENING', { encoding: 'utf8', timeout: 3000 })
+    const lines = output.trim().split('\n')
+    for (const line of lines) {
+      const pid = line.trim().split(/\s+/).pop()
+      if (pid && pid !== '0' && parseInt(pid) !== process.pid) {
+        log(`Found stale process PID ${pid} on port 3001 — killing it`)
+        try { execSync(`taskkill /PID ${pid} /F`, { timeout: 3000 }) } catch {}
+      }
+    }
+  } catch {
+    // No process on port 3001 — good, proceed normally
+  }
+
   try {
     brainProcess = fork(brainEntry, [], {
       cwd: brainDir,
