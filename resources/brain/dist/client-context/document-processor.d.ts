@@ -7,7 +7,6 @@
  * @author Barrios A2I
  */
 export declare class DocumentProcessor {
-    private readonly anthropic;
     constructor();
     extractText(filePath: string, mimeType: string): Promise<string>;
     private extractPdf;

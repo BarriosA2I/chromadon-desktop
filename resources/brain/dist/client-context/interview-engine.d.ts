@@ -10,10 +10,7 @@
 import type { InterviewPhase, InterviewState } from './types';
 import { ClientStorage } from './client-storage';
 export declare class InterviewEngine {
-    private readonly anthropic;
     private readonly storage;
-    private readonly conversationModel;
-    private readonly extractionModel;
     constructor(storage: ClientStorage);
     startInterview(clientId: string): Promise<{
         state: InterviewState;

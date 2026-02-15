@@ -76,6 +76,25 @@ export function useClientContext() {
     }
   }, [])
 
+  const createClient = useCallback(async (name: string) => {
+    try {
+      const res = await fetch(`${BRAIN_URL}/api/client-context/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const data = await res.json()
+      if (data.success && data.data) {
+        setActiveClient(data.data)
+        return data.data
+      }
+      return null
+    } catch (e) {
+      console.error('[useClientContext] createClient failed:', e)
+      return null
+    }
+  }, [])
+
   const switchClient = useCallback(async (clientId: string) => {
     try {
       const res = await fetch(`${BRAIN_URL}/api/client-context/clients/active`, {
@@ -454,6 +473,7 @@ export function useClientContext() {
     // Client management
     fetchClients,
     fetchActiveClient,
+    createClient,
     switchClient,
     deleteClient,
 

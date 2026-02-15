@@ -8,24 +8,17 @@
  *
  * @author Barrios A2I
  */
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.InterviewEngine = void 0;
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
+const llm_helper_1 = require("./llm-helper");
 const types_1 = require("./types");
 const interview_prompts_1 = require("./interview-prompts");
 // ============================================================================
 // INTERVIEW ENGINE
 // ============================================================================
 class InterviewEngine {
-    anthropic;
     storage;
-    conversationModel = 'claude-haiku-4-5-20251001';
-    extractionModel = 'claude-haiku-4-5-20251001';
     constructor(storage) {
-        this.anthropic = new sdk_1.default();
         this.storage = storage;
     }
     // =========================================================================
@@ -227,14 +220,7 @@ class InterviewEngine {
             messages.push({ role: 'user', content: `Hi, I'm ${clientName}. I'd like to get started with CHROMADON.` });
         }
         try {
-            const response = await this.anthropic.messages.create({
-                model: this.conversationModel,
-                max_tokens: 500,
-                system: systemPrompt,
-                messages,
-            });
-            const textBlock = response.content.find((b) => b.type === 'text');
-            return textBlock?.text || 'I appreciate you sharing that. Could you tell me more?';
+            return await (0, llm_helper_1.callLLMConversation)(systemPrompt, messages, 500);
         }
         catch (err) {
             console.error('[InterviewEngine] generateResponse failed:', err.message);
@@ -254,14 +240,8 @@ class InterviewEngine {
         if (lastMessages[0].role !== 'user') {
             lastMessages.unshift({ role: 'user', content: `Hi, I'm back.` });
         }
-        const response = await this.anthropic.messages.create({
-            model: this.conversationModel,
-            max_tokens: 300,
-            system: systemPrompt,
-            messages: lastMessages,
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        return textBlock?.text || `Welcome back, ${clientName}! Let's pick up where we left off.`;
+        const result = await (0, llm_helper_1.callLLMConversation)(systemPrompt, lastMessages, 300);
+        return result || `Welcome back, ${clientName}! Let's pick up where we left off.`;
     }
     // =========================================================================
     // PHASE TRANSITION DETECTION
@@ -278,18 +258,8 @@ class InterviewEngine {
         // Use AI to determine if we have enough info to transition
         const recentConvo = phaseMessages.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n');
         try {
-            const response = await this.anthropic.messages.create({
-                model: this.extractionModel,
-                max_tokens: 50,
-                system: `You are evaluating whether an interview phase is complete. Current phase: "${state.currentPhase}". Answer ONLY "YES" or "NO".`,
-                messages: [{
-                        role: 'user',
-                        content: `Based on this conversation, do we have enough information to move on from the "${state.currentPhase}" phase?\n\n${recentConvo}\n\nHave the key objectives of this phase been met? Answer YES or NO only.`,
-                    }],
-            });
-            const textBlock = response.content.find((b) => b.type === 'text');
-            const answer = textBlock?.text?.trim().toUpperCase() || 'NO';
-            return answer.startsWith('YES');
+            const answer = await (0, llm_helper_1.callLLM)(`You are evaluating whether an interview phase is complete. Current phase: "${state.currentPhase}". Answer ONLY "YES" or "NO".`, `Based on this conversation, do we have enough information to move on from the "${state.currentPhase}" phase?\n\n${recentConvo}\n\nHave the key objectives of this phase been met? Answer YES or NO only.`, 50);
+            return (answer?.trim().toUpperCase() || 'NO').startsWith('YES');
         }
         catch (err) {
             console.error('[InterviewEngine] shouldTransitionPhase failed:', err.message);
@@ -308,17 +278,11 @@ class InterviewEngine {
         if (!extractionPrompt)
             return;
         try {
-            const response = await this.anthropic.messages.create({
-                model: this.extractionModel,
-                max_tokens: 2000,
-                system: 'You are a JSON extraction engine. Return ONLY valid JSON. No markdown, no explanation.',
-                messages: [{ role: 'user', content: extractionPrompt }],
-            });
-            const textBlock = response.content.find((b) => b.type === 'text');
-            if (!textBlock?.text)
+            const rawText = await (0, llm_helper_1.callLLM)('You are a JSON extraction engine. Return ONLY valid JSON. No markdown, no explanation.', extractionPrompt, 2000);
+            if (!rawText)
                 return;
             // Clean potential markdown wrapping
-            let jsonStr = textBlock.text.trim();
+            let jsonStr = rawText.trim();
             if (jsonStr.startsWith('```')) {
                 jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
             }

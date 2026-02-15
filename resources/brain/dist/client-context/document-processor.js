@@ -30,22 +30,16 @@ var __importStar = (this && this.__importStar) || function (mod) {
     __setModuleDefault(result, mod);
     return result;
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DocumentProcessor = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
+const llm_helper_1 = require("./llm-helper");
 // ============================================================================
 // DOCUMENT PROCESSOR
 // ============================================================================
 class DocumentProcessor {
-    anthropic;
-    constructor() {
-        this.anthropic = new sdk_1.default();
-    }
+    constructor() { }
     async extractText(filePath, mimeType) {
         if (!fs.existsSync(filePath)) {
             throw new Error(`File not found: ${filePath}`);
@@ -110,33 +104,7 @@ class DocumentProcessor {
     async extractImage(filePath, mimeType) {
         const buffer = fs.readFileSync(filePath);
         const base64 = buffer.toString('base64');
-        // Map to Anthropic media types
-        let mediaType = 'image/png';
-        if (mimeType.includes('jpeg') || mimeType.includes('jpg'))
-            mediaType = 'image/jpeg';
-        else if (mimeType.includes('webp'))
-            mediaType = 'image/webp';
-        else if (mimeType.includes('gif'))
-            mediaType = 'image/gif';
-        const response = await this.anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 4000,
-            messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image',
-                            source: { type: 'base64', media_type: mediaType, data: base64 },
-                        },
-                        {
-                            type: 'text',
-                            text: 'Extract ALL text visible in this image (OCR). If there is no text, describe the image content in detail including any business-relevant information (logos, products, charts, diagrams). Return the extracted text or description as plain text.',
-                        },
-                    ],
-                }],
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        return textBlock?.text || '';
+        return (0, llm_helper_1.callLLMVision)(base64, mimeType, 'Extract ALL text visible in this image (OCR). If there is no text, describe the image content in detail including any business-relevant information (logos, products, charts, diagrams). Return the extracted text or description as plain text.', 4000);
     }
     // =========================================================================
     // UTILITIES

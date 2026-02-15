@@ -352,7 +352,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setMarketingQueue,
   } = useChromadonStore()
 
-  const { activeClient, fetchActiveClient } = useClientContext()
+  const { activeClient, fetchActiveClient, createClient } = useClientContext()
   const [currentDomain, setCurrentDomain] = useState<string | undefined>()
 
   // Load active client on mount
@@ -756,17 +756,21 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
                   <span className="text-sm">🧠</span>
                 </button>
                 <button
-                  onClick={() => setShowDocumentVault(true)}
-                  disabled={!activeClient}
-                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors disabled:opacity-30"
+                  onClick={async () => {
+                    if (!activeClient) await createClient('My Business')
+                    setShowDocumentVault(true)
+                  }}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-teal hover:bg-chroma-teal/10 transition-colors"
                   title="Document Vault"
                 >
                   <span className="text-sm">📄</span>
                 </button>
                 <button
-                  onClick={() => setShowStrategyDashboard(true)}
-                  disabled={!activeClient}
-                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors disabled:opacity-30"
+                  onClick={async () => {
+                    if (!activeClient) await createClient('My Business')
+                    setShowStrategyDashboard(true)
+                  }}
+                  className="p-1.5 rounded-lg text-chroma-muted hover:text-chroma-gold hover:bg-chroma-gold/10 transition-colors"
                   title="Growth Strategy"
                 >
                   <span className="text-sm">🎯</span>

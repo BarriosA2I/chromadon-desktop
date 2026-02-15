@@ -3506,6 +3506,22 @@ app.delete('/api/client-context/clients/:id', (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+app.post('/api/client-context/clients', (req, res) => {
+    try {
+        const { name } = req.body;
+        if (!name) {
+            res.status(400).json({ success: false, error: 'name required' });
+            return;
+        }
+        const storage = new client_context_1.ClientStorage();
+        const client = storage.createClient(name);
+        storage.setActiveClient(client.id);
+        res.json({ success: true, data: client });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // --- Interview ---
 app.post('/api/client-context/interview/start', async (req, res) => {
     try {

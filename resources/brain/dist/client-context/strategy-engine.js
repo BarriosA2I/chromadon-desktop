@@ -8,23 +8,17 @@
  *
  * @author Barrios A2I
  */
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StrategyEngine = void 0;
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
+const llm_helper_1 = require("./llm-helper");
 const strategy_prompts_1 = require("./strategy-prompts");
 // ============================================================================
 // STRATEGY ENGINE
 // ============================================================================
 class StrategyEngine {
-    anthropic;
     storage;
     vault;
-    model = 'claude-sonnet-4-20250514';
     constructor(storage, vault) {
-        this.anthropic = new sdk_1.default();
         this.storage = storage;
         this.vault = vault;
     }
@@ -41,16 +35,10 @@ class StrategyEngine {
         // Search knowledge vault for relevant business context
         const relevantDocs = this.vault.searchKnowledge(clientId, `${profile.businessName} ${profile.industry} strategy growth marketing`, 10);
         const prompt = (0, strategy_prompts_1.buildStrategyPrompt)(profile, voice, personas, competitors, relevantDocs);
-        const response = await this.anthropic.messages.create({
-            model: this.model,
-            max_tokens: 8000,
-            system: 'You are a world-class digital marketing strategist. Return ONLY valid JSON. No markdown, no explanation.',
-            messages: [{ role: 'user', content: prompt }],
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        if (!textBlock?.text)
+        const rawText = await (0, llm_helper_1.callLLM)('You are a world-class digital marketing strategist. Return ONLY valid JSON. No markdown, no explanation.', prompt, 8000);
+        if (!rawText)
             throw new Error('No response from strategy generation');
-        let jsonStr = textBlock.text.trim();
+        let jsonStr = rawText.trim();
         if (jsonStr.startsWith('```')) {
             jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
         }
@@ -87,16 +75,10 @@ class StrategyEngine {
         if (!existing)
             throw new Error(`No existing strategy for client: ${clientId}`);
         const reviewPrompt = (0, strategy_prompts_1.buildReviewPrompt)(profile, JSON.stringify(existing, null, 2), feedback);
-        const response = await this.anthropic.messages.create({
-            model: this.model,
-            max_tokens: 4000,
-            system: 'You are a world-class digital marketing strategist. Return ONLY valid JSON. No markdown, no explanation.',
-            messages: [{ role: 'user', content: reviewPrompt }],
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        if (!textBlock?.text)
+        const rawText = await (0, llm_helper_1.callLLM)('You are a world-class digital marketing strategist. Return ONLY valid JSON. No markdown, no explanation.', reviewPrompt, 4000);
+        if (!rawText)
             throw new Error('No response from strategy update');
-        let jsonStr = textBlock.text.trim();
+        let jsonStr = rawText.trim();
         if (jsonStr.startsWith('```')) {
             jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
         }
@@ -129,16 +111,10 @@ class StrategyEngine {
             { platform: 'linkedin', postingFrequency: '2x per week', contentTypes: ['thought leadership', 'case study'] },
         ];
         const prompt = (0, strategy_prompts_1.buildCalendarPrompt)(profile, voice, channels, weeks);
-        const response = await this.anthropic.messages.create({
-            model: this.model,
-            max_tokens: 8000,
-            system: 'You are a social media content strategist. Return ONLY a valid JSON array. No markdown, no explanation.',
-            messages: [{ role: 'user', content: prompt }],
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        if (!textBlock?.text)
+        const rawText = await (0, llm_helper_1.callLLM)('You are a social media content strategist. Return ONLY a valid JSON array. No markdown, no explanation.', prompt, 8000);
+        if (!rawText)
             throw new Error('No response from calendar generation');
-        let jsonStr = textBlock.text.trim();
+        let jsonStr = rawText.trim();
         if (jsonStr.startsWith('```')) {
             jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
         }
@@ -163,16 +139,10 @@ class StrategyEngine {
         if (!strategy)
             throw new Error(`No strategy found for client: ${clientId}`);
         const reviewPrompt = (0, strategy_prompts_1.buildReviewPrompt)(profile, JSON.stringify(strategy, null, 2));
-        const response = await this.anthropic.messages.create({
-            model: this.model,
-            max_tokens: 4000,
-            system: 'You are a world-class digital marketing strategist. Return ONLY valid JSON. No markdown, no explanation.',
-            messages: [{ role: 'user', content: reviewPrompt }],
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        if (!textBlock?.text)
+        const rawText = await (0, llm_helper_1.callLLM)('You are a world-class digital marketing strategist. Return ONLY valid JSON. No markdown, no explanation.', reviewPrompt, 4000);
+        if (!rawText)
             throw new Error('No response from weekly review');
-        let jsonStr = textBlock.text.trim();
+        let jsonStr = rawText.trim();
         if (jsonStr.startsWith('```')) {
             jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
         }

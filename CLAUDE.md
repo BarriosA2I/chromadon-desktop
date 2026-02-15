@@ -7,7 +7,16 @@
 
 ---
 
-## Recent Changes (v1.25.2 — 2026-02-15)
+## Recent Changes (v1.25.3 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Client onboarding (InterviewEngine), strategy generation, and document processing now use Gemini API instead of hardcoded Anthropic — clients with Gemini-only keys no longer get "credit balance too low" errors | `resources/brain/dist/` |
+| Fixed: Document Vault and Growth Strategy buttons no longer disabled when no client exists — auto-creates "My Business" client on first click | `src/App.tsx` |
+| Added: `createClient` method to useClientContext hook — calls `POST /api/client-context/clients` | `src/hooks/useClientContext.ts` |
+| Updated: Brain dist v1.10.3 — shared LLM helper (Gemini-first, Anthropic fallback), POST /clients endpoint | `resources/brain/dist/` |
+
+## Changes (v1.25.2 — 2026-02-15)
 
 | Change | File |
 |--------|------|

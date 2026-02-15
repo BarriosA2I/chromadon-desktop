@@ -11,10 +11,8 @@ import { ClientStorage } from './client-storage';
 import { KnowledgeVault } from './knowledge-vault';
 import type { GrowthStrategy, ContentCalendarEntry } from './types';
 export declare class StrategyEngine {
-    private readonly anthropic;
     private readonly storage;
     private readonly vault;
-    private readonly model;
     constructor(storage: ClientStorage, vault: KnowledgeVault);
     generateStrategy(clientId: string): Promise<GrowthStrategy>;
     updateStrategy(clientId: string, feedback: string): Promise<GrowthStrategy>;
