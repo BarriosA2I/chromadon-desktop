@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, clipboard, session, safeStorage, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, clipboard, session, safeStorage, Menu, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import express from 'express'
@@ -577,6 +577,20 @@ function initAutoUpdater() {
       version: info.version,
       releaseDate: info.releaseDate,
     })
+
+    // Show native dialog so the user can't miss the update
+    dialog.showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'CHROMADON Update Ready',
+      message: `Version ${info.version} has been downloaded.`,
+      detail: 'Restart now to apply the update. Your sessions will be preserved.',
+      buttons: ['Restart Now', 'Later'],
+      defaultId: 0,
+    }).then((result: { response: number }) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall()
+      }
+    })
   })
 
   autoUpdater.on('error', (err) => {
@@ -594,13 +608,13 @@ function initAutoUpdater() {
     })
   })
 
-  // Also check periodically (every 4 hours)
+  // Also check periodically (every 1 hour)
   setInterval(() => {
     console.log('[AutoUpdate] Periodic check...')
     autoUpdater.checkForUpdates().catch((err) => {
       console.error('[AutoUpdate] Periodic check failed:', err.message)
     })
-  }, 4 * 60 * 60 * 1000)
+  }, 1 * 60 * 60 * 1000)
 }
 
 // Store for renderer state (updated via IPC)
@@ -4320,13 +4334,20 @@ function calculateNextScheduleTime(task: MarketingTask): string | null {
 
 async function checkScheduledTasks(): Promise<void> {
   const now = Date.now()
-  const dueTasks = marketingQueue.filter(
-    t => t.status === 'scheduled' && t.scheduledTime && new Date(t.scheduledTime).getTime() <= now
-  )
+  const scheduledTasks = marketingQueue.filter(t => t.status === 'scheduled' && t.scheduledTime)
+  const dueTasks = scheduledTasks.filter(t => new Date(t.scheduledTime!).getTime() <= now)
 
-  if (dueTasks.length === 0) return
+  if (dueTasks.length === 0) {
+    // Log next upcoming task for debugging (only every 10th check to avoid spam)
+    if (scheduledTasks.length > 0 && Math.random() < 0.1) {
+      const nextTask = scheduledTasks.sort((a, b) => new Date(a.scheduledTime!).getTime() - new Date(b.scheduledTime!).getTime())[0]
+      const minsUntil = Math.round((new Date(nextTask.scheduledTime!).getTime() - now) / 60000)
+      console.log(`[Scheduler] ${scheduledTasks.length} scheduled, next in ${minsUntil}min (${nextTask.platform})`)
+    }
+    return
+  }
 
-  console.log(`[Scheduler] Found ${dueTasks.length} due task(s)`)
+  console.log(`[Scheduler] Found ${dueTasks.length} due task(s) out of ${scheduledTasks.length} scheduled`)
 
   for (const task of dueTasks) {
     // Handle recurrence — clone task for next occurrence before we transition this one
@@ -4392,8 +4413,13 @@ async function checkScheduledTasks(): Promise<void> {
 
 function startScheduler(): void {
   if (schedulerInterval) return
+  const scheduledCount = marketingQueue.filter(t => t.status === 'scheduled').length
+  console.log(`[Scheduler] Started (30s interval) — ${scheduledCount} scheduled task(s) in queue`)
+  // Check for overdue tasks after 5s delay (wait for renderer to mount event listeners)
+  setTimeout(() => {
+    checkScheduledTasks().catch(err => console.error('[Scheduler] Initial check failed:', err))
+  }, 5000)
   schedulerInterval = setInterval(checkScheduledTasks, 30_000)
-  console.log('[Scheduler] Started (30s interval)')
 }
 
 function stopScheduler(): void {

@@ -7,7 +7,16 @@
 
 ---
 
-## Recent Changes (v1.20.0 — 2026-02-15)
+## Recent Changes (v1.20.1 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Auto-updater check interval reduced from 4 hours to 1 hour — clients get updates faster | `electron/main.ts` |
+| Added: Native OS dialog on update download — "Restart Now" / "Later" prompt so clients can't miss updates | `electron/main.ts` |
+| Fixed: Scheduler checks for overdue tasks on startup (5s delay for renderer mount) instead of waiting 30s | `electron/main.ts` |
+| Added: Scheduler debug logging — shows next scheduled task time and count on ~10% of checks | `electron/main.ts` |
+
+## Changes (v1.20.0 — 2026-02-15)
 
 | Change | File |
 |--------|------|
