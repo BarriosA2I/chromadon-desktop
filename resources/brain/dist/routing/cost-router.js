@@ -58,6 +58,12 @@ function selectModelForTask(userMessage, lastToolName) {
         input.match(/\b(show|list|get|check)\b.*\b(scheduled|queue|posts|calendar)\b/)) {
         return ModelTier.FAST;
     }
+    // FAST: Social monitoring — enable/disable/status are simple tool calls
+    if (input.match(/\b(monitor|monitoring)\b/) ||
+        input.match(/\b(enable|disable|start|stop)\b.*\b(social|monitor)\b/) ||
+        input.match(/\b(social)\b.*\b(monitor|monitoring|watch)\b/)) {
+        return ModelTier.FAST;
+    }
     // FAST: Continuation loops — when the AI is in a tool-use loop,
     // the "user" messages are just tool results, not new instructions.
     // After tool execution, the AI just needs to present results — no thinking needed.
