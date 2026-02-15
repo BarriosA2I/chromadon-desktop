@@ -74,6 +74,8 @@ const marketing_executor_1 = require("../marketing/marketing-executor");
 const obs_1 = require("../obs");
 // Social Media Monitoring imports
 const monitoring_1 = require("../monitoring");
+// THE_SCHEDULER imports
+const scheduler_1 = require("../scheduler");
 // Circuit Breaker for Desktop API calls
 const circuit_breaker_1 = require("../core/circuit-breaker");
 // 27-Agent System imports (runtime load to avoid type conflicts)
@@ -142,6 +144,7 @@ let youtubeExec = null;
 let obsClientInstance = null;
 // Social Media Monitoring State
 let socialMonitor = null;
+let theScheduler = null;
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -3275,6 +3278,35 @@ app.get('/api/monitoring/log', (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// ==================== SCHEDULER ====================
+app.get('/api/scheduler/status', (_req, res) => {
+    try {
+        if (!theScheduler) {
+            res.json({ success: true, running: false, message: 'Scheduler not initialized' });
+            return;
+        }
+        res.json({ success: true, ...theScheduler.getStatus() });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+app.get('/api/scheduler/tasks', (req, res) => {
+    try {
+        if (!theScheduler) {
+            res.json({ success: true, tasks: [] });
+            return;
+        }
+        const tasks = theScheduler.getTasks({
+            status: req.query.status,
+            taskType: req.query.task_type,
+        });
+        res.json({ success: true, tasks });
+    }
+    catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 // ==================== ANALYTICS ====================
 app.get('/api/analytics/overview', (req, res) => {
     try {
@@ -3803,6 +3835,11 @@ async function cleanup() {
             // Ignore
         }
     }
+    // Stop TheScheduler
+    if (theScheduler) {
+        theScheduler.destroy();
+        console.log('[CHROMADON] TheScheduler stopped');
+    }
     // Stop Social Monitor
     if (socialMonitor) {
         socialMonitor.destroy();
@@ -3920,24 +3957,33 @@ async function startServer() {
             catch (err) {
                 console.log(`[CHROMADON] ⚠️ OBS init failed (non-critical): ${err.message}`);
             }
-            // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS + monitoring
+            // Merge additional tools: analytics + YouTube + skills + client context + marketing + OBS + monitoring + scheduler
+            // Filter out schedule_post and get_scheduled_posts from MARKETING_TOOLS — scheduler replaces them
+            const schedulerReplacedTools = new Set(['schedule_post', 'get_scheduled_posts']);
+            const filteredMarketingTools = marketing_tools_1.MARKETING_TOOLS.filter(t => !schedulerReplacedTools.has(t.name));
             const additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
                 ...(skillMemory ? skills_1.SKILL_TOOLS : []),
                 ...(clientContextExec ? client_context_1.CLIENT_CONTEXT_TOOLS : []),
-                ...marketing_tools_1.MARKETING_TOOLS,
+                ...filteredMarketingTools,
                 ...(obsExec ? obs_1.OBS_TOOLS : []),
                 ...monitoring_1.MONITORING_TOOLS,
+                ...scheduler_1.SCHEDULER_TOOLS,
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
             youtubeExec = youtubeTokenManager ? (0, youtube_executor_1.createYouTubeExecutor)(youtubeTokenManager) : null;
             const youtubeToolNames = new Set(youtube_tools_1.YOUTUBE_TOOLS.map(t => t.name));
             const marketingExec = (0, marketing_executor_1.createMarketingExecutor)(CHROMADON_DESKTOP_URL, analyticsDb);
-            const marketingToolNames = new Set(marketing_tools_1.MARKETING_TOOLS.map(t => t.name));
+            const marketingToolNames = new Set(filteredMarketingTools.map(t => t.name));
             const monitoringToolNames = new Set(monitoring_1.MONITORING_TOOLS.map(t => t.name));
+            // Scheduler executor — initialized after TheScheduler (see below). Uses a late-binding ref.
+            let schedulerExec = null;
             const combinedExecutor = async (toolName, input) => {
+                // Scheduler tools — route BEFORE marketing (scheduler replaces schedule_post/get_scheduled_posts)
+                if (scheduler_1.SCHEDULER_TOOL_NAMES.has(toolName) && schedulerExec)
+                    return schedulerExec(toolName, input);
                 if (obsExec && obsToolNames.has(toolName))
                     return obsExec(toolName, input);
                 if (marketingToolNames.has(toolName))
@@ -3972,7 +4018,8 @@ async function startServer() {
                 console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
             if (clientContextExec)
                 console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
-            console.log(`[CHROMADON]    - ${marketing_tools_1.MARKETING_TOOLS.length} Marketing Queue tools registered`);
+            console.log(`[CHROMADON]    - ${filteredMarketingTools.length} Marketing Queue tools registered`);
+            console.log(`[CHROMADON]    - ${scheduler_1.SCHEDULER_TOOLS.length} Scheduler tools registered`);
             if (obsExec)
                 console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
             // Initialize Social Overlord (queue execution engine)
@@ -4022,6 +4069,17 @@ async function startServer() {
                 catch (err) {
                     console.log(`[CHROMADON] ⚠️ Social Monitor init failed (non-critical): ${err.message}`);
                 }
+            }
+            // Initialize THE_SCHEDULER (Agent 0.2) — zero-cost when idle
+            try {
+                theScheduler = new scheduler_1.TheScheduler(orchestrator, buildExecutionContext, CHROMADON_DESKTOP_URL, socialMonitor || undefined);
+                schedulerExec = (0, scheduler_1.createSchedulerExecutor)(theScheduler);
+                theScheduler.start();
+                const status = theScheduler.getStatus();
+                console.log(`[CHROMADON] ✅ TheScheduler initialized + STARTED (${status.pendingCount} pending task(s))`);
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ TheScheduler init failed (non-critical): ${err.message}`);
             }
         }
         catch (error) {

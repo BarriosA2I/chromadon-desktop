@@ -7,7 +7,19 @@
 
 ---
 
-## Recent Changes (v1.23.2 — 2026-02-15)
+## Recent Changes (v1.24.0 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Added: THE_SCHEDULER (Agent 0.2) — zero-cost idle tick loop, general-purpose browser automation scheduling. Replaces Desktop's fragile 30-second checkScheduledTasks() loop. | Brain `src/scheduler/` (6 new files) |
+| Added: 5 new AI chat tools — `schedule_task` (general-purpose), `schedule_post` (social alias), `get_scheduled_tasks`, `cancel_scheduled_task`, `reschedule_task` | Brain `src/scheduler/scheduler-tools.ts` |
+| Added: Natural language time parsing — "3pm tomorrow", "next Monday at 9am", "in 2 hours" via chrono-node | Brain `src/scheduler/scheduler-executor.ts` |
+| Added: Task recurrence — daily/weekly/biweekly/monthly with automatic next occurrence generation | Brain `src/scheduler/the-scheduler.ts` |
+| Added: Crash-resilient persistence — `~/.chromadon/scheduler-state.json` with atomic writes + backup | Brain `src/scheduler/scheduler-persistence.ts` |
+| Added: REST endpoints — `GET /api/scheduler/status`, `GET /api/scheduler/tasks` | Brain `src/api/server.ts` |
+| Updated: Brain dist v1.9.0 — TheScheduler agent, 5 scheduler tools, NL time parsing | `resources/brain/dist/` |
+
+## Changes (v1.23.2 — 2026-02-15)
 
 | Change | File |
 |--------|------|

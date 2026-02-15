@@ -53,9 +53,10 @@ function selectModelForTask(userMessage, lastToolName) {
         input.match(/\b(done|continue|resume|next|yes|ok|confirm)\b/)) {
         return ModelTier.FAST;
     }
-    // FAST: Marketing queue queries — simple tool calls that retrieve and display data
-    if (input.match(/\b(scheduled|schedule|queue|calendar)\b.*\b(post|posts|status|show|list|all)\b/) ||
-        input.match(/\b(show|list|get|check)\b.*\b(scheduled|queue|posts|calendar)\b/)) {
+    // FAST: Scheduling queries — simple tool calls that retrieve and display data
+    if (input.match(/\b(scheduled|schedule|queue|calendar)\b.*\b(post|posts|task|tasks|status|show|list|all)\b/) ||
+        input.match(/\b(show|list|get|check|cancel|reschedule)\b.*\b(scheduled|queue|posts|tasks|calendar)\b/) ||
+        input.match(/\b(schedule)\b.*\b(scrape|automation|weekly|daily|monthly|biweekly)\b/)) {
         return ModelTier.FAST;
     }
     // BALANCED: Monitoring CYCLE prompts — these are background AI cycles that need
@@ -78,8 +79,10 @@ function selectModelForTask(userMessage, lastToolName) {
         'hover_and_click', 'click_table_row', 'create_tab', 'switch_tab',
         'list_tabs', 'close_tab', 'upload_file', 'select_option',
         'get_video_ids', 'check_page_health', 'wait_for_result',
-        // Marketing & scheduling tools — result presentation only
-        'schedule_post', 'get_scheduled_posts', 'content_calendar',
+        // Scheduler tools — result presentation only
+        'schedule_task', 'schedule_post', 'get_scheduled_tasks', 'cancel_scheduled_task', 'reschedule_task',
+        // Marketing tools — result presentation only
+        'content_calendar',
         'repurpose_content', 'hashtag_research', 'engagement_report',
         'competitor_watch', 'auto_reply', 'lead_capture', 'campaign_tracker',
         // YouTube Studio tools
