@@ -4,7 +4,7 @@ import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
 import * as fs from 'fs'
-import { fork, ChildProcess } from 'child_process'
+import { fork, execSync, ChildProcess } from 'child_process'
 import { browserViewManager, TabInfo, Platform, SessionMode, PlatformSession } from './browser-view-manager'
 import { vault, ChromadonProfile, StoredCredential } from './security/vault'
 import { StorageManager } from './storage-manager'
@@ -239,6 +239,8 @@ let cachedApiKey: string | null = null
 let brainRestarting = false
 let brainRestartCount = 0
 const BRAIN_MAX_RESTARTS = 10
+let brainStartTime = 0 // Timestamp when Brain was last forked
+let lastStderr = '' // Last 2KB of Brain stderr for crash diagnostics
 
 // Health-check-triggered restart tracking (separate from crash restarts)
 let healthRestartCount = 0
@@ -246,6 +248,8 @@ const MAX_HEALTH_RESTARTS = 3
 let lastHealthRestart = 0
 const HEALTH_RESTART_COOLDOWN = 60_000 // 1 minute between health-triggered restarts
 let healthUnreachableCount = 0 // Consecutive health check failures (zombie detection)
+let consecutiveHealthyChecks = 0 // Reset healthRestartCount after sustained health
+const HEALTH_RESET_THRESHOLD = 5
 
 // Crash alert via Resend.com — notify Gary when a client's brain is down
 const CRASH_ALERT_EMAIL = 'alienation2innovation@gmail.com'
@@ -275,6 +279,26 @@ async function sendCrashAlert(exitCode: number | null, signal: string | null, re
     console.log('[Desktop] Crash alert email sent to ' + CRASH_ALERT_EMAIL)
   } catch (err: any) {
     console.log('[Desktop] Failed to send crash alert: ' + (err as Error).message)
+  }
+}
+
+// Fix 6: Pre-fork check for native modules (better-sqlite3 is #1 crash cause)
+function testNativeModules(brainDir: string, log: (msg: string) => void): boolean {
+  try {
+    execSync(
+      'node -e "try{require(\'better-sqlite3\');process.exit(0)}catch(e){process.stderr.write(e.message);process.exit(1)}"',
+      { cwd: brainDir, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 5000 }
+    )
+    log('Native module self-test: better-sqlite3 OK')
+    return true
+  } catch (err: any) {
+    const errMsg = err.stderr?.toString() || err.message || 'unknown error'
+    log(`Native module self-test FAILED: ${errMsg}`)
+    mainWindow?.webContents.send('brain-status', {
+      running: false,
+      error: 'Native module compatibility error. Please reinstall CHROMADON.',
+    })
+    return false
   }
 }
 
@@ -328,6 +352,12 @@ function startBrainServer(apiKey?: string): void {
     // No process on port 3001 — good, proceed normally
   }
 
+  // Fix 6: Test native modules before forking to catch ABI mismatches early
+  if (!testNativeModules(brainDir, log)) {
+    brainRestarting = false
+    return
+  }
+
   try {
     brainProcess = fork(brainEntry, [], {
       cwd: brainDir,
@@ -353,7 +383,16 @@ function startBrainServer(apiKey?: string): void {
 
     log(`fork() succeeded, pid=${brainProcess.pid}`)
     brainRestarting = false
-    brainRestartCount = 0
+    brainStartTime = Date.now()
+    lastStderr = ''
+    // Don't reset brainRestartCount immediately — only after 60s stability
+    // This prevents rapid crash-loops from resetting the counter (Bug 1 fix)
+    setTimeout(() => {
+      if (brainProcess && brainProcess.pid) {
+        if (brainRestartCount > 0) log(`Brain stable for 60s — resetting restart count (was ${brainRestartCount})`)
+        brainRestartCount = 0
+      }
+    }, 60_000)
   } catch (err: any) {
     log(`fork() FAILED: ${err.message}`)
     brainRestarting = false
@@ -364,8 +403,11 @@ function startBrainServer(apiKey?: string): void {
     log(data.toString().trim())
   })
 
+  // Capture stderr for crash diagnostics (Bug 5 fix)
   brainProcess.stderr?.on('data', (data: Buffer) => {
-    log(`STDERR: ${data.toString().trim()}`)
+    const text = data.toString().trim()
+    lastStderr = (lastStderr + '\n' + text).slice(-2000) // Keep last 2KB
+    log(`STDERR: ${text}`)
   })
 
   brainProcess.on('error', (err) => {
@@ -383,10 +425,18 @@ function startBrainServer(apiKey?: string): void {
 
   brainProcess.on('exit', (code, signal) => {
     log(`Exited: code=${code} signal=${signal}`)
+    const uptimeMs = Date.now() - brainStartTime
     brainProcess = null
     brainRestarting = false // Always reset — process has exited
-    // Auto-restart on crash (not on clean shutdown), with limit to prevent infinite loops
-    if (code !== 0 && code !== null) {
+
+    // Log crash diagnostics (Bug 5 fix)
+    const crashInfo = { code, signal, restartCount: brainRestartCount, stderr: lastStderr.slice(-500), uptimeMs, timestamp: new Date().toISOString() }
+    log(`Brain exit diagnostics: ${JSON.stringify(crashInfo)}`)
+
+    // Bug 2 fix: A clean exit is ONLY code=0 with no signal.
+    // Signal deaths (code=null, signal='SIGKILL'/'SIGSEGV') MUST trigger restart.
+    const isCleanExit = (code === 0 && !signal)
+    if (!isCleanExit) {
       brainRestartCount++
       // Notify UI of crash status
       mainWindow?.webContents.send('brain-status', {
@@ -394,7 +444,7 @@ function startBrainServer(apiKey?: string): void {
         restarting: brainRestartCount <= BRAIN_MAX_RESTARTS,
         attempt: brainRestartCount,
         maxAttempts: BRAIN_MAX_RESTARTS,
-        error: `Brain crashed (exit code ${code}). ${brainRestartCount <= BRAIN_MAX_RESTARTS ? 'Restarting...' : 'Check logs.'}`,
+        error: `Brain crashed (code=${code}, signal=${signal}). ${brainRestartCount <= BRAIN_MAX_RESTARTS ? 'Restarting...' : 'Check logs.'}`,
       })
       if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
         // Exponential backoff: 3s, 6s, 12s, 24s, 30s (capped), ...
@@ -406,7 +456,7 @@ function startBrainServer(apiKey?: string): void {
         sendCrashAlert(code, signal, brainRestartCount)
       }
     } else {
-      // Clean exit (code 0) or signal kill — notify UI
+      // Truly clean exit (code 0, no signal) — notify UI
       mainWindow?.webContents.send('brain-status', { running: false, error: null })
     }
   })
@@ -454,8 +504,18 @@ function startBrainServer(apiKey?: string): void {
 }
 
 function restartBrainServer(apiKey?: string): void {
-  if (brainRestarting) return // Prevent concurrent restarts
+  if (brainRestarting) {
+    console.log('[Desktop] restartBrainServer: already restarting, skipping')
+    return
+  }
   brainRestarting = true
+  // Bug 3 fix: Safety timeout — auto-reset flag after 30s no matter what
+  setTimeout(() => {
+    if (brainRestarting) {
+      console.log('[Desktop] restartBrainServer: safety timeout — resetting brainRestarting flag')
+      brainRestarting = false
+    }
+  }, 30_000)
   console.log('[Desktop] Restarting Brain server with updated API key...')
   if (brainProcess) {
     let started = false
@@ -498,6 +558,12 @@ function startBrainHealthCheck(): void {
       const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(5000) })
       const data = await res.json() as any
       healthUnreachableCount = 0 // Reset — Brain is reachable
+      // Bug 4 fix: Track consecutive healthy checks and reset healthRestartCount after stability
+      consecutiveHealthyChecks++
+      if (consecutiveHealthyChecks >= HEALTH_RESET_THRESHOLD && healthRestartCount > 0) {
+        console.log(`[Desktop] Brain healthy for ${consecutiveHealthyChecks} consecutive checks — resetting healthRestartCount (was ${healthRestartCount})`)
+        healthRestartCount = 0
+      }
       if (!data.orchestrator && hasAnyKey) {
         // Cooldown: don't restart more than once per minute
         const now = Date.now()
@@ -520,6 +586,7 @@ function startBrainHealthCheck(): void {
       }
     } catch {
       // Brain unreachable — detect zombie process and kill/restart
+      consecutiveHealthyChecks = 0 // Bug 4 fix: reset on any failure
       healthUnreachableCount++
       if (healthUnreachableCount >= 3 && brainProcess) {
         console.log(`[Desktop] Brain unreachable for ${healthUnreachableCount} consecutive checks — killing zombie process`)

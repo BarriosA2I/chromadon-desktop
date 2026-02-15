@@ -7,7 +7,18 @@
 
 ---
 
-## Recent Changes (v1.25.10 — 2026-02-15)
+## Recent Changes (v1.25.11 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain crash-restart loop — `brainRestartCount` reset to 0 on every fork, making BRAIN_MAX_RESTARTS unreachable — now only resets after 60s stability | `electron/main.ts` |
+| Fixed: CRITICAL — Signal-based deaths (SIGKILL, SIGSEGV, OOM) treated as clean exit — no restart. Now properly detected and trigger restart with backoff | `electron/main.ts` |
+| Fixed: CRITICAL — `brainRestarting` flag could get stuck forever, permanently blocking all restart attempts — added 30s safety timeout | `electron/main.ts` |
+| Fixed: CRITICAL — `healthRestartCount` never reset after reaching max (3), permanently disabling health monitoring — now resets after 5 consecutive healthy checks | `electron/main.ts` |
+| Added: Brain crash diagnostics — stderr capture (last 2KB), uptime tracking, comprehensive crash info logged on exit | `electron/main.ts` |
+| Added: Native module self-test — tests better-sqlite3 before forking Brain, catches ABI mismatches early with user-friendly error | `electron/main.ts` |
+
+## Changes (v1.25.10 — 2026-02-15)
 
 | Change | File |
 |--------|------|
