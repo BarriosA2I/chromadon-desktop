@@ -48,6 +48,19 @@ const PLATFORM_GUIDELINES = {
         tips: 'Hook in first 3 seconds. Use trending sounds/effects references. Keep it raw and real.',
     },
 };
+/** Convert a UTC Date to EST (UTC-5) display components */
+function toEST(d) {
+    const EST_OFFSET = -5;
+    const est = new Date(d.getTime() + EST_OFFSET * 60 * 60 * 1000);
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const h = est.getUTCHours();
+    const m = est.getUTCMinutes();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const h12 = h % 12 || 12;
+    const time = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+    return { day: days[est.getUTCDay()], month: months[est.getUTCMonth()], date: est.getUTCDate(), time, year: est.getUTCFullYear() };
+}
 /**
  * Creates an executor function that calls the Desktop control server's
  * queue endpoints and analytics DB to handle marketing tools.
@@ -89,21 +102,14 @@ function createMarketingExecutor(desktopUrl, analyticsDb) {
                     }
                     const lines = [];
                     const mediaNote = media_urls?.length ? ` with ${media_urls.length} media file(s)` : '';
-                    // Format readable date/time
+                    // Format readable date/time in EST
                     let timeLabel = 'immediately';
                     if (scheduled_time && scheduled_time !== 'null') {
                         try {
-                            const d = new Date(scheduled_time);
-                            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                            const h = d.getUTCHours();
-                            const m = d.getUTCMinutes();
-                            const ampm = h >= 12 ? 'pm' : 'am';
-                            const h12 = h % 12 || 12;
-                            const timeStr = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
-                            timeLabel = `${days[d.getUTCDay()]} ${months[d.getUTCMonth()]} ${d.getUTCDate()} at ${timeStr}`;
+                            const est = toEST(new Date(scheduled_time));
+                            timeLabel = `${est.day} ${est.month} ${est.date} at ${est.time} EST`;
                         }
-                        catch { /* fallback to ISO */
+                        catch {
                             timeLabel = scheduled_time;
                         }
                     }
@@ -133,9 +139,7 @@ function createMarketingExecutor(desktopUrl, analyticsDb) {
                             .join(' ');
                         return `No ${filterDesc} tasks in the marketing queue.`;
                     }
-                    // Group tasks by date — show platforms + times only, no content
-                    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-                    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                    // Group tasks by date (EST) — show platforms + times only, no content
                     const dateGroups = new Map();
                     let immediateCount = 0;
                     for (const task of tasks) {
@@ -145,21 +149,17 @@ function createMarketingExecutor(desktopUrl, analyticsDb) {
                         }
                         try {
                             const d = new Date(task.scheduledTime);
-                            const dateKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
-                            const h = d.getUTCHours();
-                            const m = d.getUTCMinutes();
-                            const ampm = h >= 12 ? 'pm' : 'am';
-                            const h12 = h % 12 || 12;
-                            const timeStr = m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+                            const est = toEST(d);
+                            const dateKey = `${est.year}-${est.month}-${est.date}`;
                             if (!dateGroups.has(dateKey)) {
                                 dateGroups.set(dateKey, {
-                                    label: `${dayNames[d.getUTCDay()]} ${monthNames[d.getUTCMonth()]} ${d.getUTCDate()}`,
+                                    label: `${est.day} ${est.month} ${est.date}`,
                                     sortKey: d.getTime(),
                                     platforms: new Map(),
                                 });
                             }
                             const group = dateGroups.get(dateKey);
-                            const key = `${timeStr} ${task.platform}`;
+                            const key = `${est.time} ${task.platform}`;
                             group.platforms.set(key, (group.platforms.get(key) || 0) + 1);
                         }
                         catch {

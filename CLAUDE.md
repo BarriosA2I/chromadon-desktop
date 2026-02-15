@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.19.9 — 2026-02-15)
+## Recent Changes (v1.19.10 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Times displayed in UTC instead of user's EST timezone — Brain v1.5.9 | `resources/brain/dist/` |
+| Updated: Brain dist v1.5.9 — all times now display in EST for scheduling and queue display | `resources/brain/dist/` |
+
+## Changes (v1.19.9 — 2026-02-15)
 
 | Change | File |
 |--------|------|

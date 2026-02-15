@@ -16,12 +16,22 @@ function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge)
     const clientSection = clientKnowledge
         ? `\n\nACTIVE CLIENT KNOWLEDGE:\n${clientKnowledge}\nUse this context when creating content, answering business questions, or executing tasks for this client.`
         : '';
-    // Inject current UTC datetime so the model can compute relative times
-    // (e.g. "30 minutes from now" → "2026-02-14T23:19:00.000Z")
+    // Inject current UTC + EST datetime so the model can compute relative times
     const now = new Date();
     const currentTime = now.toISOString();
-    return `CURRENT TIME: ${currentTime}
-Use this for all time-related computations. When scheduling, output the exact ISO 8601 datetime string directly — NEVER write code to compute it.
+    // EST = UTC-5 (no DST in winter), EDT = UTC-4 (summer)
+    const estOffset = -5;
+    const estNow = new Date(now.getTime() + estOffset * 60 * 60 * 1000);
+    const estHours = estNow.getUTCHours();
+    const estMinutes = estNow.getUTCMinutes().toString().padStart(2, '0');
+    const ampm = estHours >= 12 ? 'PM' : 'AM';
+    const h12 = estHours % 12 || 12;
+    const estTimeStr = `${h12}:${estMinutes} ${ampm} EST`;
+    const estDateStr = `${estNow.getUTCFullYear()}-${(estNow.getUTCMonth() + 1).toString().padStart(2, '0')}-${estNow.getUTCDate().toString().padStart(2, '0')}`;
+    return `CURRENT TIME: ${currentTime} (UTC) = ${estTimeStr} on ${estDateStr} (Eastern)
+The user is in Eastern Time (EST/UTC-5). ALWAYS use EST when talking to the user about times. When calling schedule_post, convert EST to UTC for the scheduled_time parameter. When displaying times from tool results, convert UTC back to EST.
+Example: User says "30 minutes from now" at 11:48 PM EST → scheduled_time = compute UTC equivalent. Tell user "12:18 AM EST", NOT "5:18 AM".
+When scheduling, output the exact ISO 8601 datetime string directly — NEVER write code to compute it.
 
 RULE #0 — COMMAND SCOPE (HIGHEST PRIORITY)
 Do EXACTLY what the user asks — nothing more, nothing less.
@@ -428,9 +438,16 @@ exports.buildOrchestratorSystemPrompt = buildOrchestratorSystemPrompt;
  */
 function buildCompactSystemPrompt() {
     const now = new Date();
+    const estOffset = -5;
+    const estNow = new Date(now.getTime() + estOffset * 60 * 60 * 1000);
+    const estH = estNow.getUTCHours();
+    const estM = estNow.getUTCMinutes().toString().padStart(2, '0');
+    const ap = estH >= 12 ? 'PM' : 'AM';
+    const h12 = estH % 12 || 12;
     return `You are CHROMADON, a browser automation assistant created by Barrios A2I.
 Execute the requested action using the provided tools. Be brief.
-Current UTC time: ${now.toISOString()}
+Current time: ${now.toISOString()} (UTC) = ${h12}:${estM} ${ap} EST
+User timezone: EST (UTC-5). ALWAYS display times in EST. Convert UTC to EST for display. Convert EST to UTC for schedule_post scheduled_time parameter.
 
 RULES:
 - ACT IMMEDIATELY. Never explain what you're about to do. Just call the tool.
