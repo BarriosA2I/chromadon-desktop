@@ -108,7 +108,10 @@ function selectModelForTask(userMessage, lastToolName) {
     if (input.match(/\b(strategy|plan|analyze.*and.*create|campaign|optimize)\b/) ||
         input.match(/\b(write.*comprehensive|compare.*and.*recommend|research)\b/) ||
         input.match(/\b(design|architect|evaluate|audit|review.*and)\b/) ||
-        input.match(/\b(multi.?step|complex|workflow|erase.*all.*copyright)\b/)) {
+        input.match(/\b(multi.?step|complex|workflow|erase.*all.*copyright)\b/) ||
+        input.match(/\b(set up|create.*project|configure.*oauth|create.*credential|enable.*api)\b/) ||
+        input.match(/\b(do not stop|don't stop|take your time|complete each step)\b/) ||
+        input.match(/\d+\.\s.*\d+\.\s/)) { // Numbered steps
         return ModelTier.REASONING;
     }
     // BALANCED: Everything else — content creation, analysis, Q&A

@@ -28,6 +28,8 @@ export interface OrchestratorSession {
     createdAt: number;
     lastActivityAt: number;
     videoTracker: VideoTracker;
+    multiStepTask: boolean;
+    multiStepInstruction: string;
 }
 export interface SSEWriter {
     writeEvent(event: string, data: any): void;

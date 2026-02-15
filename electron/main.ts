@@ -371,12 +371,12 @@ function startBrainServer(apiKey?: string): void {
         NODE_ENV: 'production',
         ...(resolvedKey ? { ANTHROPIC_API_KEY: resolvedKey } : {}),
         ...(resolvedGeminiKey ? { GEMINI_API_KEY: resolvedGeminiKey } : {}),
-        // OBS Studio WebSocket connection
-        OBS_WS_HOST: process.env.OBS_WS_HOST || '127.0.0.1',
-        OBS_WS_PORT: process.env.OBS_WS_PORT || '4455',
-        OBS_WS_PASSWORD: process.env.OBS_WS_PASSWORD || '',
-        OBS_SAFE_MODE: process.env.OBS_SAFE_MODE || 'true',
-        OBS_SAFE_SCENES: process.env.OBS_SAFE_SCENES || 'StartingSoon,Main',
+        // OBS Studio WebSocket connection (only pass if set — let .env handle defaults)
+        ...(process.env.OBS_WS_HOST ? { OBS_WS_HOST: process.env.OBS_WS_HOST } : {}),
+        ...(process.env.OBS_WS_PORT ? { OBS_WS_PORT: process.env.OBS_WS_PORT } : {}),
+        ...(process.env.OBS_WS_PASSWORD ? { OBS_WS_PASSWORD: process.env.OBS_WS_PASSWORD } : {}),
+        ...(process.env.OBS_SAFE_MODE ? { OBS_SAFE_MODE: process.env.OBS_SAFE_MODE } : {}),
+        ...(process.env.OBS_SAFE_SCENES ? { OBS_SAFE_SCENES: process.env.OBS_SAFE_SCENES } : {}),
       },
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     })
@@ -1036,7 +1036,7 @@ function startControlServer() {
     }
   })
 
-  // Take screenshot of the window
+  // Take screenshot — captures active BrowserView tab if one exists, otherwise main window
   server.get('/screenshot', async (req: Request, res: Response) => {
     try {
       if (!mainWindow) {
@@ -1044,8 +1044,21 @@ function startControlServer() {
         return
       }
 
-      const image = await mainWindow.webContents.capturePage()
-      const pngBuffer = image.toPNG()
+      // Try to capture the active BrowserView (the actual tab content)
+      let pngBuffer: Buffer
+      const activeTabId = browserViewManager.getActiveTabId()
+      if (activeTabId !== null) {
+        const tabBuffer = await browserViewManager.getScreenshot(activeTabId)
+        if (tabBuffer) {
+          pngBuffer = tabBuffer
+        } else {
+          const image = await mainWindow.webContents.capturePage()
+          pngBuffer = image.toPNG()
+        }
+      } else {
+        const image = await mainWindow.webContents.capturePage()
+        pngBuffer = image.toPNG()
+      }
 
       // If path query param provided, save to file
       const savePath = req.query.path as string

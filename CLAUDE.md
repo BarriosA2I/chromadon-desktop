@@ -7,7 +7,17 @@
 
 ---
 
-## Recent Changes (v1.25.11 — 2026-02-15)
+## Recent Changes (v1.25.12 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — `/screenshot` endpoint captured main window React background (always dark/black) instead of active BrowserView tab content — now correctly captures the active tab via `browserViewManager.getScreenshot()` | `electron/main.ts` |
+| Added: `webgl: true` and `spellcheck: true` to BrowserView webPreferences — prevents WebGL-dependent pages from failing to render | `electron/browser-view-manager.ts` |
+| Added: `render-process-gone` crash handler on BrowserViews — auto-reloads tab after 1s on GPU/renderer crash instead of showing black screen | `electron/browser-view-manager.ts` |
+| Added: `did-fail-load` handler on BrowserViews — logs load failures for diagnostics | `electron/browser-view-manager.ts` |
+| Updated: Brain dist v1.10.11 — multi-step task throttle, increased Gemini retry tolerance, generalized autonomous task system prompt | `resources/brain/dist/` |
+
+## Changes (v1.25.11 — 2026-02-15)
 
 | Change | File |
 |--------|------|

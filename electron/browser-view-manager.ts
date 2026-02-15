@@ -464,6 +464,8 @@ export class BrowserViewManager {
         partition: newPartition,
         webSecurity: true,
         allowRunningInsecureContent: false,
+        webgl: true,
+        spellcheck: true,
       },
     })
 
@@ -538,6 +540,8 @@ export class BrowserViewManager {
         partition: partition,
         webSecurity: true,
         allowRunningInsecureContent: false,
+        webgl: true,
+        spellcheck: true,
       },
     })
 
@@ -547,6 +551,20 @@ export class BrowserViewManager {
 
     // Set bounds (initially hidden until focused)
     view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+
+    // Recover from GPU/render crashes — reload the page instead of showing black screen
+    view.webContents.on('render-process-gone', (_event, details) => {
+      console.error(`[BrowserViewManager] Tab ${id} render process gone: ${details.reason} (exit code: ${details.exitCode})`)
+      if (!view.webContents.isDestroyed()) {
+        setTimeout(() => {
+          try { view.webContents.reload() } catch (_) { /* already destroyed */ }
+        }, 1000)
+      }
+    })
+
+    view.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      console.warn(`[BrowserViewManager] Tab ${id} failed to load: ${errorDescription} (code: ${errorCode}) URL: ${validatedURL}`)
+    })
 
     // Attach event handlers (OAuth, anti-detection, navigation tracking)
     this.attachViewHandlers(view, id, partition)

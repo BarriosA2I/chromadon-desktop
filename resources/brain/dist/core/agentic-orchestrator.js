@@ -117,12 +117,25 @@ class AgenticOrchestrator {
                     currentVideoId: '',
                     claimsErased: 0,
                 },
+                multiStepTask: false,
+                multiStepInstruction: '',
             };
             this.sessions.set(session.id, session);
         }
         writer.writeEvent('session_id', { sessionId: session.id });
         // 2. Add user message to session
         session.messages.push({ role: 'user', content: userMessage });
+        // 2b. Detect multi-step tasks — enables auto-continue for complex browser tasks
+        const msgLower = userMessage.toLowerCase();
+        const isMultiStep = /\b(set up|create.*and|configure|step[s ]?\d|then\b.*then\b|1\.\s|2\.\s|first.*then|enable.*and.*create|multi.?step)/i.test(userMessage)
+            || (msgLower.includes('do not stop') || msgLower.includes('don\'t stop') || msgLower.includes('take your time'))
+            || /erase.*all.*copyright|solve.*claims|process.*all.*videos/i.test(userMessage)
+            || userMessage.split(/\d+\.\s/).length > 2; // Numbered steps (1. 2. 3.)
+        if (isMultiStep) {
+            session.multiStepTask = true;
+            session.multiStepInstruction = userMessage;
+            console.log(`[CHROMADON Orchestrator] Multi-step task detected — auto-continue enabled`);
+        }
         // 3. Build system prompt with current page context + skill memory + client knowledge + linked platforms
         const skillsJson = this.getSkillsForPrompt ? this.getSkillsForPrompt() : '';
         const clientKnowledge = this.getClientKnowledge ? this.getClientKnowledge() : null;
@@ -676,8 +689,10 @@ class AgenticOrchestrator {
                 if (/^done\.?$/i.test(responseText.trim())) {
                     break;
                 }
-                // NO active workflow → NEVER auto-continue. The AI should stop after simple commands.
-                if (!workflowActive) {
+                // Check if ANY autonomous task is active (copyright workflow OR general multi-step)
+                const anyAutonomousTask = workflowActive || session.multiStepTask;
+                // NO active workflow or multi-step task → NEVER auto-continue. Simple commands stop here.
+                if (!anyAutonomousTask) {
                     // Only auto-continue for max_tokens (truncated response)
                     if (stopReason === 'max_tokens') {
                         session.messages.push({ role: 'user', content: 'Continue.' });
@@ -685,24 +700,70 @@ class AgenticOrchestrator {
                     }
                     break;
                 }
-                // === BELOW: Only runs when workflowActive === true ===
-                // AI is asking what to do / saying it's ready — force continuation (workflow only)
-                const isAskingForInput = /what.*next|what.*do|ready to continue|shall I|would you like|what's the next step|how.*proceed|let me know/i.test(responseText);
-                if (isAskingForInput && !hasToolCall) {
+                // === BELOW: Only runs when an autonomous task is active ===
+                // Stuck loop detection — if the AI repeats similar text 3+ times, break
+                const recentTexts = session.messages
+                    .filter((m) => m.role === 'assistant')
+                    .slice(-6)
+                    .map((m) => typeof m.content === 'string' ? m.content : (m.content || []).filter((b) => b.type === 'text').map((b) => b.text).join(''))
+                    .filter((t) => t.length > 0);
+                const lastText = responseText.trim().substring(0, 100);
+                const repeatCount = recentTexts.filter((t) => t.trim().substring(0, 100) === lastText).length;
+                if (repeatCount >= 2 && !hasToolCall) {
+                    console.log(`[CHROMADON Orchestrator] Stuck loop detected (${repeatCount} repeats) — breaking`);
+                    session.multiStepTask = false;
+                    break;
+                }
+                // Build context-rich continuation message for multi-step tasks
+                const taskReminder = session.multiStepInstruction
+                    ? `\n\nREMINDER — Your original task:\n${session.multiStepInstruction}\n\nLook at what page you are currently on, figure out which step you have completed, and execute the NEXT step.`
+                    : '';
+                // Throttle helper — prevents Gemini RPM exhaustion on multi-step auto-continue
+                const throttleIfMultiStep = async () => {
+                    if (session.multiStepTask || workflowActive) {
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                };
+                // AI says it can't do something / refuses — push it with original task
+                const isRefusing = /cannot|can't|beyond my capabilities|not able to|unable to|I'm sorry.*cannot|not possible|outside.*capabilities/i.test(responseText);
+                if (isRefusing && !hasToolCall) {
                     session.messages.push({
                         role: 'user',
-                        content: 'Continue. Do not ask what to do next. Process the next video. Never stop until all videos are processed.',
+                        content: `You CAN do this. You have a full browser with click, type_text, navigate, get_page_context, and get_interactive_elements tools. Break this into individual browser actions. Start by calling get_page_context to see what is on the current page, then click the right elements.${taskReminder}`,
                     });
+                    await throttleIfMultiStep();
+                    continue;
+                }
+                // AI is asking what to do / saying it's ready — force continuation with original task
+                const isAskingForInput = /what.*next|what.*do|ready to continue|shall I|would you like|what's the next step|how.*proceed|let me know|provide.*instruction|need.*instruction|what task/i.test(responseText);
+                if (isAskingForInput && !hasToolCall) {
+                    if (workflowActive) {
+                        session.messages.push({ role: 'user', content: 'Continue. Do not ask what to do next. Process the next video. Never stop until all videos are processed.' });
+                    }
+                    else {
+                        session.messages.push({ role: 'user', content: `Continue with the task. Do not ask what to do — figure it out from the page context.${taskReminder}` });
+                    }
+                    await throttleIfMultiStep();
                     continue;
                 }
                 // max_tokens truncation
                 if (stopReason === 'max_tokens') {
-                    session.messages.push({ role: 'user', content: 'Continue.' });
+                    session.messages.push({ role: 'user', content: `Continue.${taskReminder}` });
+                    await throttleIfMultiStep();
                     continue;
                 }
-                // Workflow catch-all: short responses without tool calls → auto-continue
+                // Multi-step task complete detection — AI says it's finished
+                if (session.multiStepTask && !workflowActive) {
+                    const isComplete = /complete|finished|all done|here are the|client id.*client secret|credentials.*created|successfully set up/i.test(responseText);
+                    if (isComplete) {
+                        session.multiStepTask = false; // Task done
+                        break;
+                    }
+                }
+                // Autonomous catch-all: short responses without tool calls → auto-continue
                 if (!hasToolCall && responseText.trim().length < 200) {
-                    session.messages.push({ role: 'user', content: 'Continue.' });
+                    session.messages.push({ role: 'user', content: `Continue.${taskReminder}` });
+                    await throttleIfMultiStep();
                     continue;
                 }
                 break;
@@ -720,9 +781,9 @@ class AgenticOrchestrator {
                         const retryMatch = errorMsg.match(/retry in (\d+(?:\.\d+)?)s/i);
                         const retryDelaySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 15;
                         rateLimitRetryCount++;
-                        if (rateLimitRetryCount <= 2) {
-                            const waitMs = Math.min(retryDelaySec * 1000, 30000);
-                            console.warn(`[PROVIDER] Gemini 429 — waiting ${waitMs}ms before retry (${rateLimitRetryCount}/2)`);
+                        if (rateLimitRetryCount <= 4) {
+                            const waitMs = Math.min(retryDelaySec * 1000, 60000);
+                            console.warn(`[PROVIDER] Gemini 429 — waiting ${waitMs}ms before retry (${rateLimitRetryCount}/4)`);
                             await new Promise(resolve => setTimeout(resolve, waitMs));
                             continue;
                         }
