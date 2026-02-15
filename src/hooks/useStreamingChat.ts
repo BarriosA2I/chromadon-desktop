@@ -140,6 +140,7 @@ export function useStreamingChat() {
 
       // Wait for brain to be ready (up to 10 seconds)
       let brainReady = false
+      let lastReason = ''
       for (let i = 0; i < 10; i++) {
         if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError')
         try {
@@ -150,13 +151,22 @@ export function useStreamingChat() {
               brainReady = true
               break
             }
+            // Brain is running but orchestrator isn't ready — check why
+            lastReason = healthData.orchestratorReason || ''
+            if (lastReason === 'no_api_key') {
+              // No point waiting — key won't appear on its own
+              throw new Error('No API key configured. Open Settings (gear icon) and enter your Gemini API key to get started.')
+            }
           }
-        } catch { /* brain not ready yet */ }
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('No API key')) throw e
+          /* brain not ready yet */
+        }
         await new Promise(r => setTimeout(r, 1000))
       }
 
       if (!brainReady) {
-        throw new Error('AI assistant is starting up. Please wait a moment and try again.')
+        throw new Error('No API key configured. Open Settings (gear icon) and enter your Gemini API key to get started.')
       }
 
       const chatPayload: RequestInit = {

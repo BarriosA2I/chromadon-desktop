@@ -611,6 +611,7 @@ app.get('/health', (_req, res) => {
         pageCount: desktopAvailable ? desktopTabIds.length : globalPages.length,
         selectedPage: desktopAvailable ? (desktopActiveTabId ?? 0) : selectedPageIndex,
         orchestrator: !!orchestrator,
+        orchestratorReason: orchestrator ? 'ready' : (process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY ? 'init_error' : 'no_api_key'),
         orchestratorSessions: orchestrator?.getSessionCount() ?? 0,
         analytics: !!analyticsDb,
         desktopCircuitBreaker: desktopCircuitBreaker.getMetrics(),

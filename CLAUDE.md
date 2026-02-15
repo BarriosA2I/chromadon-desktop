@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.19.10 — 2026-02-15)
+## Recent Changes (v1.19.11 — 2026-02-15)
+
+| Change | File |
+|--------|------|
+| Fixed: Clients stuck on "AI assistant is starting up" for entire day — now shows "No API key configured. Open Settings..." immediately | `src/hooks/useStreamingChat.ts` |
+| Fixed: Health check now reads `orchestratorReason` from Brain — detects `no_api_key` instantly instead of waiting 10 seconds | `src/hooks/useStreamingChat.ts` |
+| Updated: Brain dist v1.5.10 — health endpoint returns `orchestratorReason` field | `resources/brain/dist/` |
+
+## Changes (v1.19.10 — 2026-02-15)
 
 | Change | File |
 |--------|------|
