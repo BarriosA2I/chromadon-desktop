@@ -278,3 +278,4 @@ export declare const researchAgent: TheResearchAgent;
 export declare const bookingAgent: TheBookingAgent;
 export declare const paymentHandler: ThePaymentHandler;
 export { Product, CartState, ShippingAddress, CheckoutData, ExtractedData, ExtractionRule, ResearchQuery, ResearchResult, BookingRequest, BookingConfirmation, PaymentDetails, };
+//# sourceMappingURL=tier3-specialists-extended.d.ts.map

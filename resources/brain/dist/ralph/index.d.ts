@@ -33,3 +33,4 @@ export declare const RALPH_DEFAULTS: {
     completionSignalPattern: RegExp;
     enabledByDefault: boolean;
 };
+//# sourceMappingURL=index.d.ts.map

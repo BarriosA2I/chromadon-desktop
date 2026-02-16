@@ -83,3 +83,4 @@ export declare class CostTracker {
      */
     static estimateCost(model: string, estimatedInputTokens: number, estimatedOutputTokens: number): number;
 }
+//# sourceMappingURL=CostTracker.d.ts.map

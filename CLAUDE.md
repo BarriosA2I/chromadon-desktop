@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.14 — 2026-02-16)
+## Recent Changes (v1.25.15 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.10.13 — CRITICAL fix: CortexRouter + 27-Agent System now actually initializes. `server.ts` was loading stale compiled agents via `require()` instead of TypeScript import. All chat requests now route through tiered agent system instead of monolithic orchestrator fallback | `resources/brain/dist/` |
+
+## Changes (v1.25.14 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -252,5 +258,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.14
+**Version:** 1.25.15
 **Author:** Barrios A2I (Gary Barrios)

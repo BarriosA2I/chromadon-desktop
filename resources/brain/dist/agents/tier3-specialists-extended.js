@@ -2142,3 +2142,4 @@ exports.dataExtractor = new TheDataExtractor();
 exports.researchAgent = new TheResearchAgent();
 exports.bookingAgent = new TheBookingAgent();
 exports.paymentHandler = new ThePaymentHandler();
+//# sourceMappingURL=tier3-specialists-extended.js.map

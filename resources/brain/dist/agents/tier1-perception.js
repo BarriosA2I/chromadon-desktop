@@ -30,6 +30,7 @@ const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const uuid_1 = require("uuid");
 const types_1 = require("./types");
 const event_bus_1 = require("./event-bus");
+const circuit_breaker_1 = require("../core/circuit-breaker");
 // =============================================================================
 // BASE PERCEPTION AGENT CLASS
 // =============================================================================
@@ -38,10 +39,8 @@ class BasePerceptionAgent {
     config;
     anthropic;
     eventBus;
-    // Circuit breaker state
-    failures = 0;
-    lastFailure = 0;
-    state = 'closed';
+    // Circuit breaker — uses production CircuitBreaker class from core
+    circuitBreaker;
     constructor(name, config = {}) {
         this.name = name;
         this.config = {
@@ -58,6 +57,14 @@ class BasePerceptionAgent {
         };
         this.anthropic = new sdk_1.default();
         this.eventBus = (0, event_bus_1.getEventBus)();
+        this.circuitBreaker = new circuit_breaker_1.CircuitBreaker({
+            failureThreshold: this.config.circuitBreaker.failureThreshold,
+            recoveryTimeoutMs: this.config.circuitBreaker.recoveryTimeMs,
+            successThreshold: 2,
+            halfOpenMaxAttempts: this.config.circuitBreaker.halfOpenRequests,
+            failureWindowMs: 60000,
+            enableLogging: true,
+        });
     }
     getModelId() {
         switch (this.config.model) {
@@ -72,29 +79,18 @@ class BasePerceptionAgent {
         }
     }
     async canExecute() {
-        if (this.state === 'closed')
-            return true;
-        if (this.state === 'open') {
-            if (Date.now() - this.lastFailure > this.config.circuitBreaker.recoveryTimeMs) {
-                this.state = 'half_open';
-                return true;
-            }
-            return false;
-        }
-        return true; // half_open allows attempts
+        return this.circuitBreaker.canExecute();
     }
     recordSuccess() {
-        if (this.state === 'half_open') {
-            this.state = 'closed';
-            this.failures = 0;
-        }
+        this.circuitBreaker.recordSuccess(this.name);
     }
     recordFailure() {
-        this.failures++;
-        this.lastFailure = Date.now();
-        if (this.failures >= this.config.circuitBreaker.failureThreshold || this.state === 'half_open') {
-            this.state = 'open';
-            this.publishEvent('circuit_breaker.opened', { agent: this.name, failures: this.failures });
+        this.circuitBreaker.recordFailure(this.name, new Error('Agent execution failed'));
+        if (this.circuitBreaker.isOpen()) {
+            this.publishEvent('circuit_breaker.opened', {
+                agent: this.name,
+                metrics: this.circuitBreaker.getMetrics(),
+            });
         }
     }
     async callLLM(systemPrompt, userMessage, options = {}) {
@@ -909,3 +905,4 @@ function createPerceptionAgents() {
     };
 }
 exports.createPerceptionAgents = createPerceptionAgents;
+//# sourceMappingURL=tier1-perception.js.map

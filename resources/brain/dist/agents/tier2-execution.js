@@ -1293,15 +1293,14 @@ ${request.prompt ? `Additional Instructions: ${request.prompt}` : ''}`;
         }
     }
     async callLLM(systemPrompt, userMessage) {
-        const response = await this.anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2048,
-            temperature: 0.8, // Higher for creativity
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userMessage }],
+        const { GoogleGenerativeAI } = require('@google/generative-ai');
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            systemInstruction: systemPrompt,
         });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        return textBlock?.type === 'text' ? textBlock.text : '';
+        const result = await model.generateContent(userMessage);
+        return result.response.text();
     }
     // Convenience methods for common content types
     async generateBusinessDescription(businessName, industry, targetAudience) {
@@ -1334,6 +1333,39 @@ ${request.prompt ? `Additional Instructions: ${request.prompt}` : ''}`;
             context: { name, role },
             tone: 'professional',
             maxLength: 300,
+        });
+        return result.content;
+    }
+    async generateComment(platform, originalPost, tone = 'friendly', brandVoice) {
+        const result = await this.generate({
+            type: 'comment',
+            platform,
+            context: { originalPost, brandVoice },
+            tone,
+            maxLength: platform === 'twitter' ? 280 : 500,
+            prompt: `Write a thoughtful, on-brand comment replying to this post. Be genuine, not salesy. ${brandVoice ? `Brand voice: ${brandVoice}` : ''}`,
+        });
+        return result.content;
+    }
+    async generateReply(platform, commentText, commentAuthor, tone = 'helpful', brandVoice) {
+        const result = await this.generate({
+            type: 'reply',
+            platform,
+            context: { commentText, commentAuthor, brandVoice },
+            tone,
+            maxLength: platform === 'twitter' ? 280 : 500,
+            prompt: `Write a reply to ${commentAuthor}'s comment: "${commentText}". Be brief, professional, and helpful. ${brandVoice ? `Brand voice: ${brandVoice}` : ''}`,
+        });
+        return result.content;
+    }
+    async generateMessage(platform, messageContext, tone = 'professional') {
+        const result = await this.generate({
+            type: 'direct_message',
+            platform,
+            context: { messageContext },
+            tone,
+            maxLength: 1000,
+            prompt: `Write a direct message response. Be professional and concise.`,
         });
         return result.content;
     }
@@ -1455,3 +1487,4 @@ function createExecutionAgents(cdp) {
     return agents;
 }
 exports.createExecutionAgents = createExecutionAgents;
+//# sourceMappingURL=tier2-execution.js.map

@@ -34,12 +34,21 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 // Approximate costs per 1K tokens (updated 2026-02)
 const MODEL_COSTS = {
+    // Gemini models (primary provider)
+    'gemini-2.0-flash': { input: 0.0001, output: 0.0004 },
+    'gemini-2.5-flash-lite': { input: 0.0001, output: 0.0004 },
+    'gemini-2.5-flash': { input: 0.0003, output: 0.0025 },
+    'gemini-2.5-pro': { input: 0.00125, output: 0.01 },
+    // Claude models (fallback)
     'claude-opus-4': { input: 0.015, output: 0.075 },
     'claude-sonnet-4': { input: 0.003, output: 0.015 },
     'claude-haiku-4-5': { input: 0.0008, output: 0.004 },
+    'claude-haiku-4-5-20251001': { input: 0.0008, output: 0.004 },
     'claude-3-opus': { input: 0.015, output: 0.075 },
     'claude-3-sonnet': { input: 0.003, output: 0.015 },
     'claude-3-haiku': { input: 0.00025, output: 0.00125 },
+    'claude-haiku-4-5-20251001': { input: 0.00025, output: 0.00125 },
+    // GPT models
     'gpt-4': { input: 0.03, output: 0.06 },
     'gpt-4-turbo': { input: 0.01, output: 0.03 },
     'gpt-4o': { input: 0.005, output: 0.015 },
@@ -198,3 +207,4 @@ class CostTracker {
     }
 }
 exports.CostTracker = CostTracker;
+//# sourceMappingURL=CostTracker.js.map

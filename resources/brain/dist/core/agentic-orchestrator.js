@@ -851,8 +851,8 @@ class AgenticOrchestrator {
                         modelFallbackUsed = true;
                         rateLimitRetryCount = 0;
                         currentModel = currentModel.includes('haiku')
-                            ? 'claude-3-haiku-20240307'
-                            : 'claude-3-5-haiku-20241022';
+                            ? 'claude-haiku-4-5-20251001'
+                            : 'claude-haiku-4-5-20251001';
                         console.warn(`[CHROMADON Orchestrator] Rate limit retries exhausted — switching to ${currentModel}`);
                         continue;
                     }
@@ -881,8 +881,8 @@ class AgenticOrchestrator {
                         modelFallbackUsed = true;
                         overloadedRetryCount = 0;
                         currentModel = currentModel.includes('haiku')
-                            ? 'claude-3-haiku-20240307'
-                            : 'claude-3-5-haiku-20241022';
+                            ? 'claude-haiku-4-5-20251001'
+                            : 'claude-haiku-4-5-20251001';
                         console.warn(`[CHROMADON Orchestrator] Primary model overloaded — switching to ${currentModel}`);
                         continue;
                     }

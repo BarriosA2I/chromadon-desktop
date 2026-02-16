@@ -46,3 +46,4 @@ export declare class RalphProgress {
      */
     getProgress(): Promise<string>;
 }
+//# sourceMappingURL=RalphProgress.d.ts.map

@@ -69,7 +69,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChromadonAgentSystem = exports.createAllAgents = exports.createResilienceAgents = exports.TheLearningEngine = exports.TheRecoveryExpert = exports.TheErrorHandler = exports.createExtendedSpecialists = exports.ThePaymentHandler = exports.TheBookingAgent = exports.TheResearchAgent = exports.TheDataExtractor = exports.TheEcommerceExpert = exports.createSpecialistAgents = exports.TheCaptchaBreaker = exports.TheSocialMediaPro = exports.TheAuthGuardian = exports.createExecutionAgents = exports.TheFileHandler = exports.TheContentGenerator = exports.TheFormMaster = exports.TheSelector = exports.TheScroller = exports.TheTyper = exports.TheClicker = exports.TheNavigator = exports.createPerceptionAgents = exports.TheIntentDecoder = exports.TheContextBuilder = exports.TheDOMInspector = exports.TheVisionAnalyzer = exports.TheMemoryKeeper = exports.TheSentinel = exports.TheTemporalSequencer = exports.TheCortex = exports.BaseAgent = exports.RequestOptions = exports.EventSubscription = exports.traced = exports.getTracer = exports.getEventBus = exports.AgentEventBus = void 0;
+exports.ChromadonAgentSystem = exports.createAllAgents = exports.SocialMediaToolBridge = exports.YouTubeToolBridge = exports.createResilienceAgents = exports.TheLearningEngine = exports.TheRecoveryExpert = exports.TheErrorHandler = exports.createExtendedSpecialists = exports.ThePaymentHandler = exports.TheBookingAgent = exports.TheResearchAgent = exports.TheDataExtractor = exports.TheEcommerceExpert = exports.createSpecialistAgents = exports.TheCaptchaBreaker = exports.TheSocialMediaPro = exports.TheAuthGuardian = exports.createExecutionAgents = exports.TheFileHandler = exports.TheContentGenerator = exports.TheFormMaster = exports.TheSelector = exports.TheScroller = exports.TheTyper = exports.TheClicker = exports.TheNavigator = exports.createPerceptionAgents = exports.TheIntentDecoder = exports.TheContextBuilder = exports.TheDOMInspector = exports.TheVisionAnalyzer = exports.TheMemoryKeeper = exports.TheSentinel = exports.TheTemporalSequencer = exports.TheCortex = exports.BaseAgent = exports.RequestOptions = exports.EventSubscription = exports.traced = exports.getTracer = exports.getEventBus = exports.AgentEventBus = void 0;
 // =============================================================================
 // RALPH SYSTEM
 // =============================================================================
@@ -143,6 +143,13 @@ Object.defineProperty(exports, "TheErrorHandler", { enumerable: true, get: funct
 Object.defineProperty(exports, "TheRecoveryExpert", { enumerable: true, get: function () { return tier4_resilience_1.TheRecoveryExpert; } });
 Object.defineProperty(exports, "TheLearningEngine", { enumerable: true, get: function () { return tier4_resilience_1.TheLearningEngine; } });
 Object.defineProperty(exports, "createResilienceAgents", { enumerable: true, get: function () { return tier4_resilience_1.createResilienceAgents; } });
+// =============================================================================
+// TOOL BRIDGES
+// =============================================================================
+var youtube_tool_bridge_1 = require("./youtube-tool-bridge");
+Object.defineProperty(exports, "YouTubeToolBridge", { enumerable: true, get: function () { return youtube_tool_bridge_1.YouTubeToolBridge; } });
+var social_tool_bridge_1 = require("./social-tool-bridge");
+Object.defineProperty(exports, "SocialMediaToolBridge", { enumerable: true, get: function () { return social_tool_bridge_1.SocialMediaToolBridge; } });
 // =============================================================================
 // UNIFIED AGENT SYSTEM
 // =============================================================================
@@ -227,6 +234,7 @@ class ChromadonAgentSystem {
     cdp;
     ralphConfig;
     activeRalph = null;
+    youtube = null;
     constructor(cdp, ralphConfig) {
         this.cdp = cdp;
         this.agents = createAllAgents(cdp);
@@ -236,6 +244,23 @@ class ChromadonAgentSystem {
             ...ralphConfig,
         };
         this.setupEventHandlers();
+    }
+    /** Get TheCortex agent for workflow planning */
+    getCortex() {
+        return this.agents.cortex;
+    }
+    /** Get TheTemporalSequencer for DAG execution */
+    getSequencer() {
+        return this.agents.sequencer;
+    }
+    /** Get the EventBus for direct agent dispatch */
+    getAgentEventBus() {
+        return this.eventBus;
+    }
+    /** Set the YouTube Tool Bridge (called from server.ts after both systems are init'd) */
+    setYouTubeBridge(bridge) {
+        this.youtube = bridge;
+        console.log('[ChromadonAgentSystem] YouTube Tool Bridge connected');
     }
     setupEventHandlers() {
         // Log all agent events
@@ -1002,3 +1027,4 @@ exports.ChromadonAgentSystem = ChromadonAgentSystem;
  *   -------------------------------------------
  *   TOTAL:                      ~9,000+ lines
  */
+//# sourceMappingURL=index.js.map

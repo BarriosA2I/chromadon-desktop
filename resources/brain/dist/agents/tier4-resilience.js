@@ -22,7 +22,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-var _a, _b, _c;
+var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createResilienceAgents = exports.TheLearningEngine = exports.TheRecoveryExpert = exports.TheErrorHandler = void 0;
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
@@ -977,12 +977,6 @@ Respond with JSON:
 }
 exports.TheLearningEngine = TheLearningEngine;
 __decorate([
-    (0, event_bus_1.traced)('learning_engine.record_event'),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_c = typeof types_1.LearningEvent !== "undefined" && types_1.LearningEvent) === "function" ? _c : Object]),
-    __metadata("design:returntype", void 0)
-], TheLearningEngine.prototype, "recordEvent", null);
-__decorate([
     (0, event_bus_1.traced)('learning_engine.analyze_patterns'),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),
@@ -1017,3 +1011,4 @@ function createResilienceAgents() {
     };
 }
 exports.createResilienceAgents = createResilienceAgents;
+//# sourceMappingURL=tier4-resilience.js.map

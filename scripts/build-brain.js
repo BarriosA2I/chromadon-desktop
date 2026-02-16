@@ -82,12 +82,19 @@ if (process.platform === 'win32') {
 log('dist/ copied')
 
 // ==================== Step 3: Copy package.json + install deps ====================
-log('Step 3: Copying package.json and installing production deps...')
+log('Step 3: Copying package.json + lockfile and installing production deps...')
 const brainPkg = path.join(BRAIN_ROOT, 'package.json')
 const targetPkg = path.join(RESOURCES_BRAIN, 'package.json')
 fs.copyFileSync(brainPkg, targetPkg)
 
-run('npm ci --omit=dev', { cwd: RESOURCES_BRAIN })
+const brainLock = path.join(BRAIN_ROOT, 'package-lock.json')
+const targetLock = path.join(RESOURCES_BRAIN, 'package-lock.json')
+if (fs.existsSync(brainLock)) {
+  fs.copyFileSync(brainLock, targetLock)
+  run('npm ci --omit=dev', { cwd: RESOURCES_BRAIN })
+} else {
+  run('npm install --omit=dev', { cwd: RESOURCES_BRAIN })
+}
 log('Production dependencies installed')
 
 // ==================== Step 4: Patch otplib ESM ====================

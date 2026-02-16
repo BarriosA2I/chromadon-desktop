@@ -92,3 +92,4 @@ function addCompletionSignal(result, signal) {
     return { result, completionSignal: signal };
 }
 exports.addCompletionSignal = addCompletionSignal;
+//# sourceMappingURL=completion-signals.js.map

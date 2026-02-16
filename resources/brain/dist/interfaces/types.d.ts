@@ -233,10 +233,10 @@ export declare const MissionSchema: z.ZodObject<{
         type: z.ZodEnum<["navigate", "click", "fill", "select", "hover", "scroll", "screenshot", "wait", "conditional"]>;
     }, "strip", z.ZodTypeAny, {
         id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+        type: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }, {
         id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+        type: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }>, "many">;
     complexity: z.ZodNativeEnum<typeof Complexity>;
     timeout: z.ZodOptional<z.ZodNumber>;
@@ -246,7 +246,7 @@ export declare const MissionSchema: z.ZodObject<{
     description: string;
     actions: {
         id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+        type: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }[];
     complexity: Complexity;
     timeout?: number | undefined;
@@ -256,7 +256,7 @@ export declare const MissionSchema: z.ZodObject<{
     description: string;
     actions: {
         id: string;
-        type: "navigate" | "click" | "scroll" | "wait" | "hover" | "select" | "fill" | "screenshot" | "conditional";
+        type: "navigate" | "click" | "fill" | "select" | "hover" | "scroll" | "screenshot" | "wait" | "conditional";
     }[];
     complexity: Complexity;
     timeout?: number | undefined;
@@ -268,11 +268,11 @@ export declare const SelectorSchema: z.ZodObject<{
     confidence: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
     value: string;
-    strategy: "text" | "css" | "xpath" | "aria" | "testid" | "visual";
+    strategy: "css" | "xpath" | "text" | "aria" | "testid" | "visual";
     confidence: number;
 }, {
     value: string;
-    strategy: "text" | "css" | "xpath" | "aria" | "testid" | "visual";
+    strategy: "css" | "xpath" | "text" | "aria" | "testid" | "visual";
     confidence: number;
 }>;
 export type MissionInput = z.infer<typeof MissionSchema>;

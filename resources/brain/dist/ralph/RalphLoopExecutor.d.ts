@@ -173,3 +173,4 @@ export declare class RalphLoopExecutor {
  * Factory function to create RALPH executor with default CHROMADON config
  */
 export declare function createRalphExecutor(task: string, config?: Partial<RalphConfig>): RalphLoopExecutor;
+//# sourceMappingURL=RalphLoopExecutor.d.ts.map

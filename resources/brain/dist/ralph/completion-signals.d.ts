@@ -52,3 +52,4 @@ export declare function extractCompletionSignal(result: any): CompletionSignal |
  * Add completion signal to result
  */
 export declare function addCompletionSignal(result: any, signal: CompletionSignal): any;
+//# sourceMappingURL=completion-signals.d.ts.map

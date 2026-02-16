@@ -230,6 +230,9 @@ export declare class TheContentGenerator extends BaseExecutionAgent {
     generateBusinessDescription(businessName: string, industry: string, targetAudience?: string): Promise<string>;
     generateSocialPost(platform: string, topic: string, tone?: string): Promise<string>;
     generateProfileBio(name: string, role: string, platform: string): Promise<string>;
+    generateComment(platform: string, originalPost: string, tone?: string, brandVoice?: string): Promise<string>;
+    generateReply(platform: string, commentText: string, commentAuthor: string, tone?: string, brandVoice?: string): Promise<string>;
+    generateMessage(platform: string, messageContext: string, tone?: string): Promise<string>;
 }
 /**
  * THE FILE HANDLER
@@ -257,3 +260,4 @@ export declare function createExecutionAgents(cdp: CDPController): {
     fileHandler: TheFileHandler;
 };
 export { TheNavigator, TheClicker, TheTyper, TheScroller, TheSelector, TheFormMaster, TheContentGenerator, TheFileHandler, };
+//# sourceMappingURL=tier2-execution.d.ts.map

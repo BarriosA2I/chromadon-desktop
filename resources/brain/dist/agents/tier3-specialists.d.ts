@@ -80,3 +80,4 @@ export declare function createSpecialistAgents(): {
 export declare const authGuardian: TheAuthGuardian;
 export declare const socialMediaPro: TheSocialMediaPro;
 export declare const captchaBreaker: TheCaptchaBreaker;
+//# sourceMappingURL=tier3-specialists.d.ts.map

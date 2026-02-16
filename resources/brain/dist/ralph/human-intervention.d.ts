@@ -84,3 +84,4 @@ export declare function canAutoRetry(reason: InterventionReason | null): boolean
  * Get suggested actions for an intervention reason
  */
 export declare function getSuggestedActions(reason: InterventionReason): string[];
+//# sourceMappingURL=human-intervention.d.ts.map
