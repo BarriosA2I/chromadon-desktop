@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.4 — 2026-02-16)
+## Recent Changes (v1.26.5 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Fixed: ROOT CAUSE — Brain v1.11.5 — Disabled `cortex_planning` catch-all route entirely (`match: () => false`). 27-agent system can't execute (EventBus not wired). Was wasting Gemini API call + latency on every unmatched message. All unmatched messages now go straight to monolithic orchestrator. Added default monolithic fallback in `chat()` for unmatched routes | `resources/brain/dist/` |
+
+## Changes (v1.26.4 — 2026-02-16)
 
 | Change | File |
 |--------|------|

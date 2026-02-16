@@ -22,7 +22,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CortexRouter = void 0;
 const event_bus_1 = require("../agents/event-bus");
 const uuid_1 = require("uuid");
-const error_channel_1 = require("./error-channel");
 // ============================================================================
 // URL RESOLUTION
 // ============================================================================
@@ -143,31 +142,14 @@ class CortexRouter {
             {
                 name: 'cortex_planning',
                 priority: 50,
-                match: () => true, // Always matches as fallback
+                // DISABLED: 27-agent system cannot execute — EventBus not wired,
+                // agents have no DesktopBrowserAdapter access. All unmatched messages
+                // go straight to monolithic orchestrator via chat() default path.
+                // TODO: Re-enable when 27-agent EventBus request/response + DesktopBrowserAdapter is wired.
+                // See: agents/event-bus.ts, agents/index.ts, agents/tier0-orchestration.ts
+                match: () => false,
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    const msg = message.trim();
-                    try {
-                        console.log(`[CortexRouter] Cortex planning for: "${msg.slice(0, 80)}"`);
-                        const dag = await this.cortex.planWorkflow(msg, pageContext ? { pageContext } : undefined);
-                        // Fix: Empty DAG → fall back to monolithic orchestrator (was silently returning "Completed 0 steps")
-                        if (!dag.nodes || dag.nodes.length === 0) {
-                            console.log('[CortexRouter] Empty DAG (0 nodes) — falling back to monolithic orchestrator');
-                            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
-                        }
-                        const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
-                        writer.writeEvent('session_id', { sessionId: sid });
-                        const stepsCompleted = await this.executeDAG(dag, sid, writer);
-                        // Fix: 0 steps executed → fall back to monolithic orchestrator
-                        if (stepsCompleted === 0) {
-                            console.log('[CortexRouter] DAG executed 0 steps — falling back to monolithic orchestrator');
-                            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
-                        }
-                    }
-                    catch (error) {
-                        console.log('[CortexRouter] Cortex planning failed, falling back to monolithic:', error.message);
-                        error_channel_1.errorChannel.report('warning', 'CortexRouter', `Cortex planning failed: ${error.message}`);
-                        return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
-                    }
+                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
                 },
             },
         ];
@@ -193,6 +175,9 @@ class CortexRouter {
                 return route.execute(matchData, sessionId, message, writer, context, pageContext);
             }
         }
+        // No route matched — fall through to monolithic orchestrator
+        console.log('[CortexRouter] No route matched — monolithic orchestrator');
+        return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
     }
     // ==========================================================================
     // INTENT CLASSIFICATION (regex, no LLM)
