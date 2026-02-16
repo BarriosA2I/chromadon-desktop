@@ -131,6 +131,7 @@ export class BrainLifecycleManager extends EventEmitter {
           ...(process.env.OBS_SAFE_SCENES ? { OBS_SAFE_SCENES: process.env.OBS_SAFE_SCENES } : {}),
         },
         stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+        windowsHide: true,
       })
 
       log(`fork() succeeded, pid=${this.process.pid}`)
@@ -303,13 +304,13 @@ export class BrainLifecycleManager extends EventEmitter {
 
   private killStaleProcesses(log: (msg: string) => void): void {
     try {
-      const output = execSync(`netstat -ano | findstr :${this.config.port} | findstr LISTENING`, { encoding: 'utf8', timeout: 3000 })
+      const output = execSync(`netstat -ano | findstr :${this.config.port} | findstr LISTENING`, { encoding: 'utf8', timeout: 3000, windowsHide: true })
       const lines = output.trim().split('\n')
       for (const line of lines) {
         const pid = line.trim().split(/\s+/).pop()
         if (pid && pid !== '0' && parseInt(pid) !== process.pid) {
           log(`Found stale process PID ${pid} on port ${this.config.port} — killing it`)
-          try { execSync(`taskkill /PID ${pid} /F`, { timeout: 3000 }) } catch {}
+          try { execSync(`taskkill /PID ${pid} /F`, { timeout: 3000, windowsHide: true }) } catch {}
         }
       }
     } catch {
@@ -321,7 +322,7 @@ export class BrainLifecycleManager extends EventEmitter {
     try {
       execSync(
         'node -e "try{require(\'better-sqlite3\');process.exit(0)}catch(e){process.stderr.write(e.message);process.exit(1)}"',
-        { cwd: brainDir, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 5000 }
+        { cwd: brainDir, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 5000, windowsHide: true }
       )
       log('Native module self-test: better-sqlite3 OK')
       return true

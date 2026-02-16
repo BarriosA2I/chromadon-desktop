@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.19 — 2026-02-16)
+## Recent Changes (v1.25.20 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Fixed: Console window flashing on startup — `windowsHide: true` added to Brain fork() and all execSync() calls (netstat, taskkill, native module test). Prevents visible command prompt windows on Windows | `electron/brain/brain-lifecycle-manager.ts` |
+
+## Changes (v1.25.19 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -283,5 +289,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.19
+**Version:** 1.25.20
 **Author:** Barrios A2I (Gary Barrios)
