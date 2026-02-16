@@ -18,6 +18,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.captchaBreaker = exports.socialMediaPro = exports.authGuardian = exports.createSpecialistAgents = exports.TheCaptchaBreaker = exports.TheSocialMediaPro = exports.TheAuthGuardian = void 0;
+const gemini_llm_1 = require("./gemini-llm");
 // Lazy-load otplib to avoid ERR_REQUIRE_ESM in Electron's Node 18
 let authenticator = null;
 try {
@@ -447,18 +448,7 @@ Identify:
 4. Image upload buttons if present
 
 Return JSON with selectors and actions needed.`;
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: 1024,
-            system: systemPrompt,
-            messages: [{
-                    role: 'user',
-                    content: [
-                        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: screenshot.data.data } },
-                        { type: 'text', text: `Find the post creation elements on this ${platform} page.` }
-                    ]
-                }]
-        });
+        const visionResponse = await (0, gemini_llm_1.callGeminiVision)(systemPrompt, screenshot.data.data, `Find the post creation elements on this ${platform} page.`, { model: this.config.model, maxTokens: 1024 });
         // Parse and execute
         // ... implementation
         return { success: true };
@@ -566,20 +556,7 @@ Return JSON with:
 - gridSize: number (3 or 4)
 - selectedIndices: number[] (0-indexed positions of matching images)
 - confidence: number (0-1)`;
-            const response = await this.anthropic.messages.create({
-                model: this.getModelId(),
-                max_tokens: 1024,
-                system: systemPrompt,
-                messages: [{
-                        role: 'user',
-                        content: [
-                            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: screenshot.data.data } },
-                            { type: 'text', text: 'Analyze and solve this reCAPTCHA challenge.' }
-                        ]
-                    }]
-            });
-            const textBlock = response.content.find(b => b.type === 'text');
-            const text = textBlock?.type === 'text' ? textBlock.text : '';
+            const text = await (0, gemini_llm_1.callGeminiVision)(systemPrompt, screenshot.data.data, 'Analyze and solve this reCAPTCHA challenge.', { model: this.config.model, maxTokens: 1024 });
             const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/);
             const jsonStr = jsonMatch ? jsonMatch[1] : text;
             const solution = JSON.parse(jsonStr);
@@ -639,20 +616,7 @@ Be careful with:
 Return JSON with:
 - text: string (the transcribed text)
 - confidence: number (0-1)`;
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: 256,
-            system: systemPrompt,
-            messages: [{
-                    role: 'user',
-                    content: [
-                        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: screenshot.data.data } },
-                        { type: 'text', text: 'Read and transcribe the CAPTCHA text.' }
-                    ]
-                }]
-        });
-        const textBlock = response.content.find(b => b.type === 'text');
-        const text = textBlock?.type === 'text' ? textBlock.text : '';
+        const text = await (0, gemini_llm_1.callGeminiVision)(systemPrompt, screenshot.data.data, 'Read and transcribe the CAPTCHA text.', { model: this.config.model, maxTokens: 256 });
         const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/);
         const jsonStr = jsonMatch ? jsonMatch[1] : text;
         const solution = JSON.parse(jsonStr);

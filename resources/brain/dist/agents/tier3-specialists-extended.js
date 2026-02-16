@@ -20,12 +20,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.paymentHandler = exports.bookingAgent = exports.researchAgent = exports.dataExtractor = exports.ecommerceExpert = exports.createExtendedSpecialists = exports.ThePaymentHandler = exports.TheBookingAgent = exports.TheResearchAgent = exports.TheDataExtractor = exports.TheEcommerceExpert = void 0;
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
+const gemini_llm_1 = require("./gemini-llm");
 const tier0_orchestration_1 = require("./tier0-orchestration");
 const event_bus_1 = require("./event-bus");
 class TheEcommerceExpert extends tier0_orchestration_1.BaseAgent {
@@ -35,7 +32,7 @@ class TheEcommerceExpert extends tier0_orchestration_1.BaseAgent {
     circuitBreaker;
     constructor() {
         super('THE_ECOMMERCE_EXPERT', { model: 'sonnet' });
-        this.client = new sdk_1.default();
+        // Gemini-first LLM calls via gemini-llm.ts (Anthropic fallback built-in)
         this.platformSelectors = this.initPlatformSelectors();
         this.cartCache = new Map();
         this.circuitBreaker = new event_bus_1.CircuitBreaker({
@@ -160,20 +157,8 @@ class TheEcommerceExpert extends tier0_orchestration_1.BaseAgent {
             expression: 'document.body.innerHTML',
             returnByValue: true,
         });
-        const response = await this.client.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2000,
-            messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image',
-                            source: { type: 'base64', media_type: 'image/png', data: screenshot.data },
-                        },
-                        {
-                            type: 'text',
-                            text: `Analyze this shopping cart page and extract the cart state.
-            
+        const cartPrompt = `Analyze this shopping cart page and extract the cart state.
+
 Return a JSON object with this structure:
 {
   "items": [{"id": "...", "name": "...", "price": 0, "quantity": 1, "inStock": true}],
@@ -186,13 +171,13 @@ Return a JSON object with this structure:
   "discount": 0
 }
 
-If cart is empty, return empty items array. Extract actual values from the page.`,
-                        },
-                    ],
-                }],
+If cart is empty, return empty items array. Extract actual values from the page.`;
+        const cartText = await (0, gemini_llm_1.callGeminiVision)('', screenshot.data, cartPrompt, {
+            model: 'sonnet',
+            maxTokens: 2000,
         });
         try {
-            const text = response.content[0].type === 'text' ? response.content[0].text : '';
+            const text = cartText;
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 return JSON.parse(jsonMatch[0]);
@@ -516,7 +501,7 @@ class TheDataExtractor extends tier0_orchestration_1.BaseAgent {
     circuitBreaker;
     constructor() {
         super('THE_DATA_EXTRACTOR', { model: 'sonnet' });
-        this.client = new sdk_1.default();
+        // Gemini-first LLM calls via gemini-llm.ts (Anthropic fallback built-in)
         this.extractionCache = new Map();
         this.circuitBreaker = new event_bus_1.CircuitBreaker({
             name: 'data_extractor',
@@ -677,19 +662,7 @@ class TheDataExtractor extends tier0_orchestration_1.BaseAgent {
         `,
                 returnByValue: true,
             });
-            const response = await this.client.messages.create({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 4000,
-                messages: [{
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'image',
-                                source: { type: 'base64', media_type: 'image/png', data: screenshot.data },
-                            },
-                            {
-                                type: 'text',
-                                text: `Extract all products/items from this page. For each product, extract:
+            const extractPrompt = `Extract all products/items from this page. For each product, extract:
 - name: Product name
 - price: Price (number only)
 - currency: Currency symbol
@@ -703,12 +676,11 @@ Return as JSON array:
 [{"name": "...", "price": 0, "currency": "$", "inStock": true, ...}]
 
 HTML snippet for reference:
-${htmlResult.result.value?.substring(0, 5000)}`,
-                            },
-                        ],
-                    }],
+${htmlResult.result.value?.substring(0, 5000)}`;
+            const text = await (0, gemini_llm_1.callGeminiVision)('', screenshot.data, extractPrompt, {
+                model: 'sonnet',
+                maxTokens: 4000,
             });
-            const text = response.content[0].type === 'text' ? response.content[0].text : '';
             const jsonMatch = text.match(/\[[\s\S]*\]/);
             const products = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
             const urlResult = await cdpController.send('Runtime.evaluate', {
@@ -956,7 +928,7 @@ class TheResearchAgent extends tier0_orchestration_1.BaseAgent {
     circuitBreaker;
     constructor() {
         super('THE_RESEARCH_AGENT', { model: 'opus' });
-        this.client = new sdk_1.default();
+        // Gemini-first LLM calls via gemini-llm.ts (Anthropic fallback built-in)
         this.researchCache = new Map();
         this.circuitBreaker = new event_bus_1.CircuitBreaker({
             name: 'research_agent',
@@ -1085,12 +1057,10 @@ Format your response as JSON:
   "keyFindings": ["...", "..."],
   "sourceRelevance": [0.9, 0.8, ...]
 }`;
-            const synthesisResponse = await this.client.messages.create({
-                model: query.depth === 'deep' ? 'claude-opus-4-20250514' : 'claude-sonnet-4-20250514',
-                max_tokens: 3000,
-                messages: [{ role: 'user', content: synthesisPrompt }],
+            const synthesisText = await (0, gemini_llm_1.callGemini)('', synthesisPrompt, {
+                model: query.depth === 'deep' ? 'opus' : 'sonnet',
+                maxTokens: 3000,
             });
-            const synthesisText = synthesisResponse.content[0].type === 'text' ? synthesisResponse.content[0].text : '';
             let synthesis;
             try {
                 const jsonMatch = synthesisText.match(/\{[\s\S]*\}/);
@@ -1149,12 +1119,10 @@ Return as JSON:
   "recommendation": "...",
   "winner": "..."
 }`;
-        const compResponse = await this.client.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2000,
-            messages: [{ role: 'user', content: comparisonPrompt }],
+        const compText = await (0, gemini_llm_1.callGemini)('', comparisonPrompt, {
+            model: 'sonnet',
+            maxTokens: 2000,
         });
-        const compText = compResponse.content[0].type === 'text' ? compResponse.content[0].text : '';
         try {
             const jsonMatch = compText.match(/\{[\s\S]*\}/);
             const comparison = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
@@ -1192,12 +1160,10 @@ Return JSON:
   "confidence": 0.0-1.0,
   "evidence": ["supporting or refuting evidence..."]
 }`;
-        const response = await this.client.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1500,
-            messages: [{ role: 'user', content: factCheckPrompt }],
+        const text = await (0, gemini_llm_1.callGemini)('', factCheckPrompt, {
+            model: 'sonnet',
+            maxTokens: 1500,
         });
-        const text = response.content[0].type === 'text' ? response.content[0].text : '';
         try {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
@@ -1260,7 +1226,7 @@ class TheBookingAgent extends tier0_orchestration_1.BaseAgent {
     circuitBreaker;
     constructor() {
         super('THE_BOOKING_AGENT', { model: 'sonnet' });
-        this.client = new sdk_1.default();
+        // Gemini-first LLM calls via gemini-llm.ts (Anthropic fallback built-in)
         this.platformConfigs = this.initPlatformConfigs();
         this.circuitBreaker = new event_bus_1.CircuitBreaker({
             name: 'booking_agent',
@@ -1412,19 +1378,7 @@ class TheBookingAgent extends tier0_orchestration_1.BaseAgent {
             await this.fillBookingForm(cdpController, request.contactInfo);
             // Use Claude Vision to complete remaining steps
             const screenshot = await cdpController.send('Page.captureScreenshot', { format: 'png' });
-            const response = await this.client.messages.create({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 1500,
-                messages: [{
-                        role: 'user',
-                        content: [
-                            {
-                                type: 'image',
-                                source: { type: 'base64', media_type: 'image/png', data: screenshot.data },
-                            },
-                            {
-                                type: 'text',
-                                text: `Analyze this booking confirmation page and extract:
+            const bookingPrompt = `Analyze this booking confirmation page and extract:
 1. Is the booking confirmed?
 2. Confirmation number if visible
 3. Date and time of booking
@@ -1440,12 +1394,11 @@ Return as JSON:
   "totalPrice": 0,
   "currency": "USD",
   "cancellationPolicy": "..."
-}`,
-                            },
-                        ],
-                    }],
+}`;
+            const text = await (0, gemini_llm_1.callGeminiVision)('', screenshot.data, bookingPrompt, {
+                model: 'sonnet',
+                maxTokens: 1500,
             });
-            const text = response.content[0].type === 'text' ? response.content[0].text : '';
             try {
                 const jsonMatch = text.match(/\{[\s\S]*\}/);
                 const result = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
@@ -1495,19 +1448,7 @@ Return as JSON:
     }
     async searchWithVision(cdpController, request) {
         const screenshot = await cdpController.send('Page.captureScreenshot', { format: 'png' });
-        const response = await this.client.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2000,
-            messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image',
-                            source: { type: 'base64', media_type: 'image/png', data: screenshot.data },
-                        },
-                        {
-                            type: 'text',
-                            text: `This is a booking page. Extract available options for:
+        const searchPrompt = `This is a booking page. Extract available options for:
 Type: ${request.type}
 Date: ${request.date}
 Time: ${request.time || 'any'}
@@ -1518,12 +1459,11 @@ Return as JSON:
 {
   "available": true/false,
   "options": [{"name": "...", "time": "...", "price": 0, "details": "..."}]
-}`,
-                        },
-                    ],
-                }],
+}`;
+        const text = await (0, gemini_llm_1.callGeminiVision)('', screenshot.data, searchPrompt, {
+            model: 'sonnet',
+            maxTokens: 2000,
         });
-        const text = response.content[0].type === 'text' ? response.content[0].text : '';
         try {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             return jsonMatch ? JSON.parse(jsonMatch[0]) : { available: false, options: [] };
@@ -1696,7 +1636,7 @@ class ThePaymentHandler extends tier0_orchestration_1.BaseAgent {
     circuitBreaker;
     constructor() {
         super('THE_PAYMENT_HANDLER', { model: 'sonnet' });
-        this.client = new sdk_1.default();
+        // Gemini-first LLM calls via gemini-llm.ts (Anthropic fallback built-in)
         this.circuitBreaker = new event_bus_1.CircuitBreaker({
             name: 'payment_handler',
             threshold: 2, // Very low threshold for payment operations
@@ -1939,20 +1879,8 @@ class ThePaymentHandler extends tier0_orchestration_1.BaseAgent {
         await this.delay(3000);
         // Use Claude Vision to analyze the result page
         const screenshot = await cdpController.send('Page.captureScreenshot', { format: 'png' });
-        const response = await this.client.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 1000,
-            messages: [{
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image',
-                            source: { type: 'base64', media_type: 'image/png', data: screenshot.data },
-                        },
-                        {
-                            type: 'text',
-                            text: `Analyze this page to determine if a payment was successful.
-            
+        const paymentPrompt = `Analyze this page to determine if a payment was successful.
+
 Look for:
 1. Success indicators (green checkmark, "Thank you", "Order confirmed", etc.)
 2. Error indicators (red text, "Payment failed", "Card declined", etc.)
@@ -1963,12 +1891,11 @@ Return JSON:
   "success": true/false,
   "confirmationNumber": "..." or null,
   "message": "summary of what the page shows"
-}`,
-                        },
-                    ],
-                }],
+}`;
+        const text = await (0, gemini_llm_1.callGeminiVision)('', screenshot.data, paymentPrompt, {
+            model: 'sonnet',
+            maxTokens: 1000,
         });
-        const text = response.content[0].type === 'text' ? response.content[0].text : '';
         try {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             return jsonMatch ? JSON.parse(jsonMatch[0]) : { success: false, message: 'Could not determine payment status' };

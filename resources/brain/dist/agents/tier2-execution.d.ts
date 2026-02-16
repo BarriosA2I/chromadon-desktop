@@ -69,7 +69,7 @@ interface CDPController {
 declare abstract class BaseExecutionAgent {
     readonly name: AgentName;
     protected config: AgentConfig;
-    protected anthropic: Anthropic;
+    protected anthropic?: Anthropic;
     protected eventBus: AgentEventBus;
     protected cdp: CDPController | null;
     private failures;

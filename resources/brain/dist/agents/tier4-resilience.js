@@ -27,6 +27,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createResilienceAgents = exports.TheLearningEngine = exports.TheRecoveryExpert = exports.TheErrorHandler = void 0;
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const uuid_1 = require("uuid");
+const gemini_llm_1 = require("./gemini-llm");
 const types_1 = require("./types");
 const event_bus_1 = require("./event-bus");
 // =============================================================================
@@ -55,27 +56,14 @@ class BaseResilienceAgent {
         this.eventBus = (0, event_bus_1.getEventBus)();
     }
     getModelId() {
-        switch (this.config.model) {
-            case 'haiku':
-                return 'claude-haiku-4-5-20251001';
-            case 'sonnet':
-                return 'claude-sonnet-4-20250514';
-            case 'opus':
-                return 'claude-opus-4-20250514';
-            default:
-                return 'claude-haiku-4-5-20251001';
-        }
+        return (0, gemini_llm_1.getGeminiModelId)(this.config.model);
     }
     async callLLM(systemPrompt, userMessage, options = {}) {
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: options.maxTokens ?? 1024,
+        return (0, gemini_llm_1.callGemini)(systemPrompt, userMessage, {
+            model: this.config.model,
+            maxTokens: options.maxTokens ?? 1024,
             temperature: options.temperature ?? 0.3,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userMessage }],
         });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        return textBlock?.type === 'text' ? textBlock.text : '';
     }
     publishEvent(type, payload, correlationId) {
         this.eventBus.publish({

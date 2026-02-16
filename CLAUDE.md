@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.18 — 2026-02-16)
+## Recent Changes (v1.25.19 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain dist v1.10.17 — TheTemporalSequencer async generator crash fixed (`@traced` decorator removed) + DAG normalization for LLM output (nodes object→array, field name mapping). Sequencer now executes DAG steps successfully | `resources/brain/dist/` |
+
+## Changes (v1.25.18 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -277,5 +283,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.18
+**Version:** 1.25.19
 **Author:** Barrios A2I (Gary Barrios)

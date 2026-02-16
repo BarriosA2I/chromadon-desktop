@@ -268,11 +268,11 @@ export declare const SelectorSchema: z.ZodObject<{
     confidence: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
     value: string;
-    strategy: "css" | "xpath" | "text" | "aria" | "testid" | "visual";
+    strategy: "text" | "css" | "xpath" | "aria" | "testid" | "visual";
     confidence: number;
 }, {
     value: string;
-    strategy: "css" | "xpath" | "text" | "aria" | "testid" | "visual";
+    strategy: "text" | "css" | "xpath" | "aria" | "testid" | "visual";
     confidence: number;
 }>;
 export type MissionInput = z.infer<typeof MissionSchema>;

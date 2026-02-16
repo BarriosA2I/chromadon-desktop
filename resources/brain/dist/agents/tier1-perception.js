@@ -28,6 +28,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createPerceptionAgents = exports.TheIntentDecoder = exports.TheContextBuilder = exports.TheDOMInspector = exports.TheVisionAnalyzer = void 0;
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const uuid_1 = require("uuid");
+const gemini_llm_1 = require("./gemini-llm");
 const types_1 = require("./types");
 const event_bus_1 = require("./event-bus");
 const circuit_breaker_1 = require("../core/circuit-breaker");
@@ -67,16 +68,7 @@ class BasePerceptionAgent {
         });
     }
     getModelId() {
-        switch (this.config.model) {
-            case 'haiku':
-                return 'claude-haiku-4-5-20251001';
-            case 'sonnet':
-                return 'claude-sonnet-4-20250514';
-            case 'opus':
-                return 'claude-opus-4-20250514';
-            default:
-                return 'claude-sonnet-4-20250514';
-        }
+        return (0, gemini_llm_1.getGeminiModelId)(this.config.model);
     }
     async canExecute() {
         return this.circuitBreaker.canExecute();
@@ -94,43 +86,17 @@ class BasePerceptionAgent {
         }
     }
     async callLLM(systemPrompt, userMessage, options = {}) {
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: options.maxTokens ?? 4096,
-            temperature: options.temperature ?? 0.3, // Lower temp for perception accuracy
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userMessage }],
+        return (0, gemini_llm_1.callGemini)(systemPrompt, userMessage, {
+            model: this.config.model,
+            maxTokens: options.maxTokens ?? 4096,
+            temperature: options.temperature ?? 0.3,
         });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        return textBlock?.type === 'text' ? textBlock.text : '';
     }
     async callVision(systemPrompt, imageBase64, userMessage, options = {}) {
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: options.maxTokens ?? 4096,
-            system: systemPrompt,
-            messages: [
-                {
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image',
-                            source: {
-                                type: 'base64',
-                                media_type: 'image/png',
-                                data: imageBase64,
-                            },
-                        },
-                        {
-                            type: 'text',
-                            text: userMessage,
-                        },
-                    ],
-                },
-            ],
+        return (0, gemini_llm_1.callGeminiVision)(systemPrompt, imageBase64, userMessage, {
+            model: this.config.model,
+            maxTokens: options.maxTokens ?? 4096,
         });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        return textBlock?.type === 'text' ? textBlock.text : '';
     }
     publishEvent(type, payload, correlationId) {
         this.eventBus.publish({

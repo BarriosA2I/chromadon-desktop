@@ -8,7 +8,8 @@
  *   1. Copyright workflows → monolithic (VideoTracker + auto-continue)
  *   2. Simple commands → direct agent dispatch via EventBus (no LLM)
  *   3. YouTube API tasks → YouTubeToolBridge (no LLM, ~200ms)
- *   3.5. Social media tasks → SocialMediaToolBridge → SocialOverlord (~15-20s)
+ *   3.5. Conversational/status → monolithic orchestrator (greetings, questions)
+ *   3.6. Social media tasks → SocialMediaToolBridge → SocialOverlord (~15-20s)
  *   4. Template/complex → TheCortex planning → DAG execution
  *   5. Fallback → monolithic orchestrator
  *
@@ -56,6 +57,7 @@ export declare class CortexRouter {
      */
     chat(sessionId: string | undefined, message: string, writer: SSEWriter, context: ExecutionContext, pageContext?: PageContext): Promise<void>;
     private isCopyrightWorkflow;
+    private isConversational;
     private isClientContextQuery;
     private parseSimpleCommand;
     private parseYouTubeAPICommand;

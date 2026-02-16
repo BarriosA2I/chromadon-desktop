@@ -9,7 +9,8 @@
  *   1. Copyright workflows → monolithic (VideoTracker + auto-continue)
  *   2. Simple commands → direct agent dispatch via EventBus (no LLM)
  *   3. YouTube API tasks → YouTubeToolBridge (no LLM, ~200ms)
- *   3.5. Social media tasks → SocialMediaToolBridge → SocialOverlord (~15-20s)
+ *   3.5. Conversational/status → monolithic orchestrator (greetings, questions)
+ *   3.6. Social media tasks → SocialMediaToolBridge → SocialOverlord (~15-20s)
  *   4. Template/complex → TheCortex planning → DAG execution
  *   5. Fallback → monolithic orchestrator
  *
@@ -90,6 +91,15 @@ class CortexRouter {
                 },
             },
             {
+                name: 'conversational',
+                priority: 75,
+                match: (msg) => this.isConversational(msg),
+                execute: async (_m, sessionId, message, writer, context, pageContext) => {
+                    console.log('[CortexRouter] Conversational → monolithic');
+                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+                },
+            },
+            {
                 name: 'social_media',
                 priority: 70,
                 match: (msg) => this.parseSocialMediaTask(msg),
@@ -157,6 +167,21 @@ class CortexRouter {
     // ==========================================================================
     isCopyrightWorkflow(msg) {
         return /erase.*claim|solve.*claim|process.*video|copyright.*claim|remove.*claim/i.test(msg);
+    }
+    isConversational(msg) {
+        // Questions about current state, status, identity, capabilities
+        if (/\b(?:what|where|which)\b.*\b(?:page|tab|site|url|am i|are you|is this)\b/i.test(msg))
+            return true;
+        // Greetings and pleasantries
+        if (/^(?:hi|hello|hey|thanks|thank you|good (?:morning|afternoon|evening)|how are you)\b/i.test(msg))
+            return true;
+        // Meta/help questions
+        if (/\b(?:what can you|how do(?:es)? (?:this|you)|help me|are you (?:working|alive|there))\b/i.test(msg))
+            return true;
+        // Short questions (under 6 words, ends with ?)
+        if (msg.endsWith('?') && msg.split(/\s+/).length <= 6)
+            return true;
+        return false;
     }
     isClientContextQuery(msg) {
         return /\b(brand voice|target audience|our audience|our customers|our strategy|content calendar|business profile|our products|our services|search.*(?:docs|documents|knowledge|vault)|who (?:are|is) (?:our|my) (?:target|audience|customer)|what(?:'s| is) our (?:brand|voice|tone|strategy))\b/i.test(msg);
@@ -243,7 +268,12 @@ class CortexRouter {
         };
         let platform = null;
         for (const [keyword, p] of Object.entries(platformMap)) {
-            if (lower.includes(keyword)) {
+            // Use word boundary for short keywords to avoid false positives
+            // e.g. "x" must not match "explain", "ig" must not match "big"
+            const regex = keyword.length <= 2
+                ? new RegExp(`\\b${keyword}\\b`, 'i')
+                : new RegExp(keyword, 'i');
+            if (regex.test(lower)) {
                 platform = p;
                 break;
             }
@@ -267,13 +297,10 @@ class CortexRouter {
                 break;
             }
         }
-        // YouTube guard: if platform is youtube but no social action verb detected,
-        // let the YouTube API bridge or monolithic handle it
-        if (platform === 'youtube' && !action)
-            return null;
-        // Default to 'post' if platform detected but no action verb
+        // Require explicit action verb — platform mention alone is not enough
+        // "go to instagram" should navigate, not become instagram/post
         if (!action)
-            action = 'post';
+            return null;
         // Phase 3: Content extraction
         let content;
         let generateContent = false;

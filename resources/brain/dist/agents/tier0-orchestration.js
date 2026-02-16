@@ -24,6 +24,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.memoryKeeper = exports.sentinel = exports.temporalSequencer = exports.cortex = exports.TheMemoryKeeper = exports.TheSentinel = exports.TheTemporalSequencer = exports.TheCortex = exports.BaseAgent = void 0;
 const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const uuid_1 = require("uuid");
+const gemini_llm_1 = require("./gemini-llm");
 const event_bus_1 = require("./event-bus");
 // =============================================================================
 // BASE AGENT CLASS
@@ -51,27 +52,14 @@ class BaseAgent {
         this.eventBus = (0, event_bus_1.getEventBus)();
     }
     getModelId() {
-        switch (this.config.model) {
-            case 'haiku':
-                return 'claude-haiku-4-5-20251001';
-            case 'sonnet':
-                return 'claude-sonnet-4-20250514';
-            case 'opus':
-                return 'claude-opus-4-20250514';
-            default:
-                return 'claude-sonnet-4-20250514';
-        }
+        return (0, gemini_llm_1.getGeminiModelId)(this.config.model);
     }
     async callLLM(systemPrompt, userMessage, options = {}) {
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: options.maxTokens ?? 4096,
+        return (0, gemini_llm_1.callGemini)(systemPrompt, userMessage, {
+            model: this.config.model,
+            maxTokens: options.maxTokens ?? 4096,
             temperature: options.temperature ?? 0.7,
-            system: systemPrompt,
-            messages: [{ role: 'user', content: userMessage }],
         });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        return textBlock?.type === 'text' ? textBlock.text : '';
     }
     publishEvent(type, payload, correlationId) {
         this.eventBus.publish({
@@ -182,8 +170,48 @@ Create a detailed workflow plan as JSON. Include all necessary steps, dependenci
         const jsonMatch = response.match(/```json\n?([\s\S]*?)\n?```/);
         const jsonStr = jsonMatch ? jsonMatch[1] : response;
         try {
-            const workflow = JSON.parse(jsonStr);
-            workflow.id = (0, uuid_1.v4)();
+            const raw = JSON.parse(jsonStr);
+            // Normalize nodes: LLM often returns {nodeId: {...}} object instead of [{id, ...}] array
+            let nodes;
+            if (Array.isArray(raw.nodes)) {
+                nodes = raw.nodes.map((n) => ({
+                    id: n.id,
+                    agent: n.agent,
+                    action: n.action,
+                    params: n.params || n.parameters || {},
+                    dependsOn: n.dependsOn || n.dependencies || [],
+                    checkpoint: n.checkpoint,
+                    optional: n.optional,
+                    timeout: n.timeout,
+                }));
+            }
+            else if (raw.nodes && typeof raw.nodes === 'object') {
+                nodes = Object.entries(raw.nodes).map(([id, n]) => ({
+                    id,
+                    agent: n.agent,
+                    action: n.action,
+                    params: n.params || n.parameters || {},
+                    dependsOn: n.dependsOn || n.dependencies || [],
+                    checkpoint: n.checkpoint,
+                    optional: n.optional,
+                    timeout: n.timeout,
+                }));
+            }
+            else {
+                nodes = [];
+            }
+            const workflow = {
+                id: (0, uuid_1.v4)(),
+                name: raw.workflow_name || raw.name || 'workflow',
+                description: raw.description || '',
+                nodes,
+                metadata: {
+                    estimatedDurationMs: raw.metadata?.estimatedDurationMs || 30000,
+                    requiredAgents: raw.metadata?.requiredAgents || nodes.map((n) => n.agent),
+                    riskLevel: raw.metadata?.riskLevel || raw.metadata?.risk_level || 'low',
+                    checkpointCount: raw.metadata?.checkpointCount || raw.checkpoints?.length || 0,
+                },
+            };
             this.publishEvent('PLAN_CREATED', workflow);
             return workflow;
         }
@@ -436,12 +464,6 @@ class TheTemporalSequencer extends BaseAgent {
     }
 }
 exports.TheTemporalSequencer = TheTemporalSequencer;
-__decorate([
-    (0, event_bus_1.traced)('SEQUENCER.execute'),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
-    __metadata("design:returntype", Object)
-], TheTemporalSequencer.prototype, "execute", null);
 // =============================================================================
 // AGENT 3: THE SENTINEL (Verification Agent)
 // =============================================================================
@@ -469,27 +491,19 @@ DOM State:
 ${domState ?? 'Not provided'}
 
 Please analyze and provide verification results as JSON.`;
-        const messages = [{ role: 'user', content: [] }];
-        // Add screenshot if provided
+        let text;
         if (screenshot) {
-            messages[0].content.push({
-                type: 'image',
-                source: {
-                    type: 'base64',
-                    media_type: 'image/png',
-                    data: screenshot,
-                },
+            text = await (0, gemini_llm_1.callGeminiVision)(systemPrompt, screenshot, userPrompt, {
+                model: this.config.model,
+                maxTokens: 1024,
             });
         }
-        messages[0].content.push({ type: 'text', text: userPrompt });
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: 1024,
-            system: systemPrompt,
-            messages,
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        const text = textBlock?.type === 'text' ? textBlock.text : '';
+        else {
+            text = await (0, gemini_llm_1.callGemini)(systemPrompt, userPrompt, {
+                model: this.config.model,
+                maxTokens: 1024,
+            });
+        }
         const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/);
         const jsonStr = jsonMatch ? jsonMatch[1] : text;
         try {
@@ -519,25 +533,20 @@ Look for:
 - Popups blocking action
 
 Output JSON with: hasError, errorType, errorMessage, suggestions[]`;
-        const messages = [{ role: 'user', content: [] }];
+        const errorPrompt = `DOM State:\n${domState ?? 'Not provided'}\n\nAnalyze for errors.`;
+        let text;
         if (screenshot) {
-            messages[0].content.push({
-                type: 'image',
-                source: { type: 'base64', media_type: 'image/png', data: screenshot },
+            text = await (0, gemini_llm_1.callGeminiVision)(systemPrompt, screenshot, errorPrompt, {
+                model: this.config.model,
+                maxTokens: 1024,
             });
         }
-        messages[0].content.push({
-            type: 'text',
-            text: `DOM State:\n${domState ?? 'Not provided'}\n\nAnalyze for errors.`,
-        });
-        const response = await this.anthropic.messages.create({
-            model: this.getModelId(),
-            max_tokens: 1024,
-            system: systemPrompt,
-            messages,
-        });
-        const textBlock = response.content.find((b) => b.type === 'text');
-        const text = textBlock?.type === 'text' ? textBlock.text : '';
+        else {
+            text = await (0, gemini_llm_1.callGemini)(systemPrompt, errorPrompt, {
+                model: this.config.model,
+                maxTokens: 1024,
+            });
+        }
         const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/);
         const jsonStr = jsonMatch ? jsonMatch[1] : text;
         try {

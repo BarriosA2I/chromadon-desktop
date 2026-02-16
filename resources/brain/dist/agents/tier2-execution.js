@@ -24,13 +24,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 var _a, _b, _c, _d, _e;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createExecutionAgents = exports.TheFileHandler = exports.TheContentGenerator = exports.TheFormMaster = exports.TheSelector = exports.TheScroller = exports.TheTyper = exports.TheClicker = exports.TheNavigator = void 0;
-const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const uuid_1 = require("uuid");
 const types_1 = require("./types");
 const event_bus_1 = require("./event-bus");
@@ -61,7 +57,6 @@ class BaseExecutionAgent {
             },
             ...config,
         };
-        this.anthropic = new sdk_1.default();
         this.eventBus = (0, event_bus_1.getEventBus)();
     }
     setCDPController(cdp) {
