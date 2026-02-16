@@ -7,7 +7,15 @@
 
 ---
 
-## Recent Changes (v1.26.5 — 2026-02-16)
+## Recent Changes (v1.26.6 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — better-sqlite3 NODE_MODULE_VERSION mismatch in packaged builds. Native module was compiled for Node 24 (ABI 137) but Electron 28 needs Node 18 (ABI 119). Added `@electron/rebuild` step (Step 3.5) to `build-brain.js` that rebuilds better-sqlite3 for Electron's Node ABI. Fixes Analytics DB, MissionRegistry, and BudgetMonitor failing on production installs | `scripts/build-brain.js` |
+| Fixed: Native module self-test now uses Electron binary (`process.execPath`) in packaged mode instead of bare `node`, accurately detecting ABI mismatches before Brain startup | `electron/brain/brain-lifecycle-manager.ts` |
+| Added: `@electron/rebuild` devDependency for native module rebuilding | `package.json` |
+
+## Changes (v1.26.5 — 2026-02-16)
 
 | Change | File |
 |--------|------|

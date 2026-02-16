@@ -113,9 +113,9 @@ export class BrainLifecycleManager extends EventEmitter {
     try {
       this.process = fork(brainEntry, [], {
         cwd: brainDir,
-        // Dev mode: use system Node.js to avoid native module ABI mismatch
-        // (better-sqlite3 compiled for system Node, not Electron's Node)
-        // Packaged mode: use Electron binary + ELECTRON_RUN_AS_NODE (electron-builder rebuilds natives)
+        // Dev mode: use system Node.js (Brain's node_modules compiled for system Node)
+        // Packaged mode: use Electron binary + ELECTRON_RUN_AS_NODE
+        // (build-brain.js rebuilds native modules for Electron's Node ABI via @electron/rebuild)
         ...(!this.config.isPackaged ? { execPath: 'node' } : {}),
         env: {
           ...process.env,
@@ -324,8 +324,9 @@ export class BrainLifecycleManager extends EventEmitter {
 
   private testNativeModules(brainDir: string, log: (msg: string) => void): boolean {
     try {
+      const testExe = this.config.isPackaged ? `"${process.execPath}"` : 'node'
       execSync(
-        'node -e "try{require(\'better-sqlite3\');process.exit(0)}catch(e){process.stderr.write(e.message);process.exit(1)}"',
+        `${testExe} -e "try{require('better-sqlite3');process.exit(0)}catch(e){process.stderr.write(e.message);process.exit(1)}"`,
         { cwd: brainDir, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 5000, windowsHide: true }
       )
       log('Native module self-test: better-sqlite3 OK')

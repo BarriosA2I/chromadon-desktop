@@ -8,6 +8,7 @@
  *   1. Compile Brain TypeScript (npm run build in chromadon-brain)
  *   2. Copy dist/ to resources/brain/dist/
  *   3. Copy package.json + npm ci --omit=dev
+ *   3.5. Rebuild native modules (better-sqlite3) for Electron's Node ABI
  *   4. Patch otplib ESM (remove "type": "module")
  *   5. Replace deprecated model strings in .js files
  *   6. Verify critical files exist
@@ -96,6 +97,16 @@ if (fs.existsSync(brainLock)) {
   run('npm install --omit=dev', { cwd: RESOURCES_BRAIN })
 }
 log('Production dependencies installed')
+
+// ==================== Step 3.5: Rebuild native modules for Electron ====================
+log('Step 3.5: Rebuilding native modules for Electron...')
+const electronVersion = require(path.join(DESKTOP_ROOT, 'node_modules', 'electron', 'package.json')).version
+log(`  Electron ${electronVersion} — rebuilding better-sqlite3...`)
+run(
+  `npx @electron/rebuild --version=${electronVersion} --module-dir="${RESOURCES_BRAIN}" --only=better-sqlite3 --force`,
+  { cwd: DESKTOP_ROOT }
+)
+log('Native modules rebuilt for Electron successfully')
 
 // ==================== Step 4: Patch otplib ESM ====================
 log('Step 4: Patching otplib ESM...')

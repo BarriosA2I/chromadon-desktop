@@ -1,6 +1,6 @@
 {
   "name": "chromadon-desktop",
-  "version": "1.26.5",
+  "version": "1.26.6",
   "description": "CHROMADON AI Browser Automation Control Panel",
   "main": "dist-electron/main.js",
   "author": "Barrios A2I <gary@barriosa2i.com>",
@@ -41,6 +41,7 @@
     "zustand": "^4.4.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/three": "^0.160.0",
