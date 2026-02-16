@@ -138,15 +138,18 @@ export function useStreamingChat() {
         }
       }
 
-      // Wait for brain to be ready (up to 15 seconds)
+      // Wait for brain to be ready (up to 30 seconds with staged progress)
       let brainReady = false
       let lastReason = ''
       let lastError = ''
-      for (let i = 0; i < 15; i++) {
+      let httpResponded = false
+      let lastProgress = ''
+      for (let i = 0; i < 30; i++) {
         if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError')
         try {
-          const healthRes = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(1000) })
+          const healthRes = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(2000) })
           if (healthRes.ok) {
+            httpResponded = true
             const healthData = await healthRes.json()
             if (healthData.orchestrator) {
               brainReady = true

@@ -108,7 +108,7 @@ class YouTubeTokenManager {
         return !!this.tokens?.refreshToken;
     }
     getAuthorizationUrl(redirectUri) {
-        const uri = redirectUri || 'urn:ietf:wg:oauth:2.0:oob';
+        const uri = redirectUri || 'http://localhost:3001/api/youtube/oauth/callback';
         const params = new URLSearchParams({
             client_id: this.config.clientId,
             redirect_uri: uri,
@@ -124,7 +124,7 @@ class YouTubeTokenManager {
         return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     }
     async exchangeCode(code, redirectUri) {
-        const uri = redirectUri || 'urn:ietf:wg:oauth:2.0:oob';
+        const uri = redirectUri || 'http://localhost:3001/api/youtube/oauth/callback';
         const response = await fetch('https://oauth2.googleapis.com/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

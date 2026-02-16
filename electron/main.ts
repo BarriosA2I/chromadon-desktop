@@ -303,23 +303,63 @@ function testNativeModules(brainDir: string, log: (msg: string) => void): boolea
 }
 
 function startBrainServer(apiKey?: string): void {
-  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
+  const logFile = path.join(app.getPath('userData'), 'brain.log')
+  const logFileOld = logFile + '.1'
+
+  // Log rotation: keep last 2 logs, max 5MB per file
+  try {
+    if (fs.existsSync(logFile)) {
+      const stats = fs.statSync(logFile)
+      if (stats.size > 5 * 1024 * 1024 || brainRestartCount === 0) {
+        // Rotate on startup (first start) or when file exceeds 5MB
+        if (fs.existsSync(logFileOld)) fs.unlinkSync(logFileOld)
+        fs.renameSync(logFile, logFileOld)
+      }
+    }
+  } catch { /* rotation is best-effort */ }
+
   const log = (msg: string) => {
     const line = `[${new Date().toISOString()}] ${msg}\n`
-    fs.appendFileSync(logFile, line)
+    try { fs.appendFileSync(logFile, line) } catch {}
     console.log('[Brain]', msg)
   }
 
   log(`isPackaged=${app.isPackaged} resourcesPath=${process.resourcesPath}`)
 
-  // In dev mode, Brain runs separately — skip
-  if (!app.isPackaged) {
-    log('Dev mode — Brain runs independently on :3001')
-    return
-  }
+  // Determine Brain location based on dev vs packaged mode
+  let brainDir: string
+  let brainEntry: string
 
-  const brainDir = path.join(process.resourcesPath, 'brain')
-  const brainEntry = path.join(brainDir, 'dist', 'api', 'server.js')
+  if (!app.isPackaged) {
+    // Dev mode: fork Brain from source repo (was skipping entirely — causing "starting up" forever)
+    // __dirname = dist-electron/ → up to Desktop root → up to parent → sibling chromadon-brain
+    brainDir = path.resolve(__dirname, '..', '..', 'chromadon-brain')
+    brainEntry = path.join(brainDir, 'dist', 'api', 'server.js')
+    log(`Dev mode — forking Brain from source: ${brainDir}`)
+
+    // Load Brain's .env file in dev mode so API keys are available
+    const brainEnvPath = path.join(brainDir, '.env')
+    if (fs.existsSync(brainEnvPath)) {
+      const envContent = fs.readFileSync(brainEnvPath, 'utf-8')
+      for (const line of envContent.split('\n')) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+        const eqIdx = trimmed.indexOf('=')
+        if (eqIdx > 0) {
+          const key = trimmed.slice(0, eqIdx).trim()
+          const val = trimmed.slice(eqIdx + 1).trim()
+          if (!process.env[key]) {
+            process.env[key] = val
+            if (key === 'GEMINI_API_KEY' && !cachedGeminiKey) cachedGeminiKey = val
+          }
+        }
+      }
+      log('Loaded Brain .env for dev mode')
+    }
+  } else {
+    brainDir = path.join(process.resourcesPath, 'brain')
+    brainEntry = path.join(brainDir, 'dist', 'api', 'server.js')
+  }
 
   log(`brainDir=${brainDir}`)
   log(`brainEntry=${brainEntry}`)
@@ -363,12 +403,12 @@ function startBrainServer(apiKey?: string): void {
       cwd: brainDir,
       env: {
         ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
+        ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
         CHROMADON_PORT: '3001',
         CHROMADON_DESKTOP_URL: 'http://127.0.0.1:3002',
         CHROMADON_DATA_DIR: app.getPath('userData'),
         PREFER_DESKTOP: 'true',
-        NODE_ENV: 'production',
+        NODE_ENV: app.isPackaged ? 'production' : 'development',
         ...(resolvedKey ? { ANTHROPIC_API_KEY: resolvedKey } : {}),
         ...(resolvedGeminiKey ? { GEMINI_API_KEY: resolvedGeminiKey } : {}),
         // OBS Studio WebSocket connection (only pass if set — let .env handle defaults)
@@ -461,42 +501,141 @@ function startBrainServer(apiKey?: string): void {
     }
   })
 
-  // Verify Brain HTTP server actually starts listening (async, non-blocking)
+  // Fix 2: Staged startup verification with 90s hard timeout
+  // Sends progress messages to UI so user knows what's happening
   ;(async () => {
-    let verified = false
-    for (let i = 0; i < 25; i++) { // 25 attempts × 1s = 25s max wait
-      if (!brainProcess) break // Process already exited
+    const STARTUP_TIMEOUT = 90_000 // 90 seconds hard limit
+    const startedAt = Date.now()
+    let httpResponded = false
+    let orchestratorReady = false
+
+    // Stage 1: "Starting Brain..."
+    mainWindow?.webContents.send('brain-status', {
+      running: false,
+      stage: 'starting',
+      message: 'Starting Brain...',
+    })
+
+    // Stage 2: Wait for HTTP server to respond (up to 30s)
+    for (let i = 0; i < 30; i++) {
+      if (!brainProcess) break
+      if (Date.now() - startedAt > STARTUP_TIMEOUT) break
       await new Promise(r => setTimeout(r, 1000))
       try {
         const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(2000) })
         if (res.ok) {
+          httpResponded = true
           const data = await res.json() as any
-          verified = true
-          log(`Brain HTTP server verified (orchestrator: ${data.orchestrator})`)
+          if (data.orchestrator) {
+            orchestratorReady = true
+            log(`Brain fully ready (orchestrator: true)`)
+            mainWindow?.webContents.send('brain-status', {
+              running: true,
+              orchestrator: true,
+              stage: 'ready',
+              message: 'Ready',
+              error: null,
+            })
+            break
+          }
+          // HTTP responds but orchestrator not ready yet
+          log(`Brain HTTP alive but orchestrator not ready (attempt ${i + 1})`)
           mainWindow?.webContents.send('brain-status', {
-            running: true,
-            orchestrator: data.orchestrator,
-            error: data.orchestratorError || null,
+            running: false,
+            stage: 'connecting',
+            message: 'Connecting to AI...',
           })
-          break
+          break // Move to stage 3
         }
       } catch { /* still starting */ }
     }
-    if (!verified && brainProcess) {
-      log('Brain fork succeeded but HTTP server never started (25s timeout) — killing zombie')
-      try { brainProcess.kill('SIGKILL') } catch {}
-      brainProcess = null
-      // Trigger restart via crash path
-      brainRestartCount++
-      if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
-        const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
-        log(`Zombie killed — restarting in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
-        setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
-      } else {
-        log(`Brain zombie killed but restart limit reached (${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
+
+    // Stage 3: Wait for orchestrator (if HTTP responded but orchestrator isn't ready)
+    if (httpResponded && !orchestratorReady && brainProcess) {
+      mainWindow?.webContents.send('brain-status', {
+        running: false,
+        stage: 'initializing',
+        message: 'Initializing AI tools...',
+      })
+
+      for (let i = 0; i < 60; i++) { // Check every 1s for up to 60s more
+        if (!brainProcess) break
+        if (Date.now() - startedAt > STARTUP_TIMEOUT) break
+        await new Promise(r => setTimeout(r, 1000))
+        try {
+          const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(2000) })
+          if (res.ok) {
+            const data = await res.json() as any
+            if (data.orchestrator) {
+              orchestratorReady = true
+              log(`Brain orchestrator ready after ${Math.round((Date.now() - startedAt) / 1000)}s`)
+              mainWindow?.webContents.send('brain-status', {
+                running: true,
+                orchestrator: true,
+                stage: 'ready',
+                message: 'Ready',
+                error: null,
+              })
+              break
+            }
+            // Check for init errors
+            if (data.orchestratorReason === 'init_error') {
+              log(`Brain orchestrator init error: ${data.orchestratorError}`)
+              mainWindow?.webContents.send('brain-status', {
+                running: true,
+                orchestrator: false,
+                stage: 'error',
+                message: `Failed: ${data.orchestratorError || 'AI initialization failed'}`,
+                error: data.orchestratorError || 'AI initialization failed. Check your API key in Settings.',
+              })
+              return // Don't kill — Brain HTTP works, just no orchestrator
+            }
+            if (data.orchestratorReason === 'no_api_key') {
+              log('Brain running but no API key configured')
+              mainWindow?.webContents.send('brain-status', {
+                running: true,
+                orchestrator: false,
+                stage: 'error',
+                message: 'No API key configured',
+                error: 'No API key configured. Open Settings to add your Gemini or Anthropic API key.',
+              })
+              return
+            }
+          }
+        } catch { /* retry */ }
+      }
+    }
+
+    // Stage 4: Timeout or failure
+    if (!orchestratorReady && brainProcess) {
+      const elapsed = Math.round((Date.now() - startedAt) / 1000)
+      if (!httpResponded) {
+        // HTTP never responded — zombie process
+        log(`Brain HTTP server never started (${elapsed}s) — killing zombie`)
+        try { brainProcess.kill('SIGKILL') } catch {}
+        brainProcess = null
         mainWindow?.webContents.send('brain-status', {
           running: false,
-          error: 'Brain failed to start after multiple attempts. Check brain-debug.log.',
+          stage: 'error',
+          message: `Brain failed to start after ${elapsed}s`,
+          error: 'Brain failed to start. Check brain.log for details, or restart the app.',
+        })
+        // Trigger restart
+        brainRestartCount++
+        if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
+          const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
+          log(`Zombie killed — restarting in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
+          setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
+        }
+      } else {
+        // HTTP works but orchestrator never initialized within timeout
+        log(`Brain orchestrator not ready after ${elapsed}s — sending error to UI`)
+        mainWindow?.webContents.send('brain-status', {
+          running: true,
+          orchestrator: false,
+          stage: 'error',
+          message: `AI failed to initialize after ${elapsed}s`,
+          error: `Brain AI failed to initialize after ${elapsed}s. Check Settings for your API key, or restart the app.`,
         })
       }
     }
@@ -544,16 +683,19 @@ function restartBrainServer(apiKey?: string): void {
   }
 }
 
-// Periodic health check: detect if Brain lost orchestrator and re-inject API key
+// Fix 3: Periodic health check with fast mode during startup
+// First 2 minutes: check every 5s (catches init failures 6x faster)
+// After 2 minutes: relax to 30s (normal monitoring)
 let brainHealthInterval: NodeJS.Timeout | null = null
+let healthCheckStartedAt = 0
 
-function startBrainHealthCheck(): void {
-  if (brainHealthInterval) clearInterval(brainHealthInterval)
-  brainHealthInterval = setInterval(async () => {
-    if (!brainProcess) return
-    // Support Gemini-only clients (cachedApiKey is Anthropic only)
-    const hasAnyKey = cachedApiKey || cachedGeminiKey
-    if (!hasAnyKey) return
+function runHealthCheck(): void {
+  if (!brainProcess) return
+  // Support Gemini-only clients (cachedApiKey is Anthropic only)
+  const hasAnyKey = cachedApiKey || cachedGeminiKey
+  if (!hasAnyKey) return
+
+  ;(async () => {
     try {
       const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(5000) })
       const data = await res.json() as any
@@ -573,6 +715,7 @@ function startBrainHealthCheck(): void {
           console.log(`[Desktop] Brain health-restart limit reached (${MAX_HEALTH_RESTARTS}) — showing error to user`)
           mainWindow?.webContents.send('brain-status', {
             running: false,
+            stage: 'error',
             error: data.orchestratorError
               ? `Brain failed to start: ${data.orchestratorError}`
               : 'Brain failed to initialize. Check your API key in Settings.',
@@ -603,12 +746,31 @@ function startBrainHealthCheck(): void {
           console.log(`[Desktop] Zombie killed but health-restart limit reached — showing error`)
           mainWindow?.webContents.send('brain-status', {
             running: false,
+            stage: 'error',
             error: 'Brain process is unresponsive. Please restart the application.',
           })
         }
       }
     }
-  }, 30_000)
+  })()
+}
+
+function startBrainHealthCheck(): void {
+  if (brainHealthInterval) clearInterval(brainHealthInterval)
+  healthCheckStartedAt = Date.now()
+
+  // Start with fast 5s checks
+  brainHealthInterval = setInterval(() => {
+    runHealthCheck()
+
+    // After 2 minutes, switch to relaxed 30s checks
+    const elapsed = Date.now() - healthCheckStartedAt
+    if (elapsed > 120_000 && brainHealthInterval) {
+      clearInterval(brainHealthInterval)
+      brainHealthInterval = setInterval(runHealthCheck, 30_000)
+      console.log('[Desktop] Health check switched to 30s interval (startup phase complete)')
+    }
+  }, 5_000)
 }
 
 // CRITICAL: Anti-detection measures for Google sign-in

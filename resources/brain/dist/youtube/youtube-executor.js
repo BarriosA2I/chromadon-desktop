@@ -72,7 +72,7 @@ function createYouTubeExecutor(tokenManager) {
                 case 'youtube_oauth_authorize':
                     return JSON.stringify({
                         url: tokenManager.getAuthorizationUrl(input.redirect_uri),
-                        instructions: 'Visit this URL in a browser, grant permissions, then pass the authorization code to youtube_oauth_callback',
+                        instructions: 'Navigate to this URL in the current browser tab. After the user grants permissions, Google will redirect to localhost and the tokens will be saved automatically. No need to call youtube_oauth_callback — the callback endpoint handles it.',
                     });
                 case 'youtube_oauth_callback': {
                     await tokenManager.exchangeCode(input.code, input.redirect_uri);

@@ -7,7 +7,17 @@
 
 ---
 
-## Recent Changes (v1.25.12 — 2026-02-15)
+## Recent Changes (v1.25.13 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain never started in dev mode (`npm run dev`) — `startBrainServer()` had early return when `!app.isPackaged`. Now forks Brain from source repo `chromadon-brain/dist/` and loads Brain's `.env` for API keys | `electron/main.ts` |
+| Fixed: CRITICAL — 90s hard timeout on Brain startup with staged progress messages (Starting Brain → Connecting to AI → Initializing AI tools → Ready/Failed) sent via `brain-status` IPC | `electron/main.ts` |
+| Fixed: CRITICAL — Health checks now run every 5s for first 2 minutes after Brain fork (was 30s) — catches init failures 6x faster, then relaxes to 30s | `electron/main.ts` |
+| Added: Brain log file with rotation — `brain.log` + `brain.log.1` in userData, max 5MB, rotated on startup. Replaces `brain-debug.log` | `electron/main.ts` |
+| Updated: Brain dist v1.10.12 — 5 orchestrator retries with full init, YouTube OAuth callback endpoint | `resources/brain/dist/` |
+
+## Changes (v1.25.12 — 2026-02-15)
 
 | Change | File |
 |--------|------|

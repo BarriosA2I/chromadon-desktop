@@ -637,6 +637,42 @@ app.get('/health', (_req, res) => {
         timestamp: new Date().toISOString(),
     });
 });
+// ==================== YOUTUBE OAUTH CALLBACK ====================
+app.get('/api/youtube/oauth/callback', async (req, res) => {
+    const code = req.query.code;
+    const error = req.query.error;
+    if (error) {
+        res.status(400).send(`<html><body style="background:#0A0A0F;color:#FF6B6B;font-family:monospace;padding:40px;text-align:center;">
+      <h1>YouTube Authorization Failed</h1><p>${error}</p>
+      <p style="color:#888;">You can close this tab.</p></body></html>`);
+        return;
+    }
+    if (!code) {
+        res.status(400).send(`<html><body style="background:#0A0A0F;color:#FF6B6B;font-family:monospace;padding:40px;text-align:center;">
+      <h1>Missing authorization code</h1><p>No code parameter received from Google.</p></body></html>`);
+        return;
+    }
+    if (!youtubeTokenManager) {
+        res.status(500).send(`<html><body style="background:#0A0A0F;color:#FF6B6B;font-family:monospace;padding:40px;text-align:center;">
+      <h1>YouTube not configured</h1><p>YouTube Token Manager not initialized. Check API keys in settings.</p></body></html>`);
+        return;
+    }
+    try {
+        await youtubeTokenManager.exchangeCode(code, 'http://localhost:3001/api/youtube/oauth/callback');
+        console.log('[YOUTUBE] OAuth callback received — tokens exchanged successfully');
+        res.send(`<html><body style="background:#0A0A0F;color:#00CED1;font-family:monospace;padding:40px;text-align:center;">
+      <h1 style="font-size:48px;">&#x2705;</h1>
+      <h1>YouTube Authorized!</h1>
+      <p style="color:#D4AF37;">CHROMADON now has full YouTube access.</p>
+      <p style="color:#888;">You can close this tab.</p></body></html>`);
+    }
+    catch (err) {
+        console.error('[YOUTUBE] OAuth callback error:', err.message);
+        res.status(500).send(`<html><body style="background:#0A0A0F;color:#FF6B6B;font-family:monospace;padding:40px;text-align:center;">
+      <h1>Token Exchange Failed</h1><p>${err.message}</p>
+      <p style="color:#888;">Try the authorization flow again.</p></body></html>`);
+    }
+});
 // ==================== PAGE MANAGEMENT ====================
 // List all pages
 app.get('/api/pages', async (_req, res) => {
@@ -4069,6 +4105,12 @@ async function startServer() {
     await initializeBrowser();
     // Initialize Neural RAG AI Engine v3.0
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    // Hoist variables so orchestrator retry logic can access them
+    let additionalTools = [];
+    let combinedExecutor = null;
+    let skillMemory = null;
+    let clientStorage = null;
+    let knowledgeVault = null;
     if (ANTHROPIC_API_KEY || GEMINI_API_KEY) {
         try {
             if (ANTHROPIC_API_KEY) {
@@ -4105,7 +4147,7 @@ async function startServer() {
                 console.log(`[CHROMADON] ⚠️ YouTube init failed: ${ytError.message}`);
             }
             // Initialize Skill Memory
-            let skillMemory = null;
+            // skillMemory declared above (hoisted for retry access)
             let skillExec = null;
             const skillToolNames = new Set(skills_1.SKILL_TOOLS.map(t => t.name));
             try {
@@ -4121,8 +4163,7 @@ async function startServer() {
             // Initialize Agentic Orchestrator with merged tools (browser + analytics + YouTube + skills)
             const toolExecutor = (0, browser_tools_1.createToolExecutor)();
             // Initialize Client Context Layer (non-critical — orchestrator works without it)
-            let clientStorage = null;
-            let knowledgeVault = null;
+            // clientStorage, knowledgeVault declared above (hoisted for retry access)
             let clientContextExec = null;
             try {
                 clientStorage = new client_context_1.ClientStorage();
@@ -4157,7 +4198,7 @@ async function startServer() {
             // Filter out schedule_post and get_scheduled_posts from MARKETING_TOOLS — scheduler replaces them
             const schedulerReplacedTools = new Set(['schedule_post', 'get_scheduled_posts']);
             const filteredMarketingTools = marketing_tools_1.MARKETING_TOOLS.filter(t => !schedulerReplacedTools.has(t.name));
-            const additionalTools = [
+            additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
                 ...(skillMemory ? skills_1.SKILL_TOOLS : []),
@@ -4177,7 +4218,7 @@ async function startServer() {
             const monitoringToolNames = new Set(monitoring_1.MONITORING_TOOLS.map(t => t.name));
             // Scheduler executor — initialized after TheScheduler (see below). Uses a late-binding ref.
             let schedulerExec = null;
-            const combinedExecutor = async (toolName, input) => {
+            combinedExecutor = async (toolName, input) => {
                 // Scheduler tools — route BEFORE marketing (scheduler replaces schedule_post/get_scheduled_posts)
                 if (scheduler_1.SCHEDULER_TOOL_NAMES.has(toolName) && schedulerExec)
                     return schedulerExec(toolName, input);
@@ -4328,20 +4369,45 @@ async function startServer() {
         }
         // Retry orchestrator init if it failed (transient errors, timing issues)
         if (!orchestrator && orchestratorInitError) {
-            const MAX_INIT_RETRIES = 2;
+            const MAX_INIT_RETRIES = 5;
+            const RETRY_DELAYS = [5000, 10000, 15000, 20000, 25000]; // Progressive backoff
             for (let attempt = 1; attempt <= MAX_INIT_RETRIES; attempt++) {
-                console.log(`[CHROMADON] Retrying orchestrator init in 5s (attempt ${attempt}/${MAX_INIT_RETRIES})...`);
-                await new Promise(r => setTimeout(r, 5000));
+                const delay = RETRY_DELAYS[attempt - 1] || 25000;
+                console.log(`[CHROMADON] Retrying orchestrator init in ${delay / 1000}s (attempt ${attempt}/${MAX_INIT_RETRIES})...`);
+                await new Promise(r => setTimeout(r, delay));
                 try {
                     const toolExecutorRetry = (0, browser_tools_1.createToolExecutor)();
-                    orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutorRetry, undefined, [], // Minimal tools for retry — sub-components may not be ready
-                    async () => 'Tool not available during retry');
+                    orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutorRetry, undefined, additionalTools || [], combinedExecutor || (async () => 'Tool not available during retry'), skillMemory ? () => skillMemory.getSkillsJson() : () => '{}', clientStorage && knowledgeVault ? () => {
+                        const activeId = clientStorage.getActiveClientId();
+                        if (!activeId)
+                            return null;
+                        return knowledgeVault.getClientContextSummary(activeId);
+                    } : () => null, desktopAvailable ? async () => {
+                        try {
+                            const resp = await fetch(`${CHROMADON_DESKTOP_URL}/sessions`, { signal: AbortSignal.timeout(2000) });
+                            const data = await resp.json();
+                            const sessions = data.sessions || [];
+                            const authenticated = sessions.filter((s) => s.isAuthenticated && s.platform !== 'google');
+                            if (authenticated.length === 0)
+                                return '';
+                            return authenticated.map((s) => `- ${s.platform}${s.accountName ? ' (' + s.accountName + ')' : ''} (authenticated)`).join('\n');
+                        }
+                        catch {
+                            return '';
+                        }
+                    } : async () => '');
                     orchestratorInitError = null;
                     console.log(`[CHROMADON] ✅ Orchestrator initialized on retry attempt ${attempt}`);
                     break;
                 }
                 catch (retryErr) {
-                    console.error(`[CHROMADON] ❌ Orchestrator retry ${attempt} failed: ${retryErr.message}`);
+                    orchestratorInitError = retryErr.message;
+                    console.error(`[CHROMADON] ❌ Orchestrator retry ${attempt}/${MAX_INIT_RETRIES} failed: ${retryErr.message}`);
+                    console.error(`[CHROMADON]    Stack: ${retryErr.stack}`);
+                    if (attempt === MAX_INIT_RETRIES) {
+                        orchestratorInitError = `Failed after ${MAX_INIT_RETRIES + 1} attempts: ${retryErr.message}. Check API keys in Settings.`;
+                        console.error(`[CHROMADON] ❌ All orchestrator init retries exhausted. Brain running without AI.`);
+                    }
                 }
             }
         }
