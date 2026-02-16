@@ -5,13 +5,15 @@
  * Routes messages to the 27-agent system or the monolithic orchestrator.
  *
  * Routing priority:
- *   1. Copyright workflows → monolithic (VideoTracker + auto-continue)
- *   2. Simple commands → direct agent dispatch via EventBus (no LLM)
- *   3. YouTube API tasks → YouTubeToolBridge (no LLM, ~200ms)
- *   3.5. Conversational/status → monolithic orchestrator (greetings, questions)
- *   3.6. Social media tasks → SocialMediaToolBridge → SocialOverlord (~15-20s)
- *   4. Template/complex → TheCortex planning → DAG execution
- *   5. Fallback → monolithic orchestrator
+ *   1. Copyright workflows (100) → monolithic (VideoTracker + auto-continue)
+ *   2. Simple commands (90) → direct agent dispatch via EventBus (no LLM)
+ *   3. YouTube API tasks (80) → YouTubeToolBridge (no LLM, ~200ms)
+ *   3.5. Conversational/status (75) → monolithic orchestrator (greetings, questions)
+ *   3.6. Social media tasks (70) → SocialMediaToolBridge → SocialOverlord (~15-20s)
+ *   3.7. Browser navigation (65) → monolithic orchestrator (multi-platform, alt verbs)
+ *   3.8. Client context (60) → monolithic orchestrator
+ *   3.9. Scheduling (55) → monolithic orchestrator (schedule_post tool)
+ *   4. Cortex planning (50) → TheCortex DAG execution (catch-all)
  *
  * @author Barrios A2I
  */
@@ -59,6 +61,7 @@ export declare class CortexRouter {
     private isCopyrightWorkflow;
     private isConversational;
     private isSchedulingIntent;
+    private isBrowserNavigation;
     private isClientContextQuery;
     private parseSimpleCommand;
     private parseYouTubeAPICommand;

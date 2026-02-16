@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.2 — 2026-02-16)
+## Recent Changes (v1.26.3 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.11.3 — CRITICAL fix: Browser navigation commands ("open my linkedin, facebook and twitter") no longer fall through to Cortex DAG planner. Added `isBrowserNavigation()` route (priority 65) + `resolveUrl()` noise word stripping. Multi-platform and alt-verb navigation now routes to monolithic orchestrator | `resources/brain/dist/` |
+
+## Changes (v1.26.2 — 2026-02-16)
 
 | Change | File |
 |--------|------|

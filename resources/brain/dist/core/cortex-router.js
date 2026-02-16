@@ -6,13 +6,15 @@
  * Routes messages to the 27-agent system or the monolithic orchestrator.
  *
  * Routing priority:
- *   1. Copyright workflows → monolithic (VideoTracker + auto-continue)
- *   2. Simple commands → direct agent dispatch via EventBus (no LLM)
- *   3. YouTube API tasks → YouTubeToolBridge (no LLM, ~200ms)
- *   3.5. Conversational/status → monolithic orchestrator (greetings, questions)
- *   3.6. Social media tasks → SocialMediaToolBridge → SocialOverlord (~15-20s)
- *   4. Template/complex → TheCortex planning → DAG execution
- *   5. Fallback → monolithic orchestrator
+ *   1. Copyright workflows (100) → monolithic (VideoTracker + auto-continue)
+ *   2. Simple commands (90) → direct agent dispatch via EventBus (no LLM)
+ *   3. YouTube API tasks (80) → YouTubeToolBridge (no LLM, ~200ms)
+ *   3.5. Conversational/status (75) → monolithic orchestrator (greetings, questions)
+ *   3.6. Social media tasks (70) → SocialMediaToolBridge → SocialOverlord (~15-20s)
+ *   3.7. Browser navigation (65) → monolithic orchestrator (multi-platform, alt verbs)
+ *   3.8. Client context (60) → monolithic orchestrator
+ *   3.9. Scheduling (55) → monolithic orchestrator (schedule_post tool)
+ *   4. Cortex planning (50) → TheCortex DAG execution (catch-all)
  *
  * @author Barrios A2I
  */
@@ -112,6 +114,15 @@ class CortexRouter {
                 },
             },
             {
+                name: 'browser_navigation',
+                priority: 65,
+                match: (msg) => this.isBrowserNavigation(msg),
+                execute: async (_m, sessionId, message, writer, context, pageContext) => {
+                    console.log('[CortexRouter] Browser navigation → monolithic orchestrator');
+                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+                },
+            },
+            {
                 name: 'client_context',
                 priority: 60,
                 match: (msg) => this.isClientContextQuery(msg),
@@ -198,6 +209,21 @@ class CortexRouter {
         // Schedule/cancel scheduling messages → monolithic orchestrator (has schedule_post tool)
         // Without this, scheduling falls to cortex_planning DAG which can't use schedule_post
         return /\b(?:schedule|scheduled|cancel.*(?:task|schedule)|get.*scheduled|show.*scheduled|list.*scheduled|how many.*(?:task|schedule))\b/i.test(msg);
+    }
+    isBrowserNavigation(msg) {
+        // Browser navigation intent → monolithic orchestrator (has navigate, create_tab tools)
+        // Catches multi-platform ("open linkedin, facebook and twitter") and alternative verbs
+        // ("take me to", "visit", "log in to") that parseSimpleCommand() can't handle
+        if (!/\b(?:open|go\s+to|navigate|visit|take\s+me\s+to|show\s+me|launch|pull\s+up|log\s*(?:in|on)\s+to|sign\s+in\s+to)\b/i.test(msg))
+            return false;
+        // Must mention a known site/platform
+        const siteKeywords = Object.keys(KNOWN_SITES).join('|');
+        if (!new RegExp(`\\b(?:${siteKeywords})\\b`, 'i').test(msg))
+            return false;
+        // NOT a social media action (those route to social_media bridge)
+        if (/\b(?:post|tweet|share|publish|comment|reply|like|follow|dm|message)\b/i.test(msg))
+            return false;
+        return true;
     }
     isClientContextQuery(msg) {
         return /\b(brand voice|target audience|our audience|our customers|our strategy|content calendar|business profile|our products|our services|search.*(?:docs|documents|knowledge|vault)|who (?:are|is) (?:our|my) (?:target|audience|customer)|what(?:'s| is) our (?:brand|voice|tone|strategy))\b/i.test(msg);
@@ -379,11 +405,19 @@ class CortexRouter {
         // Already a URL
         if (/^https?:\/\//i.test(input))
             return input;
-        // Known site names (check longest match first)
+        // Known site names — direct match
         const lower = input.toLowerCase();
         for (const [name, url] of Object.entries(KNOWN_SITES)) {
             if (lower === name)
                 return url;
+        }
+        // Strip noise words and retry: "my linkedin" → "linkedin", "the facebook" → "facebook"
+        const stripped = lower.replace(/\b(?:my|our|the|please|a)\b/g, '').trim().replace(/\s+/g, ' ');
+        if (stripped !== lower) {
+            for (const [name, url] of Object.entries(KNOWN_SITES)) {
+                if (stripped === name)
+                    return url;
+            }
         }
         // Looks like a domain (e.g. "google.com")
         if (/^[\w-]+\.\w{2,}/.test(input)) {
