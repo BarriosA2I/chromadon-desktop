@@ -53,10 +53,10 @@ function selectModelForTask(userMessage, lastToolName) {
         input.match(/\b(done|continue|resume|next|yes|ok|confirm)\b/)) {
         return ModelTier.FAST;
     }
-    // FAST: Scheduling queries — simple tool calls that retrieve and display data
-    if (input.match(/\b(scheduled|schedule|queue|calendar)\b.*\b(post|posts|task|tasks|status|show|list|all)\b/) ||
-        input.match(/\b(show|list|get|check|cancel|reschedule)\b.*\b(scheduled|queue|posts|tasks|calendar)\b/) ||
-        input.match(/\b(schedule)\b.*\b(scrape|automation|weekly|daily|monthly|biweekly)\b/)) {
+    // FAST: Scheduling READ-ONLY queries — show/list/check/cancel scheduled tasks
+    // NOTE: "schedule [content] for [platform]" is NOT FAST — it needs the full prompt
+    // with RULE #0D to correctly use schedule_post tool instead of browser automation
+    if (input.match(/\b(show|list|get|check|cancel|reschedule)\b.*\b(scheduled|queue|posts|tasks|calendar)\b/)) {
         return ModelTier.FAST;
     }
     // BALANCED: Monitoring CYCLE prompts — these are background AI cycles that need

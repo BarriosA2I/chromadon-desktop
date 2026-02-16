@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.1 — 2026-02-16)
+## Recent Changes (v1.26.2 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.11.2 — CRITICAL fix: Scheduling messages no longer fall through to Cortex DAG planner. Added `isSchedulingIntent()` route (priority 55) in CortexRouter that sends schedule/cancel/list-tasks messages directly to monolithic orchestrator with `schedule_post` tool. Prevents "Completed 0 steps" and "Done." stubs on scheduling requests | `resources/brain/dist/` |
+
+## Changes (v1.26.1 — 2026-02-16)
 
 | Change | File |
 |--------|------|

@@ -121,6 +121,15 @@ class CortexRouter {
                 },
             },
             {
+                name: 'scheduling',
+                priority: 55,
+                match: (msg) => this.isSchedulingIntent(msg),
+                execute: async (_m, sessionId, message, writer, context, pageContext) => {
+                    console.log('[CortexRouter] Scheduling intent → monolithic orchestrator');
+                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+                },
+            },
+            {
                 name: 'cortex_planning',
                 priority: 50,
                 match: () => true, // Always matches as fallback
@@ -184,6 +193,11 @@ class CortexRouter {
         if (msg.endsWith('?') && msg.split(/\s+/).length <= 6)
             return true;
         return false;
+    }
+    isSchedulingIntent(msg) {
+        // Schedule/cancel scheduling messages → monolithic orchestrator (has schedule_post tool)
+        // Without this, scheduling falls to cortex_planning DAG which can't use schedule_post
+        return /\b(?:schedule|scheduled|cancel.*(?:task|schedule)|get.*scheduled|show.*scheduled|list.*scheduled|how many.*(?:task|schedule))\b/i.test(msg);
     }
     isClientContextQuery(msg) {
         return /\b(brand voice|target audience|our audience|our customers|our strategy|content calendar|business profile|our products|our services|search.*(?:docs|documents|knowledge|vault)|who (?:are|is) (?:our|my) (?:target|audience|customer)|what(?:'s| is) our (?:brand|voice|tone|strategy))\b/i.test(msg);
@@ -282,10 +296,11 @@ class CortexRouter {
         }
         if (!platform)
             return null;
-        // Draft/write/compose/create WITHOUT explicit "and post/publish/share/schedule"
-        // should NOT route to social media — let conversational route handle content generation
-        // so the AI shows the draft to the user instead of auto-posting
-        if (/\b(?:draft|write|compose|create)\b/i.test(msg) && !/\b(?:and\s+(?:post|publish|share|schedule))\b/i.test(msg)) {
+        // Draft/write/compose/create/schedule WITHOUT explicit "and post now/publish now"
+        // should NOT route to social media bridge — let orchestrator handle it
+        // "schedule" uses schedule_post tool (not browser automation)
+        // "draft/write/compose/create" shows content to user first
+        if (/\b(?:draft|write|compose|create|schedule)\b/i.test(msg)) {
             return null;
         }
         // Phase 2: Action detection

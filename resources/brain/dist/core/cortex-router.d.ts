@@ -58,6 +58,7 @@ export declare class CortexRouter {
     chat(sessionId: string | undefined, message: string, writer: SSEWriter, context: ExecutionContext, pageContext?: PageContext): Promise<void>;
     private isCopyrightWorkflow;
     private isConversational;
+    private isSchedulingIntent;
     private isClientContextQuery;
     private parseSimpleCommand;
     private parseYouTubeAPICommand;
