@@ -113,6 +113,10 @@ export class BrainLifecycleManager extends EventEmitter {
     try {
       this.process = fork(brainEntry, [], {
         cwd: brainDir,
+        // Dev mode: use system Node.js to avoid native module ABI mismatch
+        // (better-sqlite3 compiled for system Node, not Electron's Node)
+        // Packaged mode: use Electron binary + ELECTRON_RUN_AS_NODE (electron-builder rebuilds natives)
+        ...(!this.config.isPackaged ? { execPath: 'node' } : {}),
         env: {
           ...process.env,
           ...(this.config.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),

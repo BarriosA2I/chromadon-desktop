@@ -144,12 +144,8 @@ If the page shows a login screen or "Sign in" prompt, report "AUTH_WALL:${ctx.pl
     if (ctx.action === 'custom' && ctx.customInstructions) {
         prompt += `TASK: ${ctx.customInstructions}\n`;
         prompt += `Platform: ${ctx.platform} (${platformUrl})\n`;
-        // Include explicit posting steps so the AI navigates + posts, not just generates text
-        const postTemplate = PLATFORM_ACTIONS[ctx.platform]?.['post'];
-        if (postTemplate) {
-            prompt += `\nAfter generating the content, POST IT using these steps:\n${postTemplate}\n`;
-            prompt += `Use the generated content as the post text.\n`;
-        }
+        // Do NOT auto-append posting steps for custom actions.
+        // The AI should show content to the user and get confirmation before posting (RULE #0D).
     }
     else if (actionTemplate) {
         prompt += `TASK: ${actionTemplate}\n`;

@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.0 — 2026-02-16)
+## Recent Changes (v1.26.1 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.11.1 — CRITICAL fix: "draft a LinkedIn post" no longer auto-schedules. Added draft verb detection, RULE #0D confirmation gate, removed auto-post from custom actions. Also fixed BudgetMonitor `selectedModel` ReferenceError and CortexRouter "Done." stub responses | `resources/brain/dist/` |
+
+## Changes (v1.26.0 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -301,5 +307,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.20
+**Version:** 1.26.1
 **Author:** Barrios A2I (Gary Barrios)

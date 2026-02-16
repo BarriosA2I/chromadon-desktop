@@ -982,14 +982,17 @@ class AgenticOrchestrator {
             try {
                 this._budgetMonitor.recordUsage({
                     clientId: session.clientId || 'system',
-                    model: usingGemini ? selectedModel : (usingGemini ? 'gemini-2.0-flash' : 'claude-haiku-4-5-20251001'),
+                    model: currentModel,
                     provider: usingGemini ? 'gemini' : 'anthropic',
                     inputTokens: sessionInputTokens,
                     outputTokens: sessionOutputTokens,
                     costUsd: totalCostUSD,
                 });
+                console.log(`[BudgetMonitor] Recorded: ${currentModel} ${sessionInputTokens}in/${sessionOutputTokens}out $${totalCostUSD.toFixed(4)}`);
             }
-            catch { /* non-critical */ }
+            catch (budgetErr) {
+                console.log(`[BudgetMonitor] recordUsage failed: ${budgetErr.message}`);
+            }
         }
         if (!writer.isClosed()) {
             writer.writeEvent('done', {

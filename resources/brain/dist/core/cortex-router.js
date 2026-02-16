@@ -282,6 +282,12 @@ class CortexRouter {
         }
         if (!platform)
             return null;
+        // Draft/write/compose/create WITHOUT explicit "and post/publish/share/schedule"
+        // should NOT route to social media — let conversational route handle content generation
+        // so the AI shows the draft to the user instead of auto-posting
+        if (/\b(?:draft|write|compose|create)\b/i.test(msg) && !/\b(?:and\s+(?:post|publish|share|schedule))\b/i.test(msg)) {
+            return null;
+        }
         // Phase 2: Action detection
         const actionPatterns = [
             [/\b(?:post|tweet|share|publish)\b/i, 'post'],
@@ -378,6 +384,9 @@ class CortexRouter {
         const toolName = `${action.agent}.${action.action}`;
         writer.writeEvent('tool_start', { id: '1', name: toolName });
         writer.writeEvent('tool_executing', { id: '1', name: toolName, input: action.params });
+        let success = false;
+        let resultStr = '';
+        let errorMsg = '';
         try {
             const startMs = Date.now();
             // Dispatch to agent via EventBus → ChromadonAgentSystem.routeRequest() → CDP
@@ -385,24 +394,30 @@ class CortexRouter {
             'THE_CORTEX', // Source: acting on behalf of TheCortex
             action.action, action.params, { timeoutMs: 30_000 });
             const durationMs = Date.now() - startMs;
+            success = true;
+            resultStr = JSON.stringify(result).slice(0, 500);
             writer.writeEvent('tool_result', {
                 id: '1',
                 name: toolName,
                 success: true,
-                result: JSON.stringify(result).slice(0, 500),
+                result: resultStr,
                 durationMs,
             });
         }
         catch (error) {
+            errorMsg = error.message;
             writer.writeEvent('tool_result', {
                 id: '1',
                 name: toolName,
                 success: false,
-                error: error.message,
+                error: errorMsg,
                 durationMs: 0,
             });
         }
-        writer.writeEvent('text_delta', { text: 'Done.' });
+        const summary = success
+            ? `${action.action} completed successfully.`
+            : `${action.action} failed: ${errorMsg}`;
+        writer.writeEvent('text_delta', { text: summary });
         writer.writeEvent('done', { apiCalls: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 });
     }
     // ==========================================================================
@@ -411,10 +426,13 @@ class CortexRouter {
     async executeYouTubeAPI(cmd, sessionId, writer) {
         writer.writeEvent('tool_start', { id: '1', name: cmd.tool });
         writer.writeEvent('tool_executing', { id: '1', name: cmd.tool, input: cmd.args });
+        let success = false;
+        let errorMsg = '';
         try {
             const startMs = Date.now();
             const result = await this.youtubeBridge.call(cmd.tool, cmd.args);
             const durationMs = Date.now() - startMs;
+            success = true;
             writer.writeEvent('tool_result', {
                 id: '1',
                 name: cmd.tool,
@@ -424,15 +442,19 @@ class CortexRouter {
             });
         }
         catch (error) {
+            errorMsg = error.message;
             writer.writeEvent('tool_result', {
                 id: '1',
                 name: cmd.tool,
                 success: false,
-                error: error.message,
+                error: errorMsg,
                 durationMs: 0,
             });
         }
-        writer.writeEvent('text_delta', { text: 'Done.' });
+        const summary = success
+            ? `${cmd.tool} completed successfully.`
+            : `${cmd.tool} failed: ${errorMsg}`;
+        writer.writeEvent('text_delta', { text: summary });
         writer.writeEvent('done', { apiCalls: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 });
     }
     // ==========================================================================
@@ -480,10 +502,10 @@ class CortexRouter {
             }
         }
         if (failedStep) {
-            writer.writeEvent('text_delta', { text: `Completed with errors: ${failedStep}` });
+            writer.writeEvent('text_delta', { text: `Completed ${stepCount} steps with errors: ${failedStep}` });
         }
         else {
-            writer.writeEvent('text_delta', { text: 'Done.' });
+            writer.writeEvent('text_delta', { text: `Completed ${stepCount} step${stepCount !== 1 ? 's' : ''} successfully.` });
         }
         writer.writeEvent('done', {
             apiCalls: 1, // TheCortex LLM call for planning
