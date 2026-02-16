@@ -67,6 +67,7 @@ class AgenticOrchestrator {
     getClientKnowledge;
     getLinkedPlatforms;
     hasAnthropicKey;
+    anthropicDead = false; // Set true when Anthropic returns billing/auth errors — prevents futile bounce loops
     _budgetMonitor = null;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge, getLinkedPlatforms) {
         this.hasAnthropicKey = apiKey !== 'gemini-only-no-anthropic-fallback';
@@ -175,6 +176,8 @@ class AgenticOrchestrator {
         let usingGemini = false;
         let lastExecutedToolName = ''; // Tracks last tool for cost router continuation routing
         let emptyRetries = 0; // Capped retries for Gemini 0-token responses
+        let geminiModelFallbackUsed = false; // Track Gemini model downgrade on 429
+        let geminiModelOverride = null; // Force specific Gemini model (bypasses cost router)
         while (loopCount < this.config.maxLoops) {
             if (writer.isClosed())
                 break;
@@ -208,7 +211,7 @@ class AgenticOrchestrator {
                     ? session.messages[session.messages.length - 1].content
                     : userMessage;
                 const modelTier = this.useGemini ? (0, cost_router_1.selectModelForTask)(lastUserMsg, lastExecutedToolName) : null;
-                const selectedModel = modelTier ? (0, cost_router_1.resolveModel)(modelTier) : currentModel;
+                const selectedModel = geminiModelOverride || (modelTier ? (0, cost_router_1.resolveModel)(modelTier) : currentModel);
                 // Select system prompt: override if provided, compact for FAST tier, full for everything else
                 const effectiveSystemPrompt = options?.systemPromptOverride
                     ? options.systemPromptOverride
@@ -777,25 +780,26 @@ class AgenticOrchestrator {
                 const errorMsg = error.message || 'Unknown error';
                 console.error(`[CHROMADON Orchestrator] Error in loop ${loopCount}:`, errorMsg);
                 console.error(`[CHROMADON Orchestrator] Error details — status: ${error?.status}, type: ${error?.error?.type}, constructor: ${error?.constructor?.name}`);
-                // Recovery: Gemini failure → handle 429 rate limits, then fall back to Anthropic
+                // Recovery: Gemini failure → try different model, then fall back to Anthropic
                 if (usingGemini && this.useGemini) {
-                    // Gemini 429: respect retry delay before falling back
                     const isGemini429 = error?.status === 429 || (errorMsg.includes('429') && errorMsg.includes('Too Many Requests'));
                     if (isGemini429) {
-                        // Extract retry delay from error message
-                        const retryMatch = errorMsg.match(/retry in (\d+(?:\.\d+)?)s/i);
-                        const retryDelaySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : 15;
-                        rateLimitRetryCount++;
-                        if (rateLimitRetryCount <= 4) {
-                            const waitMs = Math.min(retryDelaySec * 1000, 60000);
-                            console.warn(`[PROVIDER] Gemini 429 — waiting ${waitMs}ms before retry (${rateLimitRetryCount}/4)`);
-                            await new Promise(resolve => setTimeout(resolve, waitMs));
-                            continue;
+                        // Try a different Gemini model (different rate limit bucket) — one shot only
+                        if (!geminiModelFallbackUsed && this.geminiProvider) {
+                            const fallbackModel = this.getGeminiFallbackModel(selectedModel);
+                            if (fallbackModel) {
+                                geminiModelFallbackUsed = true;
+                                console.warn(`[PROVIDER] Gemini 429 on ${selectedModel} — trying ${fallbackModel} (different rate bucket)`);
+                                // Override the cost router's model selection for next iteration
+                                geminiModelOverride = fallbackModel;
+                                continue;
+                            }
                         }
-                        // Gemini retries exhausted — fall through to Anthropic fallback below
-                        console.warn(`[PROVIDER] Gemini 429 retries exhausted (${rateLimitRetryCount})`);
+                        // All Gemini models exhausted — fall through to Anthropic or graceful error
+                        console.warn(`[PROVIDER] Gemini 429 — all models exhausted`);
                     }
-                    if (this.hasAnthropicKey) {
+                    // Try Anthropic fallback (only if it's not already known-dead)
+                    if (this.hasAnthropicKey && !this.anthropicDead) {
                         providerBounceCount++;
                         console.warn(`[PROVIDER] Gemini error — falling back to Anthropic (bounce ${providerBounceCount})`);
                         this.useGemini = false;
@@ -803,13 +807,10 @@ class AgenticOrchestrator {
                         continue;
                     }
                     else {
-                        // No Anthropic fallback — report error to user
-                        console.error(`[PROVIDER] Gemini error — no Anthropic fallback configured`);
-                        const userMsg = isGemini429
-                            ? 'Gemini API rate limit reached. Please wait a minute and try again, or check your API plan.'
-                            : `AI provider error: ${errorMsg}. No fallback provider configured. Please check your API key in Settings.`;
+                        // No viable fallback — graceful error (never expose provider details to clients)
+                        console.error(`[PROVIDER] Gemini failed, no viable fallback (hasAnthropicKey=${this.hasAnthropicKey}, anthropicDead=${this.anthropicDead})`);
                         if (!writer.isClosed()) {
-                            writer.writeEvent('error', { message: userMsg });
+                            writer.writeEvent('error', { message: "I'm temporarily unavailable. Please try again in about 30 seconds." });
                         }
                         break;
                     }
@@ -864,7 +865,7 @@ class AgenticOrchestrator {
                     // Both models rate limited — give up
                     console.error(`[CHROMADON Orchestrator] Both models rate limited — giving up`);
                     if (!writer.isClosed()) {
-                        writer.writeEvent('error', { message: 'Rate limit reached. Please wait a minute and try again.' });
+                        writer.writeEvent('error', { message: "I'm a bit busy right now. Please try again in about 30 seconds." });
                     }
                     break;
                 }
@@ -894,7 +895,7 @@ class AgenticOrchestrator {
                     // Both models failed — give up
                     console.error(`[CHROMADON Orchestrator] Both models overloaded after retries — giving up`);
                     if (!writer.isClosed()) {
-                        writer.writeEvent('error', { message: 'The AI service is temporarily busy. Please try again in a few minutes.' });
+                        writer.writeEvent('error', { message: "I'm a bit busy right now. Please try again in a few minutes." });
                     }
                     break;
                 }
@@ -914,34 +915,35 @@ class AgenticOrchestrator {
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
-                // Recovery: Anthropic billing/auth failure after Gemini fallback — switch back to Gemini
-                // BUT: cap bounces to prevent infinite Gemini→Anthropic→Gemini loops
+                // Recovery: Anthropic billing/auth failure — mark dead, bounce to Gemini once
                 if (!usingGemini && this.geminiProvider && error?.status === 400 &&
                     (errorMsg.includes('credit balance') || errorMsg.includes('billing') || errorMsg.includes('API_KEY_INVALID'))) {
-                    if (providerBounceCount < 3) {
-                        console.warn(`[PROVIDER] Anthropic billing/auth error — re-enabling Gemini (bounce ${providerBounceCount + 1})`);
+                    this.anthropicDead = true;
+                    if (providerBounceCount < 1) {
+                        console.warn(`[PROVIDER] Anthropic billing/auth error — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;
                         providerBounceCount++;
                         continue;
                     }
-                    // Too many bounces — both providers are failing
-                    console.error(`[PROVIDER] Both providers failing after ${providerBounceCount} bounces — giving up`);
+                    // Already bounced once — both providers are dead, stop immediately
+                    console.error(`[PROVIDER] Both providers dead (Gemini 429 + Anthropic billing) — giving up`);
                     if (!writer.isClosed()) {
-                        writer.writeEvent('error', { message: 'Both AI providers are currently unavailable. Gemini is rate-limited and Anthropic has a billing issue. Please check your API keys in Settings, or wait a few minutes and try again.' });
+                        writer.writeEvent('error', { message: "I'm temporarily unavailable. Please try again in about 30 seconds." });
                     }
                     break;
                 }
-                // Recovery: Anthropic 401 unauthorized after Gemini fallback — switch back to Gemini
+                // Recovery: Anthropic 401 unauthorized — mark dead, bounce to Gemini once
                 if (!usingGemini && this.geminiProvider && error?.status === 401) {
-                    if (providerBounceCount < 3) {
-                        console.warn(`[PROVIDER] Anthropic auth failed — re-enabling Gemini (bounce ${providerBounceCount + 1})`);
+                    this.anthropicDead = true;
+                    if (providerBounceCount < 1) {
+                        console.warn(`[PROVIDER] Anthropic auth failed — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;
                         providerBounceCount++;
                         continue;
                     }
-                    console.error(`[PROVIDER] Both providers failing after ${providerBounceCount} bounces — giving up`);
+                    console.error(`[PROVIDER] Both providers dead (Gemini error + Anthropic auth) — giving up`);
                     if (!writer.isClosed()) {
-                        writer.writeEvent('error', { message: 'Both AI providers are currently unavailable. Please check your API keys in Settings.' });
+                        writer.writeEvent('error', { message: "I'm temporarily unavailable. Please try again in about 30 seconds." });
                     }
                     break;
                 }
@@ -949,16 +951,16 @@ class AgenticOrchestrator {
                 console.error(`[CHROMADON Orchestrator] Unrecoverable error — status: ${error?.status}, message: ${errorMsg}, transientRetries: ${transientRetryCount}`);
                 let userMsg;
                 if (error?.status === 401) {
-                    userMsg = 'Authentication failed. Please check your API key in settings.';
+                    userMsg = "I'm temporarily unavailable. Please try again in about 30 seconds.";
                 }
                 else if (error?.status === 413 || errorMsg.includes('request_too_large') || errorMsg.includes('Request too large')) {
-                    userMsg = 'The conversation got too long. Starting a fresh chat session may help.';
+                    userMsg = 'Our conversation got too long. Starting a fresh chat should help.';
                 }
                 else if (isTransient) {
-                    userMsg = 'Lost connection to the AI service after 3 retries. Please check your internet and try again.';
+                    userMsg = 'I lost my connection briefly. Please try again.';
                 }
                 else {
-                    userMsg = `Something went wrong: ${errorMsg}`;
+                    userMsg = 'Something went wrong. Please try again in a moment.';
                 }
                 if (!writer.isClosed()) {
                     writer.writeEvent('error', { message: userMsg });
@@ -968,7 +970,7 @@ class AgenticOrchestrator {
         }
         if (loopCount >= this.config.maxLoops && !writer.isClosed()) {
             writer.writeEvent('error', {
-                message: `Reached maximum tool-use loops (${this.config.maxLoops}). Stopping.`,
+                message: 'I got a bit stuck on that task. Please try rephrasing or breaking it into smaller steps.',
             });
         }
         // 10. Done — include cost summary (use correct provider pricing)
@@ -1132,6 +1134,17 @@ class AgenticOrchestrator {
      * Truncate history while preserving tool_use/tool_result pairs.
      * Removes oldest messages first but never breaks a pair.
      */
+    /**
+     * Get a fallback Gemini model from a different rate-limit bucket.
+     * Returns null if already on the cheapest model.
+     */
+    getGeminiFallbackModel(currentModel) {
+        if (currentModel.includes('2.5-pro'))
+            return 'gemini-2.5-flash';
+        if (currentModel.includes('2.5-flash'))
+            return 'gemini-2.0-flash';
+        return null; // Already on cheapest model (2.0-flash)
+    }
     truncateHistory(messages, maxMessages) {
         if (messages.length <= maxMessages)
             return messages;

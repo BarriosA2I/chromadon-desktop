@@ -59,6 +59,7 @@ export declare class AgenticOrchestrator {
     private getClientKnowledge;
     private getLinkedPlatforms;
     private hasAnthropicKey;
+    private anthropicDead;
     private _budgetMonitor;
     constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string, getClientKnowledge?: () => string | null, getLinkedPlatforms?: () => Promise<string> | string);
     /** Inject BudgetMonitor for cost tracking (optional, set after construction) */
@@ -84,6 +85,11 @@ export declare class AgenticOrchestrator {
      * Truncate history while preserving tool_use/tool_result pairs.
      * Removes oldest messages first but never breaks a pair.
      */
+    /**
+     * Get a fallback Gemini model from a different rate-limit bucket.
+     * Returns null if already on the cheapest model.
+     */
+    private getGeminiFallbackModel;
     private truncateHistory;
     private pruneSessionMessages;
     /**

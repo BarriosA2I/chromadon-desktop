@@ -691,7 +691,7 @@ class NeuralRAGAIEngine {
         if (!this.client) {
             span.setStatus({ code: api_1.SpanStatusCode.ERROR, message: 'No API key configured' });
             span.end();
-            throw new Error('AI Engine not configured. Please set API key in settings.');
+            throw new Error('AI Engine not configured — no API key available.');
         }
         try {
             // 1. Dual-process cognitive routing

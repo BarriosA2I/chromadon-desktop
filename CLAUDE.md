@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.6 — 2026-02-16)
+## Recent Changes (v1.26.7 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.11.6 — Fixed provider fallback dead-end: Gemini 429 now tries different model (different rate bucket) before failing over, Anthropic marked dead on billing/auth error to prevent bounce loops, all user-facing error messages sanitized (no more "Settings" or "API key" references) | `resources/brain/dist/` |
+
+## Changes (v1.26.6 — 2026-02-16)
 
 | Change | File |
 |--------|------|
