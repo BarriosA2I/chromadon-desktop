@@ -66,6 +66,14 @@ export declare class AgenticOrchestrator {
     setBudgetMonitor(monitor: {
         recordUsage: (entry: any) => void;
     }): void;
+    /** Provider health snapshot — exposed for diagnostics */
+    getProviderHealth(): {
+        gemini: boolean;
+        anthropic: boolean;
+        anthropicDead: boolean;
+        useGemini: boolean;
+        activeSessions: number;
+    };
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
      */

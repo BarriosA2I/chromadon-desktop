@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.7 — 2026-02-16)
+## Recent Changes (v1.26.8 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.11.7 — Added structured routing logs (route name, priority, timing), provider health getter, expanded diagnostics endpoint with active client, provider health, and last route decision | `resources/brain/dist/` |
+
+## Changes (v1.26.7 — 2026-02-16)
 
 | Change | File |
 |--------|------|

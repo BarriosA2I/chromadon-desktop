@@ -48,6 +48,7 @@ class CortexRouter {
     youtubeBridge;
     socialBridge;
     routes;
+    _lastRouteDecision = null;
     constructor(deps) {
         this.cortex = deps.cortex;
         this.sequencer = deps.sequencer;
@@ -169,15 +170,25 @@ class CortexRouter {
      */
     async chat(sessionId, message, writer, context, pageContext) {
         const msg = message.trim();
+        const routeStartMs = Date.now();
         for (const route of this.routes) {
             const matchData = route.match(msg);
             if (matchData) {
+                const routeMs = Date.now() - routeStartMs;
+                this._lastRouteDecision = { route: route.name, priority: route.priority, message: msg.slice(0, 80), routeMs, timestamp: Date.now() };
+                console.log(`[CortexRouter] ROUTE: ${route.name} (p${route.priority}) matched in ${routeMs}ms — "${msg.slice(0, 60)}"`);
                 return route.execute(matchData, sessionId, message, writer, context, pageContext);
             }
         }
         // No route matched — fall through to monolithic orchestrator
-        console.log('[CortexRouter] No route matched — monolithic orchestrator');
+        const routeMs = Date.now() - routeStartMs;
+        this._lastRouteDecision = { route: 'default_fallback', priority: 0, message: msg.slice(0, 80), routeMs, timestamp: Date.now() };
+        console.log(`[CortexRouter] ROUTE: default_fallback (no match) in ${routeMs}ms — "${msg.slice(0, 60)}"`);
         return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+    }
+    /** Last routing decision — exposed for diagnostics */
+    get lastRouteDecision() {
+        return this._lastRouteDecision;
     }
     // ==========================================================================
     // INTENT CLASSIFICATION (regex, no LLM)

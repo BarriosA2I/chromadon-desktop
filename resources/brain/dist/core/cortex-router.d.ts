@@ -44,6 +44,7 @@ export declare class CortexRouter {
     private youtubeBridge;
     private socialBridge;
     private routes;
+    private _lastRouteDecision;
     constructor(deps: CortexRouterDeps);
     /**
      * Build sorted route candidates (highest priority first).
@@ -58,6 +59,14 @@ export declare class CortexRouter {
      * Iterates through priority-sorted route candidates until one matches.
      */
     chat(sessionId: string | undefined, message: string, writer: SSEWriter, context: ExecutionContext, pageContext?: PageContext): Promise<void>;
+    /** Last routing decision — exposed for diagnostics */
+    get lastRouteDecision(): {
+        route: string;
+        priority: number;
+        message: string;
+        routeMs: number;
+        timestamp: number;
+    } | null;
     private isCopyrightWorkflow;
     private isConversational;
     private isSchedulingIntent;

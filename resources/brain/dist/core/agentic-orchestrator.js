@@ -99,6 +99,16 @@ class AgenticOrchestrator {
     setBudgetMonitor(monitor) {
         this._budgetMonitor = monitor;
     }
+    /** Provider health snapshot — exposed for diagnostics */
+    getProviderHealth() {
+        return {
+            gemini: !!this.geminiProvider,
+            anthropic: this.hasAnthropicKey,
+            anthropicDead: this.anthropicDead,
+            useGemini: this.useGemini,
+            activeSessions: this.sessions.size,
+        };
+    }
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
      */

@@ -4123,12 +4123,26 @@ app.get('/api/missions/pending-approval/:clientId', (req, res) => {
 // =========================================================================
 app.get('/api/system/diagnostics', (_req, res) => {
     const mem = process.memoryUsage();
+    // Client context state
+    let activeClient = null;
+    try {
+        const diagStorage = new client_context_1.ClientStorage();
+        const activeId = diagStorage.getActiveClientId();
+        if (activeId) {
+            const info = diagStorage.getClient(activeId);
+            activeClient = info ? { id: info.id, name: info.name } : { id: activeId, name: '(unknown)' };
+        }
+    }
+    catch { /* non-critical */ }
     res.json({
         uptime: process.uptime(),
         memory: {
             heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024 * 10) / 10,
             rssMb: Math.round(mem.rss / 1024 / 1024 * 10) / 10,
         },
+        providers: orchestrator?.getProviderHealth() || null,
+        routing: cortexRouter?.lastRouteDecision || null,
+        activeClient,
         missions: missionRegistry?.getStats() || null,
         budget: budgetMonitor?.getGlobalStats() || null,
         sessions: sessionWarmup?.getStatuses() || null,
