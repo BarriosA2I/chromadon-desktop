@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.16 — 2026-02-16)
+## Recent Changes (v1.25.17 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.10.15 — CortexRouter routing fix: simple questions no longer misclassified as social media tasks. Added conversational classifier, word-boundary platform detection, requires explicit action verb | `resources/brain/dist/` |
+
+## Changes (v1.25.16 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -265,5 +271,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.16
+**Version:** 1.25.17
 **Author:** Barrios A2I (Gary Barrios)
