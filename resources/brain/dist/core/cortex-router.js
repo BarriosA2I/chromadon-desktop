@@ -149,9 +149,19 @@ class CortexRouter {
                     try {
                         console.log(`[CortexRouter] Cortex planning for: "${msg.slice(0, 80)}"`);
                         const dag = await this.cortex.planWorkflow(msg, pageContext ? { pageContext } : undefined);
+                        // Fix: Empty DAG → fall back to monolithic orchestrator (was silently returning "Completed 0 steps")
+                        if (!dag.nodes || dag.nodes.length === 0) {
+                            console.log('[CortexRouter] Empty DAG (0 nodes) — falling back to monolithic orchestrator');
+                            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+                        }
                         const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
                         writer.writeEvent('session_id', { sessionId: sid });
-                        await this.executeDAG(dag, sid, writer);
+                        const stepsCompleted = await this.executeDAG(dag, sid, writer);
+                        // Fix: 0 steps executed → fall back to monolithic orchestrator
+                        if (stepsCompleted === 0) {
+                            console.log('[CortexRouter] DAG executed 0 steps — falling back to monolithic orchestrator');
+                            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+                        }
                     }
                     catch (error) {
                         console.log('[CortexRouter] Cortex planning failed, falling back to monolithic:', error.message);
@@ -546,22 +556,24 @@ class CortexRouter {
             });
             if (!step.success) {
                 failedStep = `${toolName}: ${step.error?.message || 'unknown error'}`;
-                // Non-optional failures throw from the sequencer, so if we get here
-                // the step was optional. Continue with remaining steps.
             }
         }
-        if (failedStep) {
-            writer.writeEvent('text_delta', { text: `Completed ${stepCount} steps with errors: ${failedStep}` });
+        // Only write completion events if steps actually ran (caller handles 0-step fallback)
+        if (stepCount > 0) {
+            if (failedStep) {
+                writer.writeEvent('text_delta', { text: `Completed ${stepCount} steps with errors: ${failedStep}` });
+            }
+            else {
+                writer.writeEvent('text_delta', { text: `Completed ${stepCount} step${stepCount !== 1 ? 's' : ''} successfully.` });
+            }
+            writer.writeEvent('done', {
+                apiCalls: 1,
+                inputTokens: 0,
+                outputTokens: 0,
+                costUSD: 0,
+            });
         }
-        else {
-            writer.writeEvent('text_delta', { text: `Completed ${stepCount} step${stepCount !== 1 ? 's' : ''} successfully.` });
-        }
-        writer.writeEvent('done', {
-            apiCalls: 1, // TheCortex LLM call for planning
-            inputTokens: 0,
-            outputTokens: 0,
-            costUSD: 0,
-        });
+        return stepCount;
     }
 }
 exports.CortexRouter = CortexRouter;

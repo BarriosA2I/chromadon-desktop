@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.3 — 2026-02-16)
+## Recent Changes (v1.26.4 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain v1.11.4 — ALL chat commands returned "Completed 0 steps" — CortexRouter catch-all silently "succeeded" with empty DAGs, never falling back to working monolithic orchestrator. Now validates DAG nodes before execution + checks step count after — both trigger monolithic fallback on failure | `resources/brain/dist/` |
+
+## Changes (v1.26.3 — 2026-02-16)
 
 | Change | File |
 |--------|------|
