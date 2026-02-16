@@ -4,774 +4,23 @@ import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
 import * as fs from 'fs'
-import { fork, execSync, ChildProcess } from 'child_process'
 import { browserViewManager, TabInfo, Platform, SessionMode, PlatformSession } from './browser-view-manager'
 import { vault, ChromadonProfile, StoredCredential } from './security/vault'
 import { StorageManager } from './storage-manager'
 import { sessionBackupManager } from './session-backup'
+import { BrainLifecycleManager } from './brain/brain-lifecycle-manager'
+import { ApiKeyManager } from './brain/api-key-manager'
+import { DEFAULT_BRAIN_CONFIG } from './brain/types'
 
 // Screenshot storage manager (initialized in startControlServer)
 const storageManager = new StorageManager()
 
-// ==================== API KEY MANAGER ====================
-// Uses a JSON envelope so we always know the storage format on read-back.
-const API_KEY_FILE = 'chromadon-api-key.json'
+// ==================== BRAIN MANAGERS (initialized in app.whenReady) ====================
+let brainManager: BrainLifecycleManager | null = null
+let apiKeyManager: ApiKeyManager | null = null
 
-function getApiKeyPath(): string {
-  return path.join(app.getPath('userData'), API_KEY_FILE)
-}
 
-function storeApiKey(key: string): void {
-  const keyPath = getApiKeyPath()
-  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
-  const log = (msg: string) => {
-    const line = `[${new Date().toISOString()}] [ApiKey] ${msg}\n`
-    fs.appendFileSync(logFile, line)
-    console.log('[ApiKey]', msg)
-  }
 
-  try {
-    cachedApiKey = key // Cache in memory for crash recovery
-    const useEncryption = safeStorage.isEncryptionAvailable()
-    log(`storeApiKey: encryption=${useEncryption}, path=${keyPath}`)
-
-    if (useEncryption) {
-      const encrypted = safeStorage.encryptString(key)
-      const envelope = JSON.stringify({
-        format: 'dpapi',
-        data: encrypted.toString('base64'),
-        storedAt: Date.now(),
-      })
-      fs.writeFileSync(keyPath, envelope, 'utf8')
-    } else {
-      const envelope = JSON.stringify({
-        format: 'base64',
-        data: Buffer.from(key).toString('base64'),
-        storedAt: Date.now(),
-      })
-      fs.writeFileSync(keyPath, envelope, 'utf8')
-    }
-
-    // Verify the write by reading back
-    const verify = loadApiKey()
-    if (verify && verify.startsWith('sk-ant-')) {
-      log(`storeApiKey: verified OK (${verify.slice(0, 10)}...${verify.slice(-4)})`)
-    } else {
-      log(`storeApiKey: WARNING - read-back verification failed!`)
-    }
-  } catch (err: any) {
-    log(`storeApiKey: ERROR - ${err.message}`)
-    throw err
-  }
-}
-
-function loadApiKey(): string | null {
-  // Return cached key if available (fast path, no disk I/O)
-  if (cachedApiKey) return cachedApiKey
-
-  const keyPath = getApiKeyPath()
-  if (!fs.existsSync(keyPath)) return null
-
-  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
-  const log = (msg: string) => {
-    const line = `[${new Date().toISOString()}] [ApiKey] ${msg}\n`
-    fs.appendFileSync(logFile, line)
-    console.log('[ApiKey]', msg)
-  }
-
-  try {
-    const raw = fs.readFileSync(keyPath, 'utf8')
-
-    // New JSON envelope format
-    if (raw.startsWith('{')) {
-      const envelope = JSON.parse(raw)
-      log(`loadApiKey: format=${envelope.format}, storedAt=${envelope.storedAt}`)
-
-      if (envelope.format === 'dpapi') {
-        const encrypted = Buffer.from(envelope.data, 'base64')
-        const key = safeStorage.decryptString(encrypted)
-        log(`loadApiKey: decrypted OK (${key.slice(0, 10)}...${key.slice(-4)})`)
-        cachedApiKey = key
-        return key
-      } else if (envelope.format === 'base64') {
-        const key = Buffer.from(envelope.data, 'base64').toString('utf8')
-        log(`loadApiKey: decoded OK (${key.slice(0, 10)}...${key.slice(-4)})`)
-        cachedApiKey = key
-        return key
-      }
-    }
-
-    // Legacy: try old encrypted binary format (from previous version)
-    log('loadApiKey: attempting legacy format...')
-    const data = fs.readFileSync(keyPath)
-    if (safeStorage.isEncryptionAvailable()) {
-      const key = safeStorage.decryptString(data)
-      log(`loadApiKey: legacy decrypt OK (${key.slice(0, 10)}...${key.slice(-4)})`)
-      cachedApiKey = key
-      return key
-    }
-
-    return null
-  } catch (err: any) {
-    log(`loadApiKey: ERROR - ${err.message}`)
-    return null
-  }
-}
-
-function deleteApiKey(): void {
-  cachedApiKey = null
-  const keyPath = getApiKeyPath()
-  if (fs.existsSync(keyPath)) {
-    fs.unlinkSync(keyPath)
-    console.log('[ApiKey] Deleted:', keyPath)
-  }
-  // Also clean up old format file
-  const oldPath = path.join(app.getPath('userData'), 'anthropic-api-key.enc')
-  if (fs.existsSync(oldPath)) {
-    fs.unlinkSync(oldPath)
-    console.log('[ApiKey] Deleted legacy:', oldPath)
-  }
-}
-
-// ==================== GEMINI API KEY MANAGER ====================
-const GEMINI_KEY_FILE = 'chromadon-gemini-key.json'
-let cachedGeminiKey: string | null = null
-
-function getGeminiKeyPath(): string {
-  return path.join(app.getPath('userData'), GEMINI_KEY_FILE)
-}
-
-function storeGeminiKey(key: string): void {
-  const keyPath = getGeminiKeyPath()
-  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
-  const log = (msg: string) => {
-    const line = `[${new Date().toISOString()}] [GeminiKey] ${msg}\n`
-    fs.appendFileSync(logFile, line)
-    console.log('[GeminiKey]', msg)
-  }
-
-  try {
-    cachedGeminiKey = key
-    const useEncryption = safeStorage.isEncryptionAvailable()
-    log(`storeGeminiKey: encryption=${useEncryption}, path=${keyPath}`)
-
-    if (useEncryption) {
-      const encrypted = safeStorage.encryptString(key)
-      const envelope = JSON.stringify({
-        format: 'dpapi',
-        data: encrypted.toString('base64'),
-        storedAt: Date.now(),
-      })
-      fs.writeFileSync(keyPath, envelope, 'utf8')
-    } else {
-      const envelope = JSON.stringify({
-        format: 'base64',
-        data: Buffer.from(key).toString('base64'),
-        storedAt: Date.now(),
-      })
-      fs.writeFileSync(keyPath, envelope, 'utf8')
-    }
-
-    const verify = loadGeminiKey()
-    if (verify && verify.startsWith('AIza')) {
-      log(`storeGeminiKey: verified OK (${verify.slice(0, 8)}...${verify.slice(-4)})`)
-    } else {
-      log(`storeGeminiKey: WARNING - read-back verification failed!`)
-    }
-  } catch (err: any) {
-    log(`storeGeminiKey: ERROR - ${err.message}`)
-    throw err
-  }
-}
-
-function loadGeminiKey(): string | null {
-  if (cachedGeminiKey) return cachedGeminiKey
-
-  const keyPath = getGeminiKeyPath()
-  if (!fs.existsSync(keyPath)) return null
-
-  const logFile = path.join(app.getPath('userData'), 'brain-debug.log')
-  const log = (msg: string) => {
-    const line = `[${new Date().toISOString()}] [GeminiKey] ${msg}\n`
-    fs.appendFileSync(logFile, line)
-    console.log('[GeminiKey]', msg)
-  }
-
-  try {
-    const raw = fs.readFileSync(keyPath, 'utf8')
-    if (raw.startsWith('{')) {
-      const envelope = JSON.parse(raw)
-      log(`loadGeminiKey: format=${envelope.format}, storedAt=${envelope.storedAt}`)
-
-      if (envelope.format === 'dpapi') {
-        const encrypted = Buffer.from(envelope.data, 'base64')
-        const key = safeStorage.decryptString(encrypted)
-        log(`loadGeminiKey: decrypted OK (${key.slice(0, 8)}...${key.slice(-4)})`)
-        cachedGeminiKey = key
-        return key
-      } else if (envelope.format === 'base64') {
-        const key = Buffer.from(envelope.data, 'base64').toString('utf8')
-        log(`loadGeminiKey: decoded OK (${key.slice(0, 8)}...${key.slice(-4)})`)
-        cachedGeminiKey = key
-        return key
-      }
-    }
-    return null
-  } catch (err: any) {
-    log(`loadGeminiKey: ERROR - ${err.message}`)
-    return null
-  }
-}
-
-function deleteGeminiKey(): void {
-  cachedGeminiKey = null
-  const keyPath = getGeminiKeyPath()
-  if (fs.existsSync(keyPath)) {
-    fs.unlinkSync(keyPath)
-    console.log('[GeminiKey] Deleted:', keyPath)
-  }
-}
-
-// Bundled Brain server child process
-let brainProcess: ChildProcess | null = null
-// In-memory API key cache — survives Brain crashes (only child process dies, not Electron)
-let cachedApiKey: string | null = null
-let brainRestarting = false
-let brainRestartCount = 0
-const BRAIN_MAX_RESTARTS = 10
-let brainStartTime = 0 // Timestamp when Brain was last forked
-let lastStderr = '' // Last 2KB of Brain stderr for crash diagnostics
-
-// Health-check-triggered restart tracking (separate from crash restarts)
-let healthRestartCount = 0
-const MAX_HEALTH_RESTARTS = 3
-let lastHealthRestart = 0
-const HEALTH_RESTART_COOLDOWN = 60_000 // 1 minute between health-triggered restarts
-let healthUnreachableCount = 0 // Consecutive health check failures (zombie detection)
-let consecutiveHealthyChecks = 0 // Reset healthRestartCount after sustained health
-const HEALTH_RESET_THRESHOLD = 5
-
-// Crash alert via Resend.com — notify Gary when a client's brain is down
-const CRASH_ALERT_EMAIL = 'alienation2innovation@gmail.com'
-const RESEND_API_KEY = 're_gbm8Sa3y_6DmCfT99mF8i9QgKk7oY2Ges'
-
-async function sendCrashAlert(exitCode: number | null, signal: string | null, restartAttempts: number): Promise<void> {
-  if (!RESEND_API_KEY) return
-  try {
-    const hostname = require('os').hostname()
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: 'CHROMADON Alerts <onboarding@resend.dev>',
-        to: CRASH_ALERT_EMAIL,
-        subject: `CHROMADON Brain DOWN - ${hostname}`,
-        html: `<h2>CHROMADON Brain Crash Report</h2>
-          <p><b>Machine:</b> ${hostname}</p>
-          <p><b>Exit Code:</b> ${exitCode}</p>
-          <p><b>Signal:</b> ${signal || 'none'}</p>
-          <p><b>Restart Attempts:</b> ${restartAttempts}/${BRAIN_MAX_RESTARTS}</p>
-          <p><b>Time:</b> ${new Date().toISOString()}</p>
-          <p><b>App Version:</b> ${app.getVersion()}</p>
-          <p>The brain process has exhausted all restart attempts.</p>`,
-      }),
-    })
-    console.log('[Desktop] Crash alert email sent to ' + CRASH_ALERT_EMAIL)
-  } catch (err: any) {
-    console.log('[Desktop] Failed to send crash alert: ' + (err as Error).message)
-  }
-}
-
-// Fix 6: Pre-fork check for native modules (better-sqlite3 is #1 crash cause)
-function testNativeModules(brainDir: string, log: (msg: string) => void): boolean {
-  try {
-    execSync(
-      'node -e "try{require(\'better-sqlite3\');process.exit(0)}catch(e){process.stderr.write(e.message);process.exit(1)}"',
-      { cwd: brainDir, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 5000 }
-    )
-    log('Native module self-test: better-sqlite3 OK')
-    return true
-  } catch (err: any) {
-    const errMsg = err.stderr?.toString() || err.message || 'unknown error'
-    log(`Native module self-test FAILED: ${errMsg}`)
-    mainWindow?.webContents.send('brain-status', {
-      running: false,
-      error: 'Native module compatibility error. Please reinstall CHROMADON.',
-    })
-    return false
-  }
-}
-
-function startBrainServer(apiKey?: string): void {
-  const logFile = path.join(app.getPath('userData'), 'brain.log')
-  const logFileOld = logFile + '.1'
-
-  // Log rotation: keep last 2 logs, max 5MB per file
-  try {
-    if (fs.existsSync(logFile)) {
-      const stats = fs.statSync(logFile)
-      if (stats.size > 5 * 1024 * 1024 || brainRestartCount === 0) {
-        // Rotate on startup (first start) or when file exceeds 5MB
-        if (fs.existsSync(logFileOld)) fs.unlinkSync(logFileOld)
-        fs.renameSync(logFile, logFileOld)
-      }
-    }
-  } catch { /* rotation is best-effort */ }
-
-  const log = (msg: string) => {
-    const line = `[${new Date().toISOString()}] ${msg}\n`
-    try { fs.appendFileSync(logFile, line) } catch {}
-    console.log('[Brain]', msg)
-  }
-
-  log(`isPackaged=${app.isPackaged} resourcesPath=${process.resourcesPath}`)
-
-  // Determine Brain location based on dev vs packaged mode
-  let brainDir: string
-  let brainEntry: string
-
-  if (!app.isPackaged) {
-    // Dev mode: fork Brain from source repo (was skipping entirely — causing "starting up" forever)
-    // __dirname = dist-electron/ → up to Desktop root → up to parent → sibling chromadon-brain
-    brainDir = path.resolve(__dirname, '..', '..', 'chromadon-brain')
-    brainEntry = path.join(brainDir, 'dist', 'api', 'server.js')
-    log(`Dev mode — forking Brain from source: ${brainDir}`)
-
-    // Load Brain's .env file in dev mode so API keys are available
-    const brainEnvPath = path.join(brainDir, '.env')
-    if (fs.existsSync(brainEnvPath)) {
-      const envContent = fs.readFileSync(brainEnvPath, 'utf-8')
-      for (const line of envContent.split('\n')) {
-        const trimmed = line.trim()
-        if (!trimmed || trimmed.startsWith('#')) continue
-        const eqIdx = trimmed.indexOf('=')
-        if (eqIdx > 0) {
-          const key = trimmed.slice(0, eqIdx).trim()
-          const val = trimmed.slice(eqIdx + 1).trim()
-          if (!process.env[key]) {
-            process.env[key] = val
-            if (key === 'GEMINI_API_KEY' && !cachedGeminiKey) cachedGeminiKey = val
-          }
-        }
-      }
-      log('Loaded Brain .env for dev mode')
-    }
-  } else {
-    brainDir = path.join(process.resourcesPath, 'brain')
-    brainEntry = path.join(brainDir, 'dist', 'api', 'server.js')
-  }
-
-  log(`brainDir=${brainDir}`)
-  log(`brainEntry=${brainEntry}`)
-  log(`exists=${fs.existsSync(brainEntry)}`)
-
-  if (!fs.existsSync(brainEntry)) {
-    log('Brain server not found at: ' + brainEntry)
-    brainRestarting = false
-    return
-  }
-
-  // Resolve API keys: parameter > stored > env (blank)
-  const resolvedKey = apiKey || loadApiKey() || ''
-  const resolvedGeminiKey = loadGeminiKey() || ''
-  log(`Starting bundled Brain server... (Anthropic key ${resolvedKey ? 'provided' : 'NOT set'}, Gemini key ${resolvedGeminiKey ? 'provided' : 'NOT set'})`)
-
-  // Kill any stale Brain process from a previous crash (EADDRINUSE prevention)
-  try {
-    const { execSync } = require('child_process')
-    const output = execSync('netstat -ano | findstr :3001 | findstr LISTENING', { encoding: 'utf8', timeout: 3000 })
-    const lines = output.trim().split('\n')
-    for (const line of lines) {
-      const pid = line.trim().split(/\s+/).pop()
-      if (pid && pid !== '0' && parseInt(pid) !== process.pid) {
-        log(`Found stale process PID ${pid} on port 3001 — killing it`)
-        try { execSync(`taskkill /PID ${pid} /F`, { timeout: 3000 }) } catch {}
-      }
-    }
-  } catch {
-    // No process on port 3001 — good, proceed normally
-  }
-
-  // Fix 6: Test native modules before forking to catch ABI mismatches early
-  if (!testNativeModules(brainDir, log)) {
-    brainRestarting = false
-    return
-  }
-
-  try {
-    brainProcess = fork(brainEntry, [], {
-      cwd: brainDir,
-      env: {
-        ...process.env,
-        ...(app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : {}),
-        CHROMADON_PORT: '3001',
-        CHROMADON_DESKTOP_URL: 'http://127.0.0.1:3002',
-        CHROMADON_DATA_DIR: app.getPath('userData'),
-        PREFER_DESKTOP: 'true',
-        NODE_ENV: app.isPackaged ? 'production' : 'development',
-        ...(resolvedKey ? { ANTHROPIC_API_KEY: resolvedKey } : {}),
-        ...(resolvedGeminiKey ? { GEMINI_API_KEY: resolvedGeminiKey } : {}),
-        // OBS Studio WebSocket connection (only pass if set — let .env handle defaults)
-        ...(process.env.OBS_WS_HOST ? { OBS_WS_HOST: process.env.OBS_WS_HOST } : {}),
-        ...(process.env.OBS_WS_PORT ? { OBS_WS_PORT: process.env.OBS_WS_PORT } : {}),
-        ...(process.env.OBS_WS_PASSWORD ? { OBS_WS_PASSWORD: process.env.OBS_WS_PASSWORD } : {}),
-        ...(process.env.OBS_SAFE_MODE ? { OBS_SAFE_MODE: process.env.OBS_SAFE_MODE } : {}),
-        ...(process.env.OBS_SAFE_SCENES ? { OBS_SAFE_SCENES: process.env.OBS_SAFE_SCENES } : {}),
-      },
-      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
-    })
-
-    log(`fork() succeeded, pid=${brainProcess.pid}`)
-    brainRestarting = false
-    brainStartTime = Date.now()
-    lastStderr = ''
-    // Don't reset brainRestartCount immediately — only after 60s stability
-    // This prevents rapid crash-loops from resetting the counter (Bug 1 fix)
-    setTimeout(() => {
-      if (brainProcess && brainProcess.pid) {
-        if (brainRestartCount > 0) log(`Brain stable for 60s — resetting restart count (was ${brainRestartCount})`)
-        brainRestartCount = 0
-      }
-    }, 60_000)
-  } catch (err: any) {
-    log(`fork() FAILED: ${err.message}`)
-    brainRestarting = false
-    return
-  }
-
-  brainProcess.stdout?.on('data', (data: Buffer) => {
-    log(data.toString().trim())
-  })
-
-  // Capture stderr for crash diagnostics (Bug 5 fix)
-  brainProcess.stderr?.on('data', (data: Buffer) => {
-    const text = data.toString().trim()
-    lastStderr = (lastStderr + '\n' + text).slice(-2000) // Keep last 2KB
-    log(`STDERR: ${text}`)
-  })
-
-  brainProcess.on('error', (err) => {
-    log(`Process error: ${err.message}`)
-    brainProcess = null
-    brainRestarting = false
-    // Treat like a crash — restart with backoff
-    brainRestartCount++
-    if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
-      const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
-      log(`Process error restart in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
-      setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
-    }
-  })
-
-  brainProcess.on('exit', (code, signal) => {
-    log(`Exited: code=${code} signal=${signal}`)
-    const uptimeMs = Date.now() - brainStartTime
-    brainProcess = null
-    brainRestarting = false // Always reset — process has exited
-
-    // Log crash diagnostics (Bug 5 fix)
-    const crashInfo = { code, signal, restartCount: brainRestartCount, stderr: lastStderr.slice(-500), uptimeMs, timestamp: new Date().toISOString() }
-    log(`Brain exit diagnostics: ${JSON.stringify(crashInfo)}`)
-
-    // Bug 2 fix: A clean exit is ONLY code=0 with no signal.
-    // Signal deaths (code=null, signal='SIGKILL'/'SIGSEGV') MUST trigger restart.
-    const isCleanExit = (code === 0 && !signal)
-    if (!isCleanExit) {
-      brainRestartCount++
-      // Notify UI of crash status
-      mainWindow?.webContents.send('brain-status', {
-        running: false,
-        restarting: brainRestartCount <= BRAIN_MAX_RESTARTS,
-        attempt: brainRestartCount,
-        maxAttempts: BRAIN_MAX_RESTARTS,
-        error: `Brain crashed (code=${code}, signal=${signal}). ${brainRestartCount <= BRAIN_MAX_RESTARTS ? 'Restarting...' : 'Check logs.'}`,
-      })
-      if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
-        // Exponential backoff: 3s, 6s, 12s, 24s, 30s (capped), ...
-        const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
-        log(`Restarting in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})... (Anthropic key: ${cachedApiKey ? 'YES' : 'NO'}, Gemini key: ${cachedGeminiKey ? 'YES' : 'NO'})`)
-        setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
-      } else {
-        log(`Brain crashed ${brainRestartCount} times — giving up. Check brain-debug.log for errors.`)
-        sendCrashAlert(code, signal, brainRestartCount)
-      }
-    } else {
-      // Truly clean exit (code 0, no signal) — notify UI
-      mainWindow?.webContents.send('brain-status', { running: false, error: null })
-    }
-  })
-
-  // Fix 2: Staged startup verification with 90s hard timeout
-  // Sends progress messages to UI so user knows what's happening
-  ;(async () => {
-    const STARTUP_TIMEOUT = 90_000 // 90 seconds hard limit
-    const startedAt = Date.now()
-    let httpResponded = false
-    let orchestratorReady = false
-
-    // Stage 1: "Starting Brain..."
-    mainWindow?.webContents.send('brain-status', {
-      running: false,
-      stage: 'starting',
-      message: 'Starting Brain...',
-    })
-
-    // Stage 2: Wait for HTTP server to respond (up to 30s)
-    for (let i = 0; i < 30; i++) {
-      if (!brainProcess) break
-      if (Date.now() - startedAt > STARTUP_TIMEOUT) break
-      await new Promise(r => setTimeout(r, 1000))
-      try {
-        const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(2000) })
-        if (res.ok) {
-          httpResponded = true
-          const data = await res.json() as any
-          if (data.orchestrator) {
-            orchestratorReady = true
-            log(`Brain fully ready (orchestrator: true)`)
-            mainWindow?.webContents.send('brain-status', {
-              running: true,
-              orchestrator: true,
-              stage: 'ready',
-              message: 'Ready',
-              error: null,
-            })
-            break
-          }
-          // HTTP responds but orchestrator not ready yet
-          log(`Brain HTTP alive but orchestrator not ready (attempt ${i + 1})`)
-          mainWindow?.webContents.send('brain-status', {
-            running: false,
-            stage: 'connecting',
-            message: 'Connecting to AI...',
-          })
-          break // Move to stage 3
-        }
-      } catch { /* still starting */ }
-    }
-
-    // Stage 3: Wait for orchestrator (if HTTP responded but orchestrator isn't ready)
-    if (httpResponded && !orchestratorReady && brainProcess) {
-      mainWindow?.webContents.send('brain-status', {
-        running: false,
-        stage: 'initializing',
-        message: 'Initializing AI tools...',
-      })
-
-      for (let i = 0; i < 60; i++) { // Check every 1s for up to 60s more
-        if (!brainProcess) break
-        if (Date.now() - startedAt > STARTUP_TIMEOUT) break
-        await new Promise(r => setTimeout(r, 1000))
-        try {
-          const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(2000) })
-          if (res.ok) {
-            const data = await res.json() as any
-            if (data.orchestrator) {
-              orchestratorReady = true
-              log(`Brain orchestrator ready after ${Math.round((Date.now() - startedAt) / 1000)}s`)
-              mainWindow?.webContents.send('brain-status', {
-                running: true,
-                orchestrator: true,
-                stage: 'ready',
-                message: 'Ready',
-                error: null,
-              })
-              break
-            }
-            // Check for init errors
-            if (data.orchestratorReason === 'init_error') {
-              log(`Brain orchestrator init error: ${data.orchestratorError}`)
-              mainWindow?.webContents.send('brain-status', {
-                running: true,
-                orchestrator: false,
-                stage: 'error',
-                message: `Failed: ${data.orchestratorError || 'AI initialization failed'}`,
-                error: data.orchestratorError || 'AI initialization failed. Check your API key in Settings.',
-              })
-              return // Don't kill — Brain HTTP works, just no orchestrator
-            }
-            if (data.orchestratorReason === 'no_api_key') {
-              log('Brain running but no API key configured')
-              mainWindow?.webContents.send('brain-status', {
-                running: true,
-                orchestrator: false,
-                stage: 'error',
-                message: 'No API key configured',
-                error: 'No API key configured. Open Settings to add your Gemini or Anthropic API key.',
-              })
-              return
-            }
-          }
-        } catch { /* retry */ }
-      }
-    }
-
-    // Stage 4: Timeout or failure
-    if (!orchestratorReady && brainProcess) {
-      const elapsed = Math.round((Date.now() - startedAt) / 1000)
-      if (!httpResponded) {
-        // HTTP never responded — zombie process
-        log(`Brain HTTP server never started (${elapsed}s) — killing zombie`)
-        try { brainProcess.kill('SIGKILL') } catch {}
-        brainProcess = null
-        mainWindow?.webContents.send('brain-status', {
-          running: false,
-          stage: 'error',
-          message: `Brain failed to start after ${elapsed}s`,
-          error: 'Brain failed to start. Check brain.log for details, or restart the app.',
-        })
-        // Trigger restart
-        brainRestartCount++
-        if (brainRestartCount <= BRAIN_MAX_RESTARTS) {
-          const backoffDelay = Math.min(3000 * Math.pow(2, brainRestartCount - 1), 30000)
-          log(`Zombie killed — restarting in ${backoffDelay / 1000}s (attempt ${brainRestartCount}/${BRAIN_MAX_RESTARTS})`)
-          setTimeout(() => startBrainServer(cachedApiKey || undefined), backoffDelay)
-        }
-      } else {
-        // HTTP works but orchestrator never initialized within timeout
-        log(`Brain orchestrator not ready after ${elapsed}s — sending error to UI`)
-        mainWindow?.webContents.send('brain-status', {
-          running: true,
-          orchestrator: false,
-          stage: 'error',
-          message: `AI failed to initialize after ${elapsed}s`,
-          error: `Brain AI failed to initialize after ${elapsed}s. Check Settings for your API key, or restart the app.`,
-        })
-      }
-    }
-  })()
-}
-
-function restartBrainServer(apiKey?: string): void {
-  if (brainRestarting) {
-    console.log('[Desktop] restartBrainServer: already restarting, skipping')
-    return
-  }
-  brainRestarting = true
-  // Bug 3 fix: Safety timeout — auto-reset flag after 30s no matter what
-  setTimeout(() => {
-    if (brainRestarting) {
-      console.log('[Desktop] restartBrainServer: safety timeout — resetting brainRestarting flag')
-      brainRestarting = false
-    }
-  }, 30_000)
-  console.log('[Desktop] Restarting Brain server with updated API key...')
-  if (brainProcess) {
-    let started = false
-    brainProcess.removeAllListeners('exit')
-    brainProcess.on('exit', () => {
-      brainProcess = null
-      if (!started) {
-        started = true
-        startBrainServer(apiKey)
-      }
-    })
-    brainProcess.kill('SIGTERM')
-    // Force kill after 5 seconds if it doesn't exit gracefully
-    setTimeout(() => {
-      if (brainProcess) {
-        brainProcess.kill('SIGKILL')
-        brainProcess = null
-      }
-      if (!started) {
-        started = true
-        startBrainServer(apiKey)
-      }
-    }, 5000)
-  } else {
-    startBrainServer(apiKey)
-  }
-}
-
-// Fix 3: Periodic health check with fast mode during startup
-// First 2 minutes: check every 5s (catches init failures 6x faster)
-// After 2 minutes: relax to 30s (normal monitoring)
-let brainHealthInterval: NodeJS.Timeout | null = null
-let healthCheckStartedAt = 0
-
-function runHealthCheck(): void {
-  if (!brainProcess) return
-  // Support Gemini-only clients (cachedApiKey is Anthropic only)
-  const hasAnyKey = cachedApiKey || cachedGeminiKey
-  if (!hasAnyKey) return
-
-  ;(async () => {
-    try {
-      const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(5000) })
-      const data = await res.json() as any
-      healthUnreachableCount = 0 // Reset — Brain is reachable
-      // Bug 4 fix: Track consecutive healthy checks and reset healthRestartCount after stability
-      consecutiveHealthyChecks++
-      if (consecutiveHealthyChecks >= HEALTH_RESET_THRESHOLD && healthRestartCount > 0) {
-        console.log(`[Desktop] Brain healthy for ${consecutiveHealthyChecks} consecutive checks — resetting healthRestartCount (was ${healthRestartCount})`)
-        healthRestartCount = 0
-      }
-      if (!data.orchestrator && hasAnyKey) {
-        // Cooldown: don't restart more than once per minute
-        const now = Date.now()
-        if (now - lastHealthRestart < HEALTH_RESTART_COOLDOWN) return
-        // Max health-triggered restarts per session
-        if (healthRestartCount >= MAX_HEALTH_RESTARTS) {
-          console.log(`[Desktop] Brain health-restart limit reached (${MAX_HEALTH_RESTARTS}) — showing error to user`)
-          mainWindow?.webContents.send('brain-status', {
-            running: false,
-            stage: 'error',
-            error: data.orchestratorError
-              ? `Brain failed to start: ${data.orchestratorError}`
-              : 'Brain failed to initialize. Check your API key in Settings.',
-          })
-          return
-        }
-        healthRestartCount++
-        lastHealthRestart = now
-        console.log(`[Desktop] Brain lost orchestrator — health restart ${healthRestartCount}/${MAX_HEALTH_RESTARTS}`)
-        restartBrainServer(cachedApiKey || undefined)
-      }
-    } catch {
-      // Brain unreachable — detect zombie process and kill/restart
-      consecutiveHealthyChecks = 0 // Bug 4 fix: reset on any failure
-      healthUnreachableCount++
-      if (healthUnreachableCount >= 3 && brainProcess) {
-        console.log(`[Desktop] Brain unreachable for ${healthUnreachableCount} consecutive checks — killing zombie process`)
-        try { brainProcess.kill('SIGKILL') } catch {}
-        brainProcess = null
-        healthUnreachableCount = 0
-        // Trigger restart if within limits
-        if (healthRestartCount < MAX_HEALTH_RESTARTS) {
-          healthRestartCount++
-          lastHealthRestart = Date.now()
-          console.log(`[Desktop] Zombie killed — restarting Brain (health restart ${healthRestartCount}/${MAX_HEALTH_RESTARTS})`)
-          setTimeout(() => startBrainServer(cachedApiKey || undefined), 3000)
-        } else {
-          console.log(`[Desktop] Zombie killed but health-restart limit reached — showing error`)
-          mainWindow?.webContents.send('brain-status', {
-            running: false,
-            stage: 'error',
-            error: 'Brain process is unresponsive. Please restart the application.',
-          })
-        }
-      }
-    }
-  })()
-}
-
-function startBrainHealthCheck(): void {
-  if (brainHealthInterval) clearInterval(brainHealthInterval)
-  healthCheckStartedAt = Date.now()
-
-  // Start with fast 5s checks
-  brainHealthInterval = setInterval(() => {
-    runHealthCheck()
-
-    // After 2 minutes, switch to relaxed 30s checks
-    const elapsed = Date.now() - healthCheckStartedAt
-    if (elapsed > 120_000 && brainHealthInterval) {
-      clearInterval(brainHealthInterval)
-      brainHealthInterval = setInterval(runHealthCheck, 30_000)
-      console.log('[Desktop] Health check switched to 30s interval (startup phase complete)')
-    }
-  }, 5_000)
-}
 
 // CRITICAL: Anti-detection measures for Google sign-in
 // Set app to look like Chrome
@@ -4268,7 +3517,7 @@ ipcMain.handle('credential:detectLoginForm', async (_event, tabId: number) => {
 // ==================== SETTINGS / API KEY IPC HANDLERS ====================
 
 ipcMain.handle('settings:getApiKeyStatus', () => {
-  const key = loadApiKey()
+  const key = apiKeyManager?.loadAnthropicKey() ?? null
   return {
     hasKey: !!key,
     keyPreview: key ? `sk-ant-...${key.slice(-4)}` : null,
@@ -4280,8 +3529,8 @@ ipcMain.handle('settings:setApiKey', async (_event, apiKey: string) => {
     if (!apiKey.startsWith('sk-ant-')) {
       return { success: false, error: 'Invalid API key format. Must start with sk-ant-' }
     }
-    storeApiKey(apiKey)
-    restartBrainServer(apiKey)
+    apiKeyManager?.storeAnthropicKey(apiKey)
+    brainManager?.restart(apiKey)
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message }
@@ -4324,8 +3573,8 @@ ipcMain.handle('settings:validateApiKey', async (_event, apiKey: string) => {
 
 ipcMain.handle('settings:removeApiKey', () => {
   try {
-    deleteApiKey()
-    restartBrainServer()
+    apiKeyManager?.deleteAnthropicKey()
+    brainManager?.restart()
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message }
@@ -4335,7 +3584,7 @@ ipcMain.handle('settings:removeApiKey', () => {
 // ==================== GEMINI KEY IPC HANDLERS ====================
 
 ipcMain.handle('settings:getGeminiKeyStatus', () => {
-  const key = loadGeminiKey()
+  const key = apiKeyManager?.loadGeminiKey() ?? null
   return {
     hasKey: !!key,
     keyPreview: key ? `AIza...${key.slice(-4)}` : null,
@@ -4347,8 +3596,8 @@ ipcMain.handle('settings:setGeminiKey', async (_event: any, apiKey: string) => {
     if (!apiKey.startsWith('AIza')) {
       return { success: false, error: 'Invalid format. Google AI key must start with AIza' }
     }
-    storeGeminiKey(apiKey)
-    restartBrainServer()
+    apiKeyManager?.storeGeminiKey(apiKey)
+    brainManager?.restart()
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message }
@@ -4393,8 +3642,8 @@ ipcMain.handle('settings:validateGeminiKey', async (_event: any, apiKey: string)
 
 ipcMain.handle('settings:removeGeminiKey', () => {
   try {
-    deleteGeminiKey()
-    restartBrainServer()
+    apiKeyManager?.deleteGeminiKey()
+    brainManager?.restart()
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message }
@@ -4402,11 +3651,10 @@ ipcMain.handle('settings:removeGeminiKey', () => {
 })
 
 ipcMain.handle('settings:getBrainStatus', async () => {
-  // In packaged mode, check the managed child process
-  if (brainProcess) {
-    return { isRunning: true, pid: brainProcess.pid || null }
+  if (brainManager?.isRunning) {
+    return { isRunning: true, pid: brainManager.pid }
   }
-  // In dev mode (or if brainProcess is null), probe the health endpoint directly
+  // Probe health endpoint as fallback
   try {
     const res = await fetch('http://127.0.0.1:3001/health', { signal: AbortSignal.timeout(2000) })
     if (res.ok) {
@@ -4910,22 +4158,42 @@ app.whenReady().then(() => {
     }
   }, 60 * 60 * 1000)
 
-  // Load stored API key and start brain
-  const storedKey = loadApiKey()
+  // Initialize Brain managers
+  apiKeyManager = new ApiKeyManager(
+    app.getPath('userData'),
+    safeStorage,
+    (msg: string) => console.log(msg),
+  )
+  const storedKey = apiKeyManager.loadAnthropicKey()
+  apiKeyManager.loadGeminiKey()
   console.log(`[CHROMADON] Startup: API key ${storedKey ? 'found' : 'NOT found'}, userData=${app.getPath('userData')}`)
-  startBrainServer(storedKey || undefined)
-  startBrainHealthCheck()
+
+  brainManager = new BrainLifecycleManager(
+    {
+      ...DEFAULT_BRAIN_CONFIG,
+      isPackaged: app.isPackaged,
+      userDataPath: app.getPath('userData'),
+      resourcesPath: process.resourcesPath,
+    },
+    apiKeyManager,
+    app.getVersion(),
+  )
+
+  // Forward Brain status events to renderer
+  brainManager.on('status', (status) => {
+    mainWindow?.webContents.send('brain-status', status)
+  })
+
+  brainManager.start(storedKey || undefined)
+  brainManager.startHealthChecks()
   startScheduler()
 })
 
 app.on('before-quit', () => {
   stopScheduler()
   sessionBackupManager.clearAutoBackupKey()
-  if (brainHealthInterval) clearInterval(brainHealthInterval)
-  if (brainProcess) {
-    console.log('[Desktop] Shutting down Brain server...')
-    brainProcess.kill('SIGTERM')
-    brainProcess = null
+  if (brainManager) {
+    brainManager.stop()
   }
 })
 

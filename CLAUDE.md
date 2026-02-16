@@ -7,7 +7,17 @@
 
 ---
 
-## Recent Changes (v1.25.13 — 2026-02-16)
+## Recent Changes (v1.25.14 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Refactored: Extracted BrainLifecycleManager from main.ts — 730 lines moved to dedicated class with EventEmitter pattern, typed events, injected dependencies | `electron/brain/brain-lifecycle-manager.ts` (NEW) |
+| Refactored: Extracted ApiKeyManager from main.ts — DPAPI key storage, Anthropic + Gemini support, safeStorage injection | `electron/brain/api-key-manager.ts` (NEW) |
+| Added: Shared Brain types — BrainStage, BrainStatusEvent, BrainConfig, DEFAULT_BRAIN_CONFIG | `electron/brain/types.ts` (NEW) |
+| Added: Build script for Brain compilation, dist copy, ESM patches, model string updates, critical file verification | `scripts/build-brain.js` (NEW) |
+| Added: `build:brain` npm script | `package.json` |
+
+## Changes (v1.25.13 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -166,12 +176,16 @@ Stop-Process -Name 'electron'
 
 ```
 CHROMADON Desktop v1.0
-├── Electron Main Process (electron/main.ts ~2500 lines)
+├── Electron Main Process (electron/main.ts ~4350 lines)
 │   ├── BrowserView Manager (session partitions)
 │   ├── Express Control Server (:3002)
 │   ├── 49 IPC Handlers (context-isolated)
 │   ├── AES-256-GCM Encrypted Vault (PBKDF2 600K iterations)
 │   └── Marketing Queue System
+├── Brain Process Management (electron/brain/)
+│   ├── BrainLifecycleManager — fork, health checks, restart, crash recovery
+│   ├── ApiKeyManager — DPAPI-encrypted Anthropic + Gemini key storage
+│   └── Types — BrainConfig, BrainStatusEvent, BrainStage
 │
 ├── React Renderer (src/)
 │   ├── App.tsx - Main UI with vault lock/unlock
@@ -221,6 +235,9 @@ CHROMADON Desktop v1.0
 | File | Purpose |
 |------|---------|
 | `electron/main.ts` | Electron main process, IPC handlers, control server |
+| `electron/brain/brain-lifecycle-manager.ts` | Brain process lifecycle (fork, health, restart) |
+| `electron/brain/api-key-manager.ts` | Anthropic + Gemini key storage (DPAPI) |
+| `electron/brain/types.ts` | Brain shared types and config defaults |
 | `electron/preload.ts` | Context bridge (58 methods) |
 | `electron/browser-view-manager.ts` | BrowserView tab management |
 | `electron/session-backup.ts` | Encrypted session backup/restore |
@@ -235,5 +252,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.13
+**Version:** 1.25.14
 **Author:** Barrios A2I (Gary Barrios)
