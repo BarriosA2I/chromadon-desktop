@@ -82,7 +82,7 @@ const trinity_1 = require("../trinity");
 // Circuit Breaker for Desktop API calls
 const circuit_breaker_1 = require("../core/circuit-breaker");
 // 27-Agent System imports
-const index_js_1 = require("../agents/index.js");
+const agents_1 = require("../agents");
 const app = (0, express_1.default)();
 exports.app = app;
 const PORT = process.env.CHROMADON_PORT || 3001;
@@ -2935,7 +2935,7 @@ async function initializeAgentSystem() {
                 const desktopAvailable = await desktopAdapter.healthCheck();
                 if (desktopAvailable) {
                     console.log('[CHROMADON] ✅ Using Desktop Browser Controller (port 3002)');
-                    agentSystem = new index_js_1.ChromadonAgentSystem(desktopAdapter);
+                    agentSystem = new agents_1.ChromadonAgentSystem(desktopAdapter);
                     console.log('[CHROMADON] ✅ 27-Agent System initialized with Desktop adapter');
                     return;
                 }
@@ -2947,7 +2947,7 @@ async function initializeAgentSystem() {
             console.log('[CHROMADON] 🔧 Creating CDP adapter...');
             const cdpAdapter = createCDPControllerAdapter();
             console.log('[CHROMADON] 🔧 CDP adapter created, instantiating ChromadonAgentSystem...');
-            agentSystem = new index_js_1.ChromadonAgentSystem(cdpAdapter);
+            agentSystem = new agents_1.ChromadonAgentSystem(cdpAdapter);
             console.log('[CHROMADON] ✅ 27-Agent System initialized successfully');
         }
         catch (error) {
