@@ -320,6 +320,29 @@ class TheScheduler {
         console.log(`[TheScheduler] Task cancelled: ${taskId}`);
         return true;
     }
+    cancelAllTasks(statusFilter) {
+        const targets = this.state.tasks.filter(t => {
+            if (t.status === scheduler_types_1.TaskStatus.CANCELLED || t.status === scheduler_types_1.TaskStatus.COMPLETED || t.status === scheduler_types_1.TaskStatus.FAILED)
+                return false;
+            if (statusFilter && statusFilter !== 'all' && t.status !== statusFilter)
+                return false;
+            return true;
+        });
+        let cancelled = 0;
+        const failed = [];
+        for (const task of targets) {
+            if (task.status === scheduler_types_1.TaskStatus.EXECUTING) {
+                failed.push(task.id);
+                continue;
+            }
+            task.status = scheduler_types_1.TaskStatus.CANCELLED;
+            cancelled++;
+        }
+        if (cancelled > 0)
+            this.persist();
+        console.log(`[TheScheduler] Bulk cancel: ${cancelled} cancelled, ${failed.length} failed (executing)`);
+        return { cancelled, failed };
+    }
     rescheduleTask(taskId, newTimeUtc) {
         const task = this.state.tasks.find(t => t.id === taskId);
         if (!task)

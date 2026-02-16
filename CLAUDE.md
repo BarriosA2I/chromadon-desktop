@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.20 — 2026-02-16)
+## Recent Changes (v1.25.21 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.10.18 — Added `cancel_all_scheduled_tasks` bulk cancel tool. Atomic single-pass cancellation fixes race condition where one-by-one cancel raced against scheduler tick loop. Verified: 14/14 tasks cancelled in production test | `resources/brain/dist/` |
+
+## Changes (v1.25.20 — 2026-02-16)
 
 | Change | File |
 |--------|------|

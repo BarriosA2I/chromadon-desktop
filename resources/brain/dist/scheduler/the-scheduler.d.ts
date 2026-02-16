@@ -76,6 +76,10 @@ export declare class TheScheduler {
         batchSequence?: number;
     }): string;
     cancelTask(taskId: string): boolean;
+    cancelAllTasks(statusFilter?: string): {
+        cancelled: number;
+        failed: string[];
+    };
     rescheduleTask(taskId: string, newTimeUtc: string): boolean;
     getTasks(filter?: {
         status?: string;

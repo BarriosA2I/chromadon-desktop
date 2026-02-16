@@ -131,6 +131,20 @@ exports.SCHEDULER_TOOLS = [
         },
     },
     {
+        name: 'cancel_all_scheduled_tasks',
+        description: 'Cancel ALL scheduled tasks at once. Use this when the user wants to clear their entire schedule. Much faster and more reliable than cancelling one by one. Tasks currently executing cannot be cancelled.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                status_filter: {
+                    type: 'string',
+                    enum: ['scheduled', 'pending', 'all'],
+                    description: 'Which tasks to cancel. "scheduled" = only pending tasks (default), "all" = include pending too',
+                },
+            },
+        },
+    },
+    {
         name: 'reschedule_task',
         description: 'Change the time of a scheduled task. Only works on tasks in "scheduled" status.',
         input_schema: {

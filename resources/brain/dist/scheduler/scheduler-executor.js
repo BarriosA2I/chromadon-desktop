@@ -279,6 +279,20 @@ function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClient
                     : `Could not cancel task ${input.task_id}. It may not exist or is currently executing.`;
             }
             // ==================================================================
+            // CANCEL ALL
+            // ==================================================================
+            case 'cancel_all_scheduled_tasks': {
+                const result = scheduler.cancelAllTasks(input.status_filter || 'scheduled');
+                if (result.cancelled === 0 && result.failed.length === 0) {
+                    return 'No scheduled tasks to cancel. Your schedule is already empty.';
+                }
+                let msg = `Cancelled ${result.cancelled} task(s).`;
+                if (result.failed.length > 0) {
+                    msg += ` ${result.failed.length} task(s) could not be cancelled because they are currently executing.`;
+                }
+                return msg;
+            }
+            // ==================================================================
             // RESCHEDULE
             // ==================================================================
             case 'reschedule_task': {
