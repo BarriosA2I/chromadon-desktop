@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.17 — 2026-02-16)
+## Recent Changes (v1.25.18 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.10.16 — Switched 27-Agent System from Anthropic to Gemini. All agents now use Gemini LLM (flash/2.5-flash/2.5-pro) with Anthropic fallback. Eliminates auth failures from empty Anthropic credits — Cortex planning now works end-to-end | `resources/brain/dist/` |
+
+## Changes (v1.25.17 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -271,5 +277,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.17
+**Version:** 1.25.18
 **Author:** Barrios A2I (Gary Barrios)
