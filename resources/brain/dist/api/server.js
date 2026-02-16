@@ -81,6 +81,20 @@ const scheduler_1 = require("../scheduler");
 const trinity_1 = require("../trinity");
 // Circuit Breaker for Desktop API calls
 const circuit_breaker_1 = require("../core/circuit-breaker");
+// MissionRegistry imports
+const mission_1 = require("../core/mission");
+// BudgetMonitor imports
+const budget_1 = require("../core/budget");
+// PulseBeacon imports
+const monitoring_2 = require("../core/monitoring");
+// Middleware imports
+const middleware_1 = require("./middleware");
+// SessionWarmup imports
+const session_1 = require("../core/session");
+// ErrorChannel import
+const error_channel_1 = require("../core/error-channel");
+// Export router import
+const export_1 = require("./routes/export");
 // 27-Agent System imports
 const agents_1 = require("../agents");
 const app = (0, express_1.default)();
@@ -92,6 +106,8 @@ const PREFER_DESKTOP = process.env.PREFER_DESKTOP !== 'false'; // Default true -
 // Middleware
 app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '50mb' }));
+app.use(middleware_1.requestIdMiddleware);
+app.use(middleware_1.brainAuthMiddleware);
 // OpenTelemetry request tracing middleware
 const tracer = api_1.trace.getTracer('chromadon-brain-api');
 app.use((req, res, next) => {
@@ -148,6 +164,11 @@ let socialMonitor = null;
 let theScheduler = null;
 // Trinity Intelligence State
 let trinityIntelligence = null;
+// v1.11.0 Sprint Components
+let missionRegistry = null;
+let budgetMonitor = null;
+let pulseBeacon = null;
+let sessionWarmup = null;
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -4031,6 +4052,180 @@ app.get('/api/client-context/strategy', (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 });
+// =========================================================================
+// ERROR CHANNEL ROUTES (v1.11.0)
+// =========================================================================
+app.get('/api/errors/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    const handler = (err) => {
+        res.write(`data: ${JSON.stringify(err)}\n\n`);
+    };
+    error_channel_1.errorChannel.on('brain-error', handler);
+    req.on('close', () => {
+        error_channel_1.errorChannel.off('brain-error', handler);
+    });
+});
+app.get('/api/errors/recent', (req, res) => {
+    const limit = parseInt(req.query.limit) || 20;
+    res.json({ errors: error_channel_1.errorChannel.getRecent(limit) });
+});
+// =========================================================================
+// CONTENT APPROVAL ROUTES (v1.11.0)
+// =========================================================================
+app.put('/api/missions/:id/approve', (req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    const mission = missionRegistry.get(req.params.id);
+    if (!mission) {
+        res.status(404).json({ error: 'Mission not found' });
+        return;
+    }
+    if (mission.status !== 'QUEUED') {
+        res.status(400).json({ error: `Cannot approve mission in ${mission.status} status (must be QUEUED)` });
+        return;
+    }
+    missionRegistry.updateStatus(req.params.id, 'APPROVED');
+    res.json({ success: true, message: `Mission ${req.params.id} approved` });
+});
+app.put('/api/missions/:id/cancel', (req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    const mission = missionRegistry.get(req.params.id);
+    if (!mission) {
+        res.status(404).json({ error: 'Mission not found' });
+        return;
+    }
+    if (mission.status === 'COMPLETED' || mission.status === 'CANCELLED') {
+        res.status(400).json({ error: `Cannot cancel mission in ${mission.status} status` });
+        return;
+    }
+    missionRegistry.updateStatus(req.params.id, 'CANCELLED');
+    res.json({ success: true, message: `Mission ${req.params.id} cancelled` });
+});
+app.get('/api/missions/pending-approval/:clientId', (req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    const queued = missionRegistry.listByClient(req.params.clientId, 100);
+    const pending = queued.filter(m => m.status === 'QUEUED' && m.context.requiresApproval);
+    res.json({ missions: pending });
+});
+// =========================================================================
+// SYSTEM DIAGNOSTICS (v1.11.0) — auth-exempt
+// =========================================================================
+app.get('/api/system/diagnostics', (_req, res) => {
+    const mem = process.memoryUsage();
+    res.json({
+        uptime: process.uptime(),
+        memory: {
+            heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024 * 10) / 10,
+            rssMb: Math.round(mem.rss / 1024 / 1024 * 10) / 10,
+        },
+        missions: missionRegistry?.getStats() || null,
+        budget: budgetMonitor?.getGlobalStats() || null,
+        sessions: sessionWarmup?.getStatuses() || null,
+        beacon: pulseBeacon?.getStatus() || null,
+        nodeVersion: process.version,
+        platform: process.platform,
+        arch: process.arch,
+    });
+});
+// =========================================================================
+// SESSION STATUS (v1.11.0)
+// =========================================================================
+app.get('/api/sessions/status', (_req, res) => {
+    if (!sessionWarmup) {
+        res.status(503).json({ error: 'SessionWarmup not initialized' });
+        return;
+    }
+    res.json(sessionWarmup.getStatuses());
+});
+// =========================================================================
+// BUDGET MONITOR ROUTES (v1.11.0)
+// =========================================================================
+app.get('/api/budget/stats', (req, res) => {
+    if (!budgetMonitor) {
+        res.status(503).json({ error: 'BudgetMonitor not initialized' });
+        return;
+    }
+    const sinceMs = req.query.since ? parseInt(req.query.since) : undefined;
+    res.json(budgetMonitor.getGlobalStats(sinceMs));
+});
+app.get('/api/budget/client/:clientId', (req, res) => {
+    if (!budgetMonitor) {
+        res.status(503).json({ error: 'BudgetMonitor not initialized' });
+        return;
+    }
+    const sinceMs = req.query.since ? parseInt(req.query.since) : undefined;
+    res.json({ clientId: req.params.clientId, cost24h: budgetMonitor.getClientCost(req.params.clientId, sinceMs) });
+});
+app.get('/api/budget/fallbacks', (req, res) => {
+    if (!budgetMonitor) {
+        res.status(503).json({ error: 'BudgetMonitor not initialized' });
+        return;
+    }
+    const sinceMs = req.query.since ? parseInt(req.query.since) : undefined;
+    res.json(budgetMonitor.getFallbackStats(sinceMs));
+});
+// =========================================================================
+// MISSION REGISTRY ROUTES (v1.11.0)
+// =========================================================================
+app.get('/api/missions/stats', (_req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    res.json(missionRegistry.getStats());
+});
+app.get('/api/missions/client/:clientId/stats', (req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    res.json(missionRegistry.getClientStats(req.params.clientId));
+});
+app.get('/api/missions/active/:clientId', (req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    res.json({ missions: missionRegistry.listActive(req.params.clientId) });
+});
+app.get('/api/missions/history/:clientId', (req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    const limit = parseInt(req.query.limit) || 50;
+    res.json({ missions: missionRegistry.listByClient(req.params.clientId, limit) });
+});
+app.get('/api/missions/:id', (req, res) => {
+    if (!missionRegistry) {
+        res.status(503).json({ error: 'MissionRegistry not initialized' });
+        return;
+    }
+    const mission = missionRegistry.get(req.params.id);
+    if (!mission) {
+        res.status(404).json({ error: 'Mission not found' });
+        return;
+    }
+    res.json(mission);
+});
+// Analytics Export Router (v1.11.0)
+try {
+    const exportDbPath = process.env.CHROMADON_ANALYTICS_DB
+        || path.join(process.env.APPDATA || process.env.HOME || '.', '.chromadon', 'analytics.db');
+    app.use('/api/export', (0, export_1.createExportRouter)(exportDbPath));
+}
+catch { /* non-critical */ }
 // Apply error handler
 app.use(errorHandler);
 // Cleanup on shutdown
@@ -4057,6 +4252,16 @@ async function cleanup() {
         catch (e) {
             // Ignore
         }
+    }
+    // Stop SessionWarmup
+    if (sessionWarmup) {
+        sessionWarmup.stop();
+        console.log('[CHROMADON] SessionWarmup stopped');
+    }
+    // Stop PulseBeacon
+    if (pulseBeacon) {
+        pulseBeacon.stop();
+        console.log('[CHROMADON] PulseBeacon stopped');
     }
     // Stop TheScheduler
     if (theScheduler) {
@@ -4129,6 +4334,45 @@ async function startServer() {
             }
             catch (dbError) {
                 console.log(`[CHROMADON] ⚠️ Analytics DB init failed: ${dbError.message}`);
+            }
+            // Initialize MissionRegistry (shares analytics.db path)
+            try {
+                const missionDbPath = process.env.CHROMADON_ANALYTICS_DB
+                    || path.join(process.env.APPDATA || process.env.HOME || '.', '.chromadon', 'analytics.db');
+                missionRegistry = new mission_1.MissionRegistry(missionDbPath);
+                const zombies = missionRegistry.failZombies();
+                console.log(`[CHROMADON] ✅ MissionRegistry initialized${zombies > 0 ? ` (${zombies} zombies cleaned)` : ''}`);
+            }
+            catch (mrError) {
+                console.log(`[CHROMADON] ⚠️ MissionRegistry init failed: ${mrError.message}`);
+            }
+            // Initialize BudgetMonitor (shares analytics.db path)
+            try {
+                const budgetDbPath = process.env.CHROMADON_ANALYTICS_DB
+                    || path.join(process.env.APPDATA || process.env.HOME || '.', '.chromadon', 'analytics.db');
+                budgetMonitor = new budget_1.BudgetMonitor(budgetDbPath);
+                console.log('[CHROMADON] ✅ BudgetMonitor initialized');
+            }
+            catch (bmError) {
+                console.log(`[CHROMADON] ⚠️ BudgetMonitor init failed: ${bmError.message}`);
+            }
+            // Initialize PulseBeacon
+            try {
+                pulseBeacon = new monitoring_2.PulseBeacon(missionRegistry, budgetMonitor);
+                pulseBeacon.start();
+                console.log('[CHROMADON] ✅ PulseBeacon started');
+            }
+            catch (pbError) {
+                console.log(`[CHROMADON] ⚠️ PulseBeacon init failed: ${pbError.message}`);
+            }
+            // Initialize SessionWarmup
+            try {
+                sessionWarmup = new session_1.SessionWarmup(missionRegistry);
+                sessionWarmup.start();
+                console.log('[CHROMADON] ✅ SessionWarmup started');
+            }
+            catch (swError) {
+                console.log(`[CHROMADON] ⚠️ SessionWarmup init failed: ${swError.message}`);
             }
             // Initialize YouTube Token Manager
             try {
@@ -4262,6 +4506,8 @@ async function startServer() {
                 }
             } : async () => '');
             orchestratorInitError = null; // Clear any previous error
+            if (budgetMonitor)
+                orchestrator.setBudgetMonitor(budgetMonitor);
             console.log('[CHROMADON] ✅ Agentic Orchestrator initialized (Claude tool-use mode)');
             if (analyticsDb)
                 console.log('[CHROMADON]    - 8 Analytics tools registered');

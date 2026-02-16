@@ -67,6 +67,7 @@ class AgenticOrchestrator {
     getClientKnowledge;
     getLinkedPlatforms;
     hasAnthropicKey;
+    _budgetMonitor = null;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge, getLinkedPlatforms) {
         this.hasAnthropicKey = apiKey !== 'gemini-only-no-anthropic-fallback';
         this.client = new sdk_1.default({ apiKey: this.hasAnthropicKey ? apiKey : 'dummy', timeout: 120_000, maxRetries: 0 });
@@ -92,6 +93,10 @@ class AgenticOrchestrator {
         this.getLinkedPlatforms = getLinkedPlatforms || null;
         // Prune expired sessions every 5 minutes
         this.pruneInterval = setInterval(() => this.pruneExpiredSessions(), 5 * 60 * 1000);
+    }
+    /** Inject BudgetMonitor for cost tracking (optional, set after construction) */
+    setBudgetMonitor(monitor) {
+        this._budgetMonitor = monitor;
     }
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
@@ -972,6 +977,20 @@ class AgenticOrchestrator {
         const totalCostUSD = (sessionInputTokens / 1_000_000) * finalInputCostPerM + (sessionOutputTokens / 1_000_000) * finalOutputCostPerM;
         const providerLabel = usingGemini ? 'Gemini' : 'Anthropic';
         console.log(`[COST] Session complete (${providerLabel}): ${loopCount} API calls, ${sessionInputTokens}in/${sessionOutputTokens}out, $${totalCostUSD.toFixed(4)}`);
+        // Record to BudgetMonitor
+        if (this._budgetMonitor) {
+            try {
+                this._budgetMonitor.recordUsage({
+                    clientId: session.clientId || 'system',
+                    model: usingGemini ? selectedModel : (usingGemini ? 'gemini-2.0-flash' : 'claude-haiku-4-5-20251001'),
+                    provider: usingGemini ? 'gemini' : 'anthropic',
+                    inputTokens: sessionInputTokens,
+                    outputTokens: sessionOutputTokens,
+                    costUsd: totalCostUSD,
+                });
+            }
+            catch { /* non-critical */ }
+        }
         if (!writer.isClosed()) {
             writer.writeEvent('done', {
                 apiCalls: loopCount,

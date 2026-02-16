@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.25.21 — 2026-02-16)
+## Recent Changes (v1.26.0 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.11.0 — Mega sprint: MissionRegistry, BudgetMonitor, PulseBeacon, API Security, Request ID, SessionWarmup, Diagnostics, ErrorChannel, Content Approval, Analytics Export, Semantic Embeddings. 15 new files, 15+ new REST endpoints | `resources/brain/dist/` |
+
+## Changes (v1.25.21 — 2026-02-16)
 
 | Change | File |
 |--------|------|

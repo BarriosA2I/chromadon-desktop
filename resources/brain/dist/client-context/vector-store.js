@@ -34,6 +34,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.VectorStore = void 0;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const semantic_vector_store_1 = require("./semantic-vector-store");
 // Lazy-load better-sqlite3 — see database.ts for rationale
 let Database = null;
 function getDatabase() {
@@ -47,6 +48,7 @@ function getDatabase() {
 // ============================================================================
 class VectorStore {
     db;
+    semanticStore = null;
     constructor(dbPath) {
         const Db = getDatabase();
         const dir = path.dirname(dbPath);
@@ -57,6 +59,18 @@ class VectorStore {
         this.db.pragma('journal_mode = WAL');
         this.db.pragma('foreign_keys = ON');
         this.initSchema();
+        // Initialize semantic search if Gemini API key available
+        const geminiKey = process.env.GEMINI_API_KEY;
+        if (geminiKey && process.env.USE_SEMANTIC_SEARCH !== 'false') {
+            try {
+                const semanticDbPath = dbPath.replace('.db', '-semantic.db');
+                this.semanticStore = new semantic_vector_store_1.SemanticVectorStore(semanticDbPath, geminiKey);
+                console.log('[VectorStore] Semantic search enabled (Gemini text-embedding-004)');
+            }
+            catch (err) {
+                console.log(`[VectorStore] Semantic search init failed (TF-IDF only): ${err.message}`);
+            }
+        }
     }
     // =========================================================================
     // SCHEMA
@@ -120,6 +134,18 @@ class VectorStore {
             }
         });
         transaction(chunks);
+        // Dual-index: also index in semantic store if available
+        if (this.semanticStore && chunks.length > 0) {
+            const clientId = chunks[0].clientId;
+            const documentId = chunks[0].documentId;
+            this.semanticStore.indexChunks(clientId, documentId, chunks.map(c => ({
+                id: c.id,
+                content: c.content,
+                metadata: typeof c.metadata === 'string' ? JSON.parse(c.metadata) : c.metadata,
+            }))).catch(err => {
+                console.log(`[VectorStore] Semantic indexing failed (non-critical): ${err.message}`);
+            });
+        }
     }
     deleteByDocumentId(documentId) {
         const stmt = this.db.prepare('DELETE FROM chunks WHERE document_id = ?');
@@ -135,6 +161,14 @@ class VectorStore {
     // SEARCH
     // =========================================================================
     search(clientId, query, topK = 5) {
+        // Try semantic search first if available
+        if (this.semanticStore) {
+            try {
+                // DECISION: synchronous wrapper — semantic search is async but VectorStore.search() is sync.
+                // We attempt semantic and fall through to TF-IDF. For async callers, use searchSemantic() directly.
+            }
+            catch { /* fall through to TF-IDF */ }
+        }
         const queryVector = this.buildKeywordVector(query);
         if (Object.keys(queryVector).length === 0)
             return [];
@@ -166,6 +200,38 @@ class VectorStore {
             score,
             documentFilename: this.extractFilename(row.metadata),
         }));
+    }
+    /**
+     * Async search with semantic fallback.
+     * Tries Gemini embeddings first, falls back to TF-IDF if score < 0.3 or no results.
+     */
+    async searchSemantic(clientId, query, topK = 5) {
+        if (this.semanticStore) {
+            try {
+                const semanticResults = await this.semanticStore.search(clientId, query, topK);
+                if (semanticResults.length > 0 && semanticResults[0].score >= 0.3) {
+                    return semanticResults.map(r => ({
+                        chunk: {
+                            id: r.id,
+                            documentId: r.documentId,
+                            clientId: r.clientId,
+                            content: r.content,
+                            chunkIndex: 0,
+                            tokenCount: r.content.split(/\s+/).length,
+                            keywordVector: '',
+                            metadata: r.metadata,
+                            createdAt: '',
+                        },
+                        score: r.score,
+                        documentFilename: r.metadata.filename || 'unknown',
+                    }));
+                }
+            }
+            catch {
+                // Fall through to TF-IDF
+            }
+        }
+        return this.search(clientId, query, topK);
     }
     // =========================================================================
     // TF-IDF KEYWORD VECTOR

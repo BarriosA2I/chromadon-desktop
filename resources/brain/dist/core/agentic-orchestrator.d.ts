@@ -59,7 +59,12 @@ export declare class AgenticOrchestrator {
     private getClientKnowledge;
     private getLinkedPlatforms;
     private hasAnthropicKey;
+    private _budgetMonitor;
     constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string, getClientKnowledge?: () => string | null, getLinkedPlatforms?: () => Promise<string> | string);
+    /** Inject BudgetMonitor for cost tracking (optional, set after construction) */
+    setBudgetMonitor(monitor: {
+        recordUsage: (entry: any) => void;
+    }): void;
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
      */

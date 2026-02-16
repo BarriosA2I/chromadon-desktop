@@ -20,6 +20,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CortexRouter = void 0;
 const event_bus_1 = require("../agents/event-bus");
 const uuid_1 = require("uuid");
+const error_channel_1 = require("./error-channel");
 // ============================================================================
 // URL RESOLUTION
 // ============================================================================
@@ -134,6 +135,7 @@ class CortexRouter {
                     }
                     catch (error) {
                         console.log('[CortexRouter] Cortex planning failed, falling back to monolithic:', error.message);
+                        error_channel_1.errorChannel.report('warning', 'CortexRouter', `Cortex planning failed: ${error.message}`);
                         return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
                     }
                 },
