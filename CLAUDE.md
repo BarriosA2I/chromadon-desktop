@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.25.15 — 2026-02-16)
+## Recent Changes (v1.25.16 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain crash-loop in packaged mode (`EPERM: mkdir` in Program Files) — multer upload dir and skills.json path used `process.cwd()` which is read-only. Now uses `CHROMADON_DATA_DIR` env var | `resources/brain/dist/` |
+| Updated: Brain dist v1.10.14 — includes CortexRouter fix + EPERM fix | `resources/brain/dist/` |
+
+## Changes (v1.25.15 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -258,5 +265,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.25.15
+**Version:** 1.25.16
 **Author:** Barrios A2I (Gary Barrios)

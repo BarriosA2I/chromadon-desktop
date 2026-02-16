@@ -3502,7 +3502,7 @@ app.get('/api/analytics/trinity', async (_req, res) => {
 // CLIENT CONTEXT ENDPOINTS
 // ============================================================================
 // Multer upload handler for document uploads
-const upload = (0, multer_1.default)({ dest: path.join(process.cwd(), 'data', 'uploads') });
+const upload = (0, multer_1.default)({ dest: path.join(process.env.CHROMADON_DATA_DIR || process.cwd(), 'data', 'uploads') });
 // --- Client Management ---
 app.get('/api/client-context/clients', (_req, res) => {
     try {
@@ -4150,7 +4150,7 @@ async function startServer() {
             const skillToolNames = new Set(skills_1.SKILL_TOOLS.map(t => t.name));
             try {
                 const skillDataDir = process.env.CHROMADON_DATA_DIR || process.env.USERPROFILE || process.env.HOME || '.';
-                const skillDefaultsPath = path.join(process.cwd(), 'skills.json');
+                const skillDefaultsPath = path.join(process.env.CHROMADON_DATA_DIR || process.cwd(), 'skills.json');
                 skillMemory = new skills_1.SkillMemory(skillDataDir, skillDefaultsPath);
                 skillExec = (0, skills_1.createSkillExecutor)(skillMemory);
                 console.log('[CHROMADON] ✅ Skill Memory initialized');
