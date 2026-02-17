@@ -279,14 +279,14 @@ function createObsExecutor(obsClient, desktopUrl) {
                         baseHeight: s.video?.baseHeight || 0,
                         outputWidth: s.video?.outputWidth || 0,
                         outputHeight: s.video?.outputHeight || 0,
-                        fps: s.video?.fpsNumerator || 0,
+                        fps: s.video?.fps || 0,
                     });
                     if (match) {
                         return `Current preset: ${match.name} (${match.platform})\n${match.description}`;
                     }
                     return [
                         'Current preset: custom (no matching preset)',
-                        `Video: ${s.video?.baseWidth}x${s.video?.baseHeight} → ${s.video?.outputWidth}x${s.video?.outputHeight} @ ${s.video?.fpsNumerator}fps`,
+                        `Video: ${s.video?.baseWidth}x${s.video?.baseHeight} → ${s.video?.outputWidth}x${s.video?.outputHeight} @ ${s.video?.fps}fps`,
                     ].join('\n');
                 }
                 case 'obs_create_custom_preset': {
@@ -308,7 +308,7 @@ function createObsExecutor(obsClient, desktopUrl) {
                             baseHeight: s.video?.baseHeight || 1080,
                             outputWidth: s.video?.outputWidth || 1920,
                             outputHeight: s.video?.outputHeight || 1080,
-                            fps: s.video?.fpsNumerator || 30,
+                            fps: s.video?.fps || 30,
                         },
                         stream: s.stream?.service ? {
                             service: s.stream.service,

@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.1 — 2026-02-17)
+## Recent Changes (v1.30.2 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.2 — `obs_get_current_preset` FPS field mismatch: read `fpsNumerator` but `getSettings()` stores it as `fps`. Preset matching and custom preset saving now work correctly | `resources/brain/dist/` |
+
+## Changes (v1.30.1 — 2026-02-17)
 
 | Change | File |
 |--------|------|
