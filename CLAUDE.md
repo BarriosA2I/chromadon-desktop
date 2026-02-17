@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.29.2 — 2026-02-17)
+## Recent Changes (v1.29.3 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.14.3 — Fixed Gemini 0-token responses for OBS tools: added `toolConfig.functionCallingConfig` with `mode: "ANY"` + `allowedFunctionNames` restricted to 19 OBS tools. OBS intent priority raised to 76 (above conversational). OBS tools now work on first API call | `resources/brain/dist/` |
+
+## Changes (v1.29.2 — 2026-02-17)
 
 | Change | File |
 |--------|------|
