@@ -48,6 +48,12 @@ export interface ScheduledTask {
     /** Batch grouping for multi-platform posts */
     batchId?: string;
     batchSequence?: number;
+    /** Whether this task is enabled (default true). Disabled tasks are skipped by the tick loop. */
+    enabled?: boolean;
+    /** Consecutive failure count for auto-disable logic (3 failures → auto-disable recurring tasks). */
+    consecutiveFailures?: number;
+    /** Template ID if created from a mission template. */
+    templateId?: string;
 }
 export interface SchedulerState {
     version: 1;

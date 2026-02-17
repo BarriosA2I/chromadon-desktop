@@ -58,10 +58,11 @@ export declare class AgenticOrchestrator {
     private getSkillsForPrompt;
     private getClientKnowledge;
     private getLinkedPlatforms;
+    private getOnboardingContext;
     private hasAnthropicKey;
     private anthropicDead;
     private _budgetMonitor;
-    constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string, getClientKnowledge?: () => string | null, getLinkedPlatforms?: () => Promise<string> | string);
+    constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string, getClientKnowledge?: () => string | null, getLinkedPlatforms?: () => Promise<string> | string, getOnboardingContext?: () => string | null);
     /** Inject BudgetMonitor for cost tracking (optional, set after construction) */
     setBudgetMonitor(monitor: {
         recordUsage: (entry: any) => void;

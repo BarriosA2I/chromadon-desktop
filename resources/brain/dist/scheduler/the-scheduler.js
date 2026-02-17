@@ -56,15 +56,29 @@ class TheScheduler {
     tickInterval = null;
     isExecuting = false;
     destroyed = false;
-    constructor(orchestrator, contextFactory, desktopUrl, socialMonitor, config) {
+    /** External busy-check callback — returns true if orchestrator is processing a user chat (Fix #1: Busy Lock) */
+    isBusy;
+    constructor(orchestrator, contextFactory, desktopUrl, socialMonitor, config, isBusy) {
         this.orchestrator = orchestrator;
         this.contextFactory = contextFactory;
         this.desktopUrl = desktopUrl;
         this.socialMonitor = socialMonitor;
         this.config = { ...DEFAULT_CONFIG, ...config };
         this.persistence = new scheduler_persistence_1.SchedulerPersistence();
+        this.isBusy = isBusy;
         // Load persisted state or create fresh
         this.state = this.persistence.loadState() || (0, scheduler_types_1.createEmptyState)();
+        // Missed-run detection: tasks >5min overdue with SCHEDULED status → mark PENDING for immediate execution
+        const now = Date.now();
+        const missedRuns = this.state.tasks.filter(t => t.status === scheduler_types_1.TaskStatus.SCHEDULED &&
+            (t.enabled !== false) &&
+            new Date(t.scheduledTimeUtc).getTime() < now - 5 * 60_000);
+        if (missedRuns.length > 0) {
+            console.log(`[TheScheduler] ${missedRuns.length} missed run(s) detected — marking PENDING for immediate execution`);
+            for (const t of missedRuns)
+                t.status = scheduler_types_1.TaskStatus.PENDING;
+            this.persist();
+        }
         console.log(`[TheScheduler] Initialized with ${this.state.tasks.length} persisted task(s)`);
     }
     // ===========================================================================
@@ -101,8 +115,12 @@ class TheScheduler {
     tick() {
         if (this.isExecuting || this.destroyed)
             return;
+        // Fix #1: Busy Lock — defer if user is chatting (browser collision prevention)
+        if (this.isBusy?.())
+            return;
         const now = Date.now();
         const due = this.state.tasks.filter(t => (t.status === scheduler_types_1.TaskStatus.SCHEDULED || t.status === scheduler_types_1.TaskStatus.PENDING) &&
+            (t.enabled !== false) &&
             new Date(t.scheduledTimeUtc).getTime() <= now);
         if (due.length === 0)
             return; // ZERO COST — nothing to do
@@ -172,6 +190,7 @@ class TheScheduler {
             task.status = scheduler_types_1.TaskStatus.COMPLETED;
             task.completedAt = new Date().toISOString();
             task.executionDurationMs = Date.now() - new Date(task.executedAt).getTime();
+            task.consecutiveFailures = 0; // Reset on success
             this.state.stats.totalCompleted++;
             console.log(`[TheScheduler] Task ${task.id} completed in ${task.executionDurationMs}ms`);
             // 5. Handle recurrence
@@ -187,12 +206,18 @@ class TheScheduler {
     failTask(task, error) {
         task.retryCount++;
         task.lastError = error;
-        console.error(`[TheScheduler] Task ${task.id} failed (attempt ${task.retryCount}/${task.maxRetries}): ${error}`);
+        task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
+        console.error(`[TheScheduler] Task ${task.id} failed (attempt ${task.retryCount}/${task.maxRetries}, consecutive: ${task.consecutiveFailures}): ${error}`);
         if (task.retryCount >= task.maxRetries) {
             task.status = scheduler_types_1.TaskStatus.FAILED;
             task.completedAt = new Date().toISOString();
             this.state.stats.totalFailed++;
             console.error(`[TheScheduler] Task ${task.id} max retries exhausted — marking FAILED`);
+            // Auto-disable after 3 consecutive failures on recurring tasks
+            if (task.consecutiveFailures >= 3 && task.recurrence !== 'none') {
+                task.enabled = false;
+                console.error(`[TheScheduler] Task ${task.id} auto-disabled after ${task.consecutiveFailures} consecutive failures`);
+            }
         }
         else {
             // Reschedule retry 2 minutes from now
@@ -342,6 +367,19 @@ class TheScheduler {
             this.persist();
         console.log(`[TheScheduler] Bulk cancel: ${cancelled} cancelled, ${failed.length} failed (executing)`);
         return { cancelled, failed };
+    }
+    toggleTask(taskId, enabled) {
+        const task = this.state.tasks.find(t => t.id === taskId);
+        if (!task)
+            return false;
+        task.enabled = enabled;
+        if (enabled) {
+            // Reset consecutive failures when re-enabled
+            task.consecutiveFailures = 0;
+        }
+        this.persist();
+        console.log(`[TheScheduler] Task ${taskId} ${enabled ? 'enabled' : 'disabled'}`);
+        return true;
     }
     rescheduleTask(taskId, newTimeUtc) {
         const task = this.state.tasks.find(t => t.id === taskId);

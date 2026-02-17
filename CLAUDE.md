@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.27.0 — 2026-02-16)
+## Recent Changes (v1.28.0 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.13.0 — CLIENT EXPERIENCE ENGINE: Activity Log (3 tools, JSONL daily journal with 30-day retention + context guard), Guided Onboarding (3 tools, 5-step flow injected into system prompt), Mission Templates (4 tools, 10 pre-built templates with dynamic file-based loading), Proof of Work (2 tools, evidence packages with 30-day/1GB retention), Scheduler enhancements (busy lock, schedule_toggle, auto-disable after 3 failures, missed-run detection). 13 new tools, total 105 | `resources/brain/dist/` |
+
+## Changes (v1.27.0 — 2026-02-16)
 
 | Change | File |
 |--------|------|
@@ -357,5 +363,5 @@ CHROMADON Desktop v1.0
 ---
 
 **Last Updated:** 2026-02-16
-**Version:** 1.26.1
+**Version:** 1.28.0
 **Author:** Barrios A2I (Gary Barrios)

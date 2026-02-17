@@ -145,6 +145,24 @@ exports.SCHEDULER_TOOLS = [
         },
     },
     {
+        name: 'schedule_toggle',
+        description: 'Enable or disable a scheduled task without deleting it. Disabled tasks are skipped by the scheduler but preserve their configuration. Useful for pausing recurring tasks. Tasks auto-disable after 3 consecutive failures — re-enable with this tool after fixing the issue.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                task_id: {
+                    type: 'string',
+                    description: 'The task ID to toggle',
+                },
+                enabled: {
+                    type: 'boolean',
+                    description: 'true to enable, false to disable',
+                },
+            },
+            required: ['task_id', 'enabled'],
+        },
+    },
+    {
         name: 'reschedule_task',
         description: 'Change the time of a scheduled task. Only works on tasks in "scheduled" status.',
         input_schema: {

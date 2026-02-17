@@ -7,7 +7,7 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildCompactSystemPrompt = exports.buildOrchestratorSystemPrompt = void 0;
-function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge, linkedPlatforms) {
+function buildOrchestratorSystemPrompt(pageContext, skillsJson, clientKnowledge, linkedPlatforms, onboardingContext) {
     const pageSection = pageContext
         ? `\nCURRENT PAGE:\nURL: ${pageContext.url}\nTitle: ${pageContext.title}${pageContext.interactiveElements?.length
             ? `\nInteractive Elements: ${pageContext.interactiveElements.length} found`
@@ -132,6 +132,29 @@ When the user mentions their business in conversation ("I run a fitness studio",
 1. Call client_save_info with the appropriate field and value to persist it.
 2. Use this business context when generating content, even without a formal client profile.
 3. Before writing content, call client_get_voice for brand consistency (if available).
+
+RULE #1F — ACTIVITY LOGGING:
+After completing any significant action (posting, scheduling, researching, completing tasks), call activity_log with action category, details, and status. Creates a daily activity journal.
+Do NOT log trivial actions (clicks, scrolls, get_page_context). Only log outcomes.
+Categories: post_published, post_scheduled, mission_completed, research_done, skill_learned, monitoring_alert, onboarding_step, template_used, error_occurred.
+
+RULE #1G — GUIDED ONBOARDING:
+${onboardingContext ? onboardingContext : 'Onboarding is complete. No onboarding actions needed.'}
+
+RULE #1H — MISSION TEMPLATES:
+When the user asks "what can you do", "help me get started", or describes a goal, call mission_suggest_templates with their message.
+For "run template X" or "use the posting template", use mission_from_template with the template_id and any required variables.
+Templates can be scheduled for later with the scheduled_time parameter. Use mission_list_templates to show all available templates.
+
+RULE #1I — PROOF OF WORK:
+After completing any multi-step browser mission, call proof_generate with the missionId and a brief summary of what was accomplished.
+Present the proof summary to the user. When the user asks "show me what you did" or "proof of work", call proof_get with the missionId.
+
+RULE #1J — SCHEDULER MANAGEMENT:
+Use schedule_toggle to enable/disable recurring tasks without deleting them.
+Tasks auto-disable after 3 consecutive failures. User can re-enable after fixing the issue.
+When the user says "pause my daily posts" or "disable that task", use schedule_toggle with enabled: false.
+When the user says "resume" or "re-enable", use schedule_toggle with enabled: true.
 
 ACT → VERIFY → DECIDE:
 Every tool result includes automatic verification data. You MUST read it before deciding your next action.
@@ -629,6 +652,10 @@ SKILL MEMORY: Before ANY website task, call skills_lookup with the domain. Follo
 VISUAL VERIFY: After critical actions (posting, form submit, payment), call visual_verify to confirm success.
 POLICY CHECK: Before consequential actions (delete account, submit payment, publish), call policy_check. FORBIDDEN=stop, RISKY=verify after, SAFE=proceed.
 CLIENT AUTO-CAPTURE: When user mentions their business, call client_save_info to persist it.
+ACTIVITY LOG: After significant outcomes (posting, scheduling, research, errors), call activity_log. Skip trivial actions.
+TEMPLATES: When user asks "what can you do" or describes a goal, call mission_suggest_templates. Use mission_from_template for execution.
+PROOF: After multi-step missions, call proof_generate. When user asks "show me what you did", call proof_get.
+SCHEDULER TOGGLE: Use schedule_toggle to enable/disable tasks. Tasks auto-disable after 3 failures.
 
 RULES:
 - ACT IMMEDIATELY. Never explain what you're about to do. Just call the tool.

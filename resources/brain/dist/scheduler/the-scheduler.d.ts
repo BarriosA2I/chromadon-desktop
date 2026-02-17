@@ -44,10 +44,12 @@ export declare class TheScheduler {
     private tickInterval;
     private isExecuting;
     private destroyed;
+    /** External busy-check callback — returns true if orchestrator is processing a user chat (Fix #1: Busy Lock) */
+    private readonly isBusy?;
     constructor(orchestrator: AgenticOrchestrator, contextFactory: () => Promise<{
         context: any;
         pageContext?: any;
-    }>, desktopUrl: string, socialMonitor?: SocialMonitor, config?: Partial<SchedulerConfig>);
+    }>, desktopUrl: string, socialMonitor?: SocialMonitor, config?: Partial<SchedulerConfig>, isBusy?: () => boolean);
     start(): void;
     stop(): void;
     destroy(): void;
@@ -80,6 +82,7 @@ export declare class TheScheduler {
         cancelled: number;
         failed: string[];
     };
+    toggleTask(taskId: string, enabled: boolean): boolean;
     rescheduleTask(taskId: string, newTimeUtc: string): boolean;
     getTasks(filter?: {
         status?: string;

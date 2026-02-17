@@ -293,6 +293,16 @@ function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClient
                 return msg;
             }
             // ==================================================================
+            // TOGGLE (enable/disable)
+            // ==================================================================
+            case 'schedule_toggle': {
+                const ok = scheduler.toggleTask(input.task_id, input.enabled);
+                if (ok) {
+                    return `Task ${input.task_id} ${input.enabled ? 'enabled' : 'disabled'}.`;
+                }
+                return `Could not toggle task ${input.task_id}. It may not exist.`;
+            }
+            // ==================================================================
             // RESCHEDULE
             // ==================================================================
             case 'reschedule_task': {

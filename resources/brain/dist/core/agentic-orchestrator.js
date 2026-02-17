@@ -66,10 +66,11 @@ class AgenticOrchestrator {
     getSkillsForPrompt;
     getClientKnowledge;
     getLinkedPlatforms;
+    getOnboardingContext;
     hasAnthropicKey;
     anthropicDead = false; // Set true when Anthropic returns billing/auth errors — prevents futile bounce loops
     _budgetMonitor = null;
-    constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge, getLinkedPlatforms) {
+    constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge, getLinkedPlatforms, getOnboardingContext) {
         this.hasAnthropicKey = apiKey !== 'gemini-only-no-anthropic-fallback';
         this.client = new sdk_1.default({ apiKey: this.hasAnthropicKey ? apiKey : 'dummy', timeout: 120_000, maxRetries: 0 });
         // Gemini as primary provider (Anthropic as fallback)
@@ -92,6 +93,7 @@ class AgenticOrchestrator {
         this.getSkillsForPrompt = getSkillsForPrompt || null;
         this.getClientKnowledge = getClientKnowledge || null;
         this.getLinkedPlatforms = getLinkedPlatforms || null;
+        this.getOnboardingContext = getOnboardingContext || null;
         // Prune expired sessions every 5 minutes
         this.pruneInterval = setInterval(() => this.pruneExpiredSessions(), 5 * 60 * 1000);
     }
@@ -160,7 +162,8 @@ class AgenticOrchestrator {
             linkedPlatforms = this.getLinkedPlatforms ? await this.getLinkedPlatforms() : '';
         }
         catch { /* ignore — non-critical */ }
-        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson, clientKnowledge || undefined, linkedPlatforms || undefined);
+        const onboardingContext = this.getOnboardingContext ? this.getOnboardingContext() : null;
+        const systemPrompt = (0, orchestrator_system_prompt_1.buildOrchestratorSystemPrompt)(pageContext, skillsJson, clientKnowledge || undefined, linkedPlatforms || undefined, onboardingContext || undefined);
         // Inject video tracking blacklist so AI knows what's already done
         let finalSystemPrompt = systemPrompt;
         if (session.videoTracker.allVideoIds.length > 0) {

@@ -79,6 +79,11 @@ const obs_1 = require("../obs");
 const monitoring_1 = require("../monitoring");
 // THE_SCHEDULER imports
 const scheduler_1 = require("../scheduler");
+// v1.13.0 — Client Experience Engine modules
+const activity_1 = require("../activity");
+const onboarding_1 = require("../onboarding");
+const templates_1 = require("../templates");
+const proof_1 = require("../proof");
 // Trinity Research imports
 const trinity_1 = require("../trinity");
 // Circuit Breaker for Desktop API calls
@@ -173,6 +178,12 @@ let pulseBeacon = null;
 let sessionWarmup = null;
 // Skill Memory (hoisted for diagnostics access)
 let skillMemory = null;
+// v1.13.0 — Client Experience Engine state
+let activityLog = null;
+let onboardingState = null;
+let templateLoader = null;
+let proofGenerator = null;
+let isProcessingChat = false; // Busy lock flag for scheduler (Fix #1)
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -2215,6 +2226,7 @@ app.post('/api/orchestrator/chat', async (req, res) => {
     res.on('close', () => {
         closed = true;
     });
+    isProcessingChat = true; // Fix #1: Busy lock — scheduler defers while user is chatting
     try {
         // CortexRouter: agent-first routing (simple commands → agents, copyright → monolithic, complex → TheCortex)
         await initializeCortexRouter();
@@ -2232,6 +2244,7 @@ app.post('/api/orchestrator/chat', async (req, res) => {
         }
     }
     finally {
+        isProcessingChat = false; // Fix #1: Release busy lock
         clearInterval(keepAliveInterval);
         activeAbortControllers.delete(trackingId);
         if (!closed) {
@@ -4159,6 +4172,12 @@ app.get('/api/system/diagnostics', (_req, res) => {
         budget: budgetMonitor?.getGlobalStats() || null,
         sessions: sessionWarmup?.getStatuses() || null,
         beacon: pulseBeacon?.getStatus() || null,
+        clientExperience: {
+            activityLog: activityLog ? { todayEntries: activityLog.getToday().length } : null,
+            onboarding: onboardingState ? { complete: onboardingState.isComplete() } : null,
+            templates: templateLoader ? { count: templateLoader.loadTemplates().length } : null,
+            proof: !!proofGenerator,
+        },
         nodeVersion: process.version,
         platform: process.platform,
         arch: process.arch,
@@ -4455,6 +4474,40 @@ async function startServer() {
             catch (err) {
                 console.log(`[CHROMADON] ⚠️ Client Context Layer init failed (non-critical): ${err.message}`);
             }
+            // v1.13.0 — Initialize Client Experience Engine modules
+            try {
+                activityLog = new activity_1.ActivityLog();
+                activityLog.pruneOldFiles();
+                console.log('[CHROMADON] ✅ Activity Log initialized (JSONL, 30-day retention)');
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ Activity Log init failed (non-critical): ${err.message}`);
+            }
+            try {
+                onboardingState = new onboarding_1.OnboardingStatePersistence();
+                const complete = onboardingState.isComplete();
+                console.log(`[CHROMADON] ✅ Onboarding State initialized (${complete ? 'complete' : 'in progress'})`);
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ Onboarding State init failed (non-critical): ${err.message}`);
+            }
+            try {
+                templateLoader = new templates_1.TemplateLoader();
+                templateLoader.ensureDefaults();
+                const count = templateLoader.loadTemplates().length;
+                console.log(`[CHROMADON] ✅ Template Loader initialized (${count} templates from file)`);
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ Template Loader init failed (non-critical): ${err.message}`);
+            }
+            try {
+                proofGenerator = new proof_1.ProofGenerator(CHROMADON_DESKTOP_URL);
+                const pruned = proofGenerator.pruneOldProofs();
+                console.log(`[CHROMADON] ✅ Proof Generator initialized (30-day/1GB retention${pruned.deletedByAge + pruned.deletedBySize > 0 ? `, pruned ${pruned.deletedByAge + pruned.deletedBySize}` : ''})`);
+            }
+            catch (err) {
+                console.log(`[CHROMADON] ⚠️ Proof Generator init failed (non-critical): ${err.message}`);
+            }
             // Initialize OBS Studio client (non-blocking — server starts even if OBS is offline)
             let obsExec = null;
             const obsToolNames = new Set(obs_1.OBS_TOOLS.map(t => t.name));
@@ -4489,6 +4542,10 @@ async function startServer() {
                 ...(trinityExec ? [...trinity_1.TRINITY_TOOLS, ...trinity_1.TRINITY_INTELLIGENCE_TOOLS] : []),
                 ...autonomy_1.VISUAL_VERIFY_TOOLS,
                 ...autonomy_1.POLICY_TOOLS,
+                ...(activityLog ? activity_1.ACTIVITY_TOOLS : []),
+                ...(onboardingState ? onboarding_1.ONBOARDING_TOOLS : []),
+                ...(templateLoader ? templates_1.TEMPLATE_TOOLS : []),
+                ...(proofGenerator && activityLog ? proof_1.PROOF_TOOLS : []),
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
@@ -4502,6 +4559,11 @@ async function startServer() {
             const visualVerifyExec = (0, autonomy_1.createVisualVerifyExecutor)(CHROMADON_DESKTOP_URL, activeTabRef);
             // Scheduler executor — initialized after TheScheduler (see below). Uses a late-binding ref.
             let schedulerExec = null;
+            // v1.13.0 — Client Experience Engine executors
+            const activityExec = activityLog ? (0, activity_1.createActivityExecutor)(activityLog) : null;
+            const onboardingExec = onboardingState ? (0, onboarding_1.createOnboardingExecutor)(onboardingState) : null;
+            let templateExec = null; // Late-bound after TheScheduler
+            const proofExec = (proofGenerator && activityLog) ? (0, proof_1.createProofExecutor)(proofGenerator, activityLog) : null;
             combinedExecutor = async (toolName, input) => {
                 // Scheduler tools — route BEFORE marketing (scheduler replaces schedule_post/get_scheduled_posts)
                 if (scheduler_1.SCHEDULER_TOOL_NAMES.has(toolName) && schedulerExec)
@@ -4520,6 +4582,14 @@ async function startServer() {
                     return policyExec(toolName, input);
                 if (autonomy_1.VISUAL_VERIFY_TOOL_NAMES.has(toolName))
                     return visualVerifyExec(toolName, input);
+                if (activity_1.ACTIVITY_TOOL_NAMES.has(toolName) && activityExec)
+                    return activityExec(toolName, input);
+                if (onboarding_1.ONBOARDING_TOOL_NAMES.has(toolName) && onboardingExec)
+                    return onboardingExec(toolName, input);
+                if (templates_1.TEMPLATE_TOOL_NAMES.has(toolName) && templateExec)
+                    return templateExec(toolName, input);
+                if (proof_1.PROOF_TOOL_NAMES.has(toolName) && proofExec)
+                    return proofExec(toolName, input);
                 if (clientContextExec?.canHandle(toolName))
                     return clientContextExec.execute(toolName, input);
                 if (skillExec && skillToolNames.has(toolName))
@@ -4550,7 +4620,9 @@ async function startServer() {
                 catch {
                     return '';
                 }
-            } : async () => '');
+            } : async () => '', 
+            // Onboarding context — injected into system prompt when incomplete, null when done (zero tokens)
+            onboardingState ? () => onboardingState.getPromptContext() : () => null);
             orchestratorInitError = null; // Clear any previous error
             if (budgetMonitor)
                 orchestrator.setBudgetMonitor(budgetMonitor);
@@ -4570,6 +4642,10 @@ async function startServer() {
                 console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
             if (trinityExec)
                 console.log(`[CHROMADON]    - ${trinity_1.TRINITY_TOOLS.length + trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} Trinity tools registered (${trinity_1.TRINITY_TOOLS.length} research + ${trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} intelligence)`);
+            // v1.13.0 Client Experience Engine tools
+            const ceToolCount = (activityLog ? activity_1.ACTIVITY_TOOLS.length : 0) + (onboardingState ? onboarding_1.ONBOARDING_TOOLS.length : 0) + (templateLoader ? templates_1.TEMPLATE_TOOLS.length : 0) + (proofGenerator && activityLog ? proof_1.PROOF_TOOLS.length : 0);
+            if (ceToolCount > 0)
+                console.log(`[CHROMADON]    - ${ceToolCount} Client Experience tools (activity: ${activityLog ? activity_1.ACTIVITY_TOOLS.length : 0}, onboarding: ${onboardingState ? onboarding_1.ONBOARDING_TOOLS.length : 0}, templates: ${templateLoader ? templates_1.TEMPLATE_TOOLS.length : 0}, proof: ${proofGenerator && activityLog ? proof_1.PROOF_TOOLS.length : 0})`);
             // Initialize Social Overlord (queue execution engine)
             try {
                 socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);
@@ -4620,7 +4696,8 @@ async function startServer() {
             }
             // Initialize THE_SCHEDULER (Agent 0.2) — zero-cost when idle
             try {
-                theScheduler = new scheduler_1.TheScheduler(orchestrator, buildExecutionContext, CHROMADON_DESKTOP_URL, socialMonitor || undefined);
+                theScheduler = new scheduler_1.TheScheduler(orchestrator, buildExecutionContext, CHROMADON_DESKTOP_URL, socialMonitor || undefined, undefined, // config — use defaults (10s tick, 1 concurrent)
+                () => isProcessingChat);
                 schedulerExec = (0, scheduler_1.createSchedulerExecutor)(theScheduler, desktopAvailable ? async () => {
                     try {
                         const resp = await fetch(`${CHROMADON_DESKTOP_URL}/sessions`, { signal: AbortSignal.timeout(2000) });
@@ -4648,9 +4725,18 @@ async function startServer() {
                 theScheduler.start();
                 const status = theScheduler.getStatus();
                 console.log(`[CHROMADON] ✅ TheScheduler initialized + STARTED (${status.pendingCount} pending task(s))`);
+                // Late-bind template executor now that TheScheduler exists
+                if (templateLoader) {
+                    templateExec = (0, templates_1.createTemplateExecutor)(templateLoader, theScheduler);
+                    console.log('[CHROMADON]    - Template executor bound to TheScheduler');
+                }
             }
             catch (err) {
                 console.log(`[CHROMADON] ⚠️ TheScheduler init failed (non-critical): ${err.message}`);
+                // Template executor still works without scheduler (no scheduling, immediate execution only)
+                if (templateLoader) {
+                    templateExec = (0, templates_1.createTemplateExecutor)(templateLoader);
+                }
             }
         }
         catch (error) {
@@ -4686,7 +4772,7 @@ async function startServer() {
                         catch {
                             return '';
                         }
-                    } : async () => '');
+                    } : async () => '', onboardingState ? () => onboardingState.getPromptContext() : () => null);
                     orchestratorInitError = null;
                     console.log(`[CHROMADON] ✅ Orchestrator initialized on retry attempt ${attempt}`);
                     break;

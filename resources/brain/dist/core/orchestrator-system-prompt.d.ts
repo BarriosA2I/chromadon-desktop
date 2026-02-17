@@ -5,7 +5,7 @@
  * @author Barrios A2I
  */
 import type { PageContext } from './ai-engine-v3';
-export declare function buildOrchestratorSystemPrompt(pageContext?: PageContext, skillsJson?: string, clientKnowledge?: string, linkedPlatforms?: string): string;
+export declare function buildOrchestratorSystemPrompt(pageContext?: PageContext, skillsJson?: string, clientKnowledge?: string, linkedPlatforms?: string, onboardingContext?: string): string;
 /**
  * Compact system prompt for FAST tier tasks (~500 tokens vs ~40K).
  * Used for simple browser actions (click, navigate, scroll, etc.)
