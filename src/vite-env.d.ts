@@ -172,6 +172,7 @@ interface Window {
     settingsValidateApiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; warning?: string; error?: string }>
     settingsRemoveApiKey: () => Promise<{ success: boolean; error?: string }>
     settingsGetBrainStatus: () => Promise<{ isRunning: boolean; pid: number | null }>
+    onBrainStatus: (callback: (status: { running: boolean; stage?: string; message?: string; error?: string | null; restarting?: boolean; attempt?: number; maxAttempts?: number }) => void) => (() => void)
 
     // Gemini Settings API
     settingsGetGeminiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
