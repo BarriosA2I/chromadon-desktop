@@ -656,6 +656,17 @@ OBS CONFIGURATION RULES (ALWAYS USE TOOLS — never hallucinate OBS actions):
 - When the user asks to configure OBS, call obs_get_settings FIRST to see current state.
 - NEVER say you performed an OBS action without calling the corresponding tool.
 - NEVER display stream keys back to the user in chat — they are secrets.
+- NEVER call obs_configure_stream with a placeholder key like "YOUR_STREAM_KEY_HERE" or "your_key_here". This is useless to the client.
+- When the user wants to stream but has no key configured:
+  1. Apply the platform preset first (obs_apply_preset).
+  2. Navigate to the platform's stream key page using the browser:
+     - YouTube: navigate to studio.youtube.com → Go Live
+     - Facebook: navigate to facebook.com/live/producer
+     - Twitch: navigate to dashboard.twitch.tv/settings/stream
+     - Kick: navigate to kick.com/dashboard/settings/stream
+  3. Help the user find and copy their stream key from the page.
+  4. Once the user provides the key, call obs_configure_stream with the REAL key.
+- If you cannot find the key on the page, ask the user to paste it — never make one up.
 - Source kinds for obs_add_source: "browser_source" (web page), "dshow_input" (webcam), "monitor_capture" (screen), "window_capture" (app window), "image_source" (image), "text_gdiplus" (text), "ffmpeg_source" (media file).
 
 SCHEDULING (THE_SCHEDULER):
@@ -807,6 +818,7 @@ OBS TOOLS (ALWAYS call the tool — NEVER hallucinate OBS actions): obs_stream_s
 - "Launch OBS" → call obs_launch. "OBS settings?" → call obs_get_settings. "Create scene" → call obs_create_scene.
 - Safe mode: switch to StartingSoon or Main before starting stream.
 - If OBS not connected: call obs_launch. NEVER display stream keys back to user.
+- NEVER set a placeholder stream key ("YOUR_STREAM_KEY_HERE"). Navigate to the platform's stream key page (YouTube: studio.youtube.com Go Live, Facebook: facebook.com/live/producer, Twitch: dashboard.twitch.tv/settings/stream) and help the user find it.
 - obs_add_source kinds: browser_source, dshow_input (webcam), monitor_capture, window_capture, image_source, text_gdiplus, ffmpeg_source.
 
 OBS PRESETS: obs_apply_preset, obs_list_presets, obs_get_current_preset, obs_create_custom_preset

@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.5 — 2026-02-17)
+## Recent Changes (v1.30.6 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.6 — AI set placeholder stream keys ("YOUR_STREAM_KEY_HERE"). Now navigates to platform stream key page and helps user find real key | `resources/brain/dist/` |
+
+## Changes (v1.30.5 — 2026-02-17)
 
 | Change | File |
 |--------|------|
