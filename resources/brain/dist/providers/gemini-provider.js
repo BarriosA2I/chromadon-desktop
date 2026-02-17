@@ -344,10 +344,21 @@ class GeminiProvider {
             // Convert formats
             const geminiTools = convertToolsToGemini(params.tools);
             const geminiContents = convertMessagesToGemini(params.messages);
+            // Build toolConfig if specified (e.g. mode: "ANY" forces function calling)
+            let toolConfig = undefined;
+            if (params.toolConfig && geminiTools.length > 0) {
+                toolConfig = {
+                    functionCallingConfig: {
+                        ...(params.toolConfig.mode ? { mode: params.toolConfig.mode } : {}),
+                        ...(params.toolConfig.allowedFunctionNames ? { allowedFunctionNames: params.toolConfig.allowedFunctionNames } : {}),
+                    },
+                };
+            }
             // Start streaming
             const streamResult = await model.generateContentStream({
                 contents: geminiContents,
                 tools: geminiTools.length > 0 ? geminiTools : undefined,
+                toolConfig,
             });
             // Accumulate all parts for finalMessage
             const allParts = [];

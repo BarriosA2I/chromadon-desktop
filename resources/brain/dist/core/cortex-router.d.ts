@@ -8,6 +8,7 @@
  *   1. Copyright workflows (100) → monolithic (VideoTracker + auto-continue)
  *   2. Simple commands (90) → direct agent dispatch via EventBus (no LLM)
  *   3. YouTube API tasks (80) → YouTubeToolBridge (no LLM, ~200ms)
+ *   3.4. OBS intent (76) → monolithic (forceToolCall + OBS tools only)
  *   3.5. Conversational/status (75) → monolithic orchestrator (greetings, questions)
  *   3.6. Social media tasks (70) → SocialMediaToolBridge → SocialOverlord (~15-20s)
  *   3.7. Browser navigation (65) → monolithic orchestrator (multi-platform, alt verbs)
@@ -71,6 +72,7 @@ export declare class CortexRouter {
     private isConversational;
     private isSchedulingIntent;
     private isBrowserNavigation;
+    private isOBSIntent;
     private isClientContextQuery;
     private parseSimpleCommand;
     private parseYouTubeAPICommand;

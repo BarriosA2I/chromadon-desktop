@@ -20,6 +20,10 @@ export interface GeminiStreamParams {
     tools: any[];
     maxTokens: number;
     temperature: number;
+    toolConfig?: {
+        mode?: 'AUTO' | 'ANY' | 'NONE';
+        allowedFunctionNames?: string[];
+    };
 }
 export interface GeminiStreamResult {
     on(event: 'text', cb: (text: string) => void): GeminiStreamResult;

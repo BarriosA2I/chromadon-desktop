@@ -9,6 +9,7 @@
  *   1. Copyright workflows (100) → monolithic (VideoTracker + auto-continue)
  *   2. Simple commands (90) → direct agent dispatch via EventBus (no LLM)
  *   3. YouTube API tasks (80) → YouTubeToolBridge (no LLM, ~200ms)
+ *   3.4. OBS intent (76) → monolithic (forceToolCall + OBS tools only)
  *   3.5. Conversational/status (75) → monolithic orchestrator (greetings, questions)
  *   3.6. Social media tasks (70) → SocialMediaToolBridge → SocialOverlord (~15-20s)
  *   3.7. Browser navigation (65) → monolithic orchestrator (multi-platform, alt verbs)
@@ -23,6 +24,7 @@ exports.CortexRouter = void 0;
 const event_bus_1 = require("../agents/event-bus");
 const uuid_1 = require("uuid");
 const logger_1 = require("../lib/logger");
+const obs_tools_1 = require("../obs/obs-tools");
 const log = (0, logger_1.createChildLogger)('orchestrator');
 // ============================================================================
 // URL RESOLUTION
@@ -113,6 +115,19 @@ class CortexRouter {
                     const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
                     writer.writeEvent('session_id', { sessionId: sid });
                     return this.executeSocialMedia(socialTask, sid, writer);
+                },
+            },
+            {
+                name: 'obs_intent',
+                priority: 76, // Above conversational (75) — OBS questions need tool calls, not chat
+                match: (msg) => this.isOBSIntent(msg),
+                execute: async (_m, sessionId, message, writer, context, pageContext) => {
+                    log.info('[CortexRouter] OBS intent → monolithic orchestrator (forceToolCall + OBS tools only)');
+                    const obsToolNames = obs_tools_1.OBS_TOOLS.map(t => t.name);
+                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext, {
+                        forceToolCall: true,
+                        allowedToolNames: obsToolNames,
+                    });
                 },
             },
             {
@@ -232,6 +247,23 @@ class CortexRouter {
         if (/\b(?:post|tweet|share|publish|comment|reply|like|follow|dm|message)\b/i.test(msg))
             return false;
         return true;
+    }
+    isOBSIntent(msg) {
+        // OBS Studio actions → monolithic orchestrator (has all 19 obs_* tools)
+        // Catches launch, configure, scene/source management, stream control
+        if (/\bobs\b/i.test(msg))
+            return true;
+        if (/\b(?:launch|start|stop|configure|set\s*up)\s+(?:the\s+)?(?:stream|recording|live\s*stream)\b/i.test(msg))
+            return true;
+        if (/\b(?:go\s+live|stream\s+key|stream\s+setup|streaming\s+(?:service|settings?))\b/i.test(msg))
+            return true;
+        if (/\b(?:create|remove|delete|add|list)\s+(?:a\s+)?(?:scene|source|webcam|display\s+capture|browser\s+source)\b/i.test(msg))
+            return true;
+        if (/\b(?:video\s+(?:settings?|resolution|output)|change\s+(?:the\s+)?(?:fps|resolution|bitrate))\b/i.test(msg))
+            return true;
+        if (/\b(?:mute|unmute)\s+(?:the\s+)?(?:mic|microphone)\b/i.test(msg))
+            return true;
+        return false;
     }
     isClientContextQuery(msg) {
         return /\b(brand voice|target audience|our audience|our customers|our strategy|content calendar|business profile|our products|our services|search.*(?:docs|documents|knowledge|vault)|who (?:are|is) (?:our|my) (?:target|audience|customer)|what(?:'s| is) our (?:brand|voice|tone|strategy))\b/i.test(msg);

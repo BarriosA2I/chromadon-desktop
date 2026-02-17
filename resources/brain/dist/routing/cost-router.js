@@ -92,6 +92,9 @@ function selectModelForTask(userMessage, lastToolName) {
         // OBS Studio tools
         'obs_stream_start', 'obs_stream_stop', 'obs_record_start', 'obs_record_stop',
         'obs_scene_set', 'obs_scene_list', 'obs_status', 'obs_mic_mute', 'obs_source_visibility',
+        'obs_configure_stream', 'obs_configure_video', 'obs_configure_recording',
+        'obs_get_settings', 'obs_create_scene', 'obs_remove_scene',
+        'obs_add_source', 'obs_remove_source', 'obs_get_sources', 'obs_launch',
         // Social Monitoring tools
         'social_monitor', 'monitoring_log',
         // Client Context tools — result presentation only

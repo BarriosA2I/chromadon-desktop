@@ -236,17 +236,36 @@ class AgenticOrchestrator {
                 let stream;
                 if (this.useGemini && this.geminiProvider) {
                     try {
+                        // Force function calling (mode: "ANY") ONLY on the first loop iteration
+                        // when caller requested it AND provided allowedToolNames.
+                        // After the first tool call succeeds, return to AUTO mode so the AI can
+                        // present results as text instead of being forced into another tool call.
+                        // IMPORTANT: mode "ANY" with 105+ tools exceeds Gemini's schema constraint
+                        // solver ("too many states" 400 error). Only safe with allowedFunctionNames.
+                        const canForceAny = options?.forceToolCall && options?.allowedToolNames?.length && loopCount === 1;
+                        const geminiToolConfig = canForceAny
+                            ? {
+                                mode: 'ANY',
+                                allowedFunctionNames: options.allowedToolNames,
+                            }
+                            : undefined;
+                        // On 2nd empty retry, escalate to more capable model
+                        const retryModel = emptyRetries >= 2 ? 'gemini-2.5-pro' : selectedModel;
                         stream = this.geminiProvider.streamChat({
-                            model: selectedModel,
+                            model: retryModel,
                             system: effectiveSystemPrompt,
                             messages: sanitizedMessages,
                             tools: allTools,
                             maxTokens: this.config.maxTokens,
                             temperature: 0,
+                            toolConfig: geminiToolConfig,
                         });
                         usingGemini = true;
                         if (loopCount === 1) {
-                            log.info(`[PROVIDER] Gemini ${selectedModel} | prompt: ${effectiveSystemPrompt.length < 2000 ? 'compact' : 'full'}`);
+                            log.info(`[PROVIDER] Gemini ${retryModel} | prompt: ${effectiveSystemPrompt.length < 2000 ? 'compact' : 'full'}${canForceAny ? ` | toolConfig: ANY (${options.allowedToolNames.length} tools)` : ''}`);
+                        }
+                        else if (canForceAny) {
+                            log.info(`[PROVIDER] Retry ${emptyRetries}: Gemini ${retryModel} | toolConfig: ANY (${options.allowedToolNames.length} tools)`);
                         }
                     }
                     catch (geminiInitErr) {
@@ -355,8 +374,8 @@ class AgenticOrchestrator {
                 if (usingGemini && emptyOutTok === 0 && !hasAnyText && emptyRetries < 2) {
                     emptyRetries++;
                     log.warn(`[Orchestrator] Empty Gemini response (attempt ${emptyRetries}/2) — injecting continuation`);
-                    session.messages.push({ role: 'assistant', content: [{ type: 'text', text: 'Let me check that for you.' }] });
-                    session.messages.push({ role: 'user', content: 'Present the results to the user. Do not call any tools. Just summarize what you found.' });
+                    session.messages.push({ role: 'assistant', content: [{ type: 'text', text: 'Let me handle that.' }] });
+                    session.messages.push({ role: 'user', content: 'Please proceed with the appropriate action. Use the relevant tool to fulfill my request.' });
                     continue;
                 }
                 // 7. Push assistant message to session history

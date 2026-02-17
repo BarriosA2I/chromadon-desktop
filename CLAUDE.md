@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.29.3 — 2026-02-17)
+## Recent Changes (v1.29.4 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain crashed on startup in packaged Electron. `pino-http@11` brought nested `pino@10.3.1` calling `diagChan.tracingChannel()` (Node 20+ only). Electron 28 runs Node 18.18.2. Downgraded `pino-http` from 11→10.5 in Brain dist. Brain now starts cleanly on Electron's Node 18 | `resources/brain/` |
+
+## Changes (v1.29.3 — 2026-02-17)
 
 | Change | File |
 |--------|------|

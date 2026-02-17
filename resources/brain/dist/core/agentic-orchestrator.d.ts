@@ -80,6 +80,8 @@ export declare class AgenticOrchestrator {
      */
     chat(sessionId: string | undefined, userMessage: string, writer: SSEWriter, context: ExecutionContext, pageContext?: PageContext, options?: {
         systemPromptOverride?: string;
+        forceToolCall?: boolean;
+        allowedToolNames?: string[];
     }): Promise<void>;
     getSession(sessionId: string): OrchestratorSession | undefined;
     clearSession(sessionId: string): boolean;
