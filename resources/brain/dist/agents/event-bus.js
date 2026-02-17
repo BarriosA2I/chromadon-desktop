@@ -10,6 +10,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.exponentialBackoff = exports.CircuitBreaker = exports.publishesEvent = exports.traced = exports.getTracer = exports.getEventBus = exports.DistributedTracer = exports.AgentEventBus = void 0;
 const events_1 = require("events");
 const uuid_1 = require("uuid");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('agent');
 // =============================================================================
 // EVENT BUS
 // =============================================================================
@@ -49,10 +51,10 @@ class AgentEventBus {
         // Emit to wildcard listeners
         this.emitter.emit('*', fullEvent);
         // Log for observability
-        console.log(`[EventBus] ${event.type} from ${event.source}`, {
-            correlationId: event.correlationId,
-            target: event.target,
-        });
+        log.info({ detail: {
+                correlationId: event.correlationId,
+                target: event.target,
+            } }, `[EventBus] ${event.type} from ${event.source}`);
         return fullEvent;
     }
     /**
@@ -124,7 +126,7 @@ class AgentEventBus {
     respond(correlationId, sourceAgent, payload) {
         const pending = this.pendingRequests.get(correlationId);
         if (!pending) {
-            console.warn(`[EventBus] No pending request for correlationId: ${correlationId}`);
+            log.warn(`[EventBus] No pending request for correlationId: ${correlationId}`);
             return;
         }
         clearTimeout(pending.timeout);
@@ -144,7 +146,7 @@ class AgentEventBus {
     respondError(correlationId, sourceAgent, error) {
         const pending = this.pendingRequests.get(correlationId);
         if (!pending) {
-            console.warn(`[EventBus] No pending request for correlationId: ${correlationId}`);
+            log.warn(`[EventBus] No pending request for correlationId: ${correlationId}`);
             return;
         }
         clearTimeout(pending.timeout);

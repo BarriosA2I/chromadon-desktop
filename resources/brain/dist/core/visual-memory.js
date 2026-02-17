@@ -10,14 +10,11 @@
  * - L2 Semantic: Baseline patterns, no decay
  * - L3 Procedural: Successful verification patterns
  */
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VisualMemory = void 0;
-const pino_1 = __importDefault(require("pino"));
 const interfaces_1 = require("../interfaces");
-const logger = (0, pino_1.default)({ name: 'visual-memory' });
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('vision');
 const DEFAULT_CONFIG = {
     workingMemoryLimit: 7,
     episodicMemoryLimit: 100,
@@ -69,7 +66,7 @@ class VisualMemory {
             lastAccessed: new Date(),
         };
         this.working.set(id, entry);
-        logger.debug({ id, tier: 'working' }, 'Stored visual memory');
+        log.debug({ id, tier: 'working' }, 'Stored visual memory');
     }
     /**
      * Get from working memory.
@@ -113,7 +110,7 @@ class VisualMemory {
                 this.episodic.delete(oldest);
             }
         }
-        logger.debug({ id, tier: 'episodic' }, 'Promoted to episodic memory');
+        log.debug({ id, tier: 'episodic' }, 'Promoted to episodic memory');
     }
     /**
      * Get from episodic memory with decay check.
@@ -126,7 +123,7 @@ class VisualMemory {
         const ageHours = (Date.now() - entry.timestamp.getTime()) / (1000 * 60 * 60);
         if (ageHours > this.config.episodicDecayHours) {
             this.episodic.delete(id);
-            logger.debug({ id, ageHours }, 'Episodic memory decayed');
+            log.debug({ id, ageHours }, 'Episodic memory decayed');
             return null;
         }
         entry.accessCount++;
@@ -150,7 +147,7 @@ class VisualMemory {
             }
         }
         if (cleaned > 0) {
-            logger.info({ cleaned }, 'Cleaned up decayed episodic memories');
+            log.info({ cleaned }, 'Cleaned up decayed episodic memories');
         }
         return cleaned;
     }
@@ -167,7 +164,7 @@ class VisualMemory {
         entry.tier = interfaces_1.MemoryTier.SEMANTIC;
         this.semantic.set(id, entry);
         this.episodic.delete(id);
-        logger.info({ id, accessCount: entry.accessCount }, 'Promoted to semantic memory');
+        log.info({ id, accessCount: entry.accessCount }, 'Promoted to semantic memory');
     }
     /**
      * Store directly in semantic memory.
@@ -184,7 +181,7 @@ class VisualMemory {
             lastAccessed: new Date(),
         };
         this.semantic.set(id, entry);
-        logger.debug({ id, tier: 'semantic' }, 'Stored semantic memory');
+        log.debug({ id, tier: 'semantic' }, 'Stored semantic memory');
     }
     /**
      * Get from semantic memory.
@@ -215,7 +212,7 @@ class VisualMemory {
             lastAccessed: new Date(),
         };
         this.procedural.set(id, entry);
-        logger.debug({ id, tier: 'procedural' }, 'Stored procedural memory');
+        log.debug({ id, tier: 'procedural' }, 'Stored procedural memory');
     }
     /**
      * Get procedural memory entry.
@@ -250,7 +247,7 @@ class VisualMemory {
      */
     saveCheckpoint(checkpoint) {
         this.checkpoints.set(checkpoint.id, checkpoint);
-        logger.info({ id: checkpoint.id, name: checkpoint.name }, 'Saved checkpoint');
+        log.info({ id: checkpoint.id, name: checkpoint.name }, 'Saved checkpoint');
     }
     /**
      * Get checkpoint by ID.
@@ -298,7 +295,7 @@ class VisualMemory {
             createdAt: new Date(),
             metadata,
         });
-        logger.info({ name }, 'Saved baseline');
+        log.info({ name }, 'Saved baseline');
     }
     /**
      * Get baseline by name.
@@ -392,7 +389,7 @@ class VisualMemory {
         this.procedural.clear();
         this.checkpoints.clear();
         this.baselines.clear();
-        logger.info('Cleared all visual memory');
+        log.info('Cleared all visual memory');
     }
 }
 exports.VisualMemory = VisualMemory;

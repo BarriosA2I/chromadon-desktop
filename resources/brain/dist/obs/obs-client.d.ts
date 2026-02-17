@@ -68,6 +68,45 @@ export declare class OBSClient {
         message: string;
     }>;
     getStatus(): Promise<OBSStatus>;
+    configureStream(service: string, server: string, key: string): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    configureVideo(baseWidth: number, baseHeight: number, outputWidth: number, outputHeight: number, fps: number): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    configureRecording(path: string, format?: string): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    createScene(sceneName: string): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    removeScene(sceneName: string): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    addSource(sceneName: string, sourceName: string, sourceKind: string, settings?: Record<string, unknown>): Promise<{
+        success: boolean;
+        message: string;
+        sceneItemId?: number;
+    }>;
+    removeSource(sceneName: string, sourceName: string): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    getSources(sceneName: string): Promise<{
+        success: boolean;
+        message: string;
+        sources?: Array<Record<string, unknown>>;
+    }>;
+    getSettings(): Promise<{
+        success: boolean;
+        message: string;
+        settings?: Record<string, unknown>;
+    }>;
     isConnected(): boolean;
     disconnect(): Promise<void>;
     private sleep;

@@ -16,6 +16,8 @@ exports.TheScheduler = void 0;
 const scheduler_types_1 = require("./scheduler-types");
 const scheduler_persistence_1 = require("./scheduler-persistence");
 const llm_helper_1 = require("../client-context/llm-helper");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('scheduler');
 /**
  * Silent writer that captures orchestrator output without sending to user chat.
  * Same pattern as SocialMonitor's MonitorWriter.
@@ -74,12 +76,12 @@ class TheScheduler {
             (t.enabled !== false) &&
             new Date(t.scheduledTimeUtc).getTime() < now - 5 * 60_000);
         if (missedRuns.length > 0) {
-            console.log(`[TheScheduler] ${missedRuns.length} missed run(s) detected — marking PENDING for immediate execution`);
+            log.info(`[TheScheduler] ${missedRuns.length} missed run(s) detected — marking PENDING for immediate execution`);
             for (const t of missedRuns)
                 t.status = scheduler_types_1.TaskStatus.PENDING;
             this.persist();
         }
-        console.log(`[TheScheduler] Initialized with ${this.state.tasks.length} persisted task(s)`);
+        log.info(`[TheScheduler] Initialized with ${this.state.tasks.length} persisted task(s)`);
     }
     // ===========================================================================
     // LIFECYCLE
@@ -90,20 +92,20 @@ class TheScheduler {
         this.tickInterval = setInterval(() => {
             this.tick();
         }, this.config.tickIntervalMs);
-        console.log(`[TheScheduler] Started (${this.config.tickIntervalMs / 1000}s tick interval)`);
+        log.info(`[TheScheduler] Started (${this.config.tickIntervalMs / 1000}s tick interval)`);
     }
     stop() {
         if (this.tickInterval) {
             clearInterval(this.tickInterval);
             this.tickInterval = null;
         }
-        console.log('[TheScheduler] Stopped');
+        log.info('[TheScheduler] Stopped');
     }
     destroy() {
         this.stop();
         this.destroyed = true;
         this.persist();
-        console.log('[TheScheduler] Destroyed');
+        log.info('[TheScheduler] Destroyed');
     }
     // ===========================================================================
     // ZERO-COST TICK LOOP
@@ -131,8 +133,8 @@ class TheScheduler {
             }
         }
         this.persist();
-        console.log(`[TheScheduler] ${due.length} task(s) due — starting execution`);
-        this.executeDueTasks(due).catch(err => console.error('[TheScheduler] Execution error:', err.message));
+        log.info(`[TheScheduler] ${due.length} task(s) due — starting execution`);
+        this.executeDueTasks(due).catch(err => log.error('[TheScheduler] Execution error:', err.message));
     }
     // ===========================================================================
     // TASK EXECUTION — THE ONLY PART THAT COSTS CREDITS
@@ -154,7 +156,7 @@ class TheScheduler {
         task.status = scheduler_types_1.TaskStatus.EXECUTING;
         task.executedAt = new Date().toISOString();
         this.persist();
-        console.log(`[TheScheduler] Executing task ${task.id}: ${task.instruction.slice(0, 80)}...`);
+        log.info(`[TheScheduler] Executing task ${task.id}: ${task.instruction.slice(0, 80)}...`);
         try {
             // 1. Check Desktop health (HTTP only — zero LLM cost)
             const healthy = await this.checkDesktopHealth();
@@ -171,12 +173,12 @@ class TheScheduler {
                 try {
                     const generated = await this.preGenerateContent(task);
                     if (generated) {
-                        console.log(`[TheScheduler] Pre-generated content (${generated.length} chars): ${generated.slice(0, 80)}...`);
+                        log.info(`[TheScheduler] Pre-generated content (${generated.length} chars): ${generated.slice(0, 80)}...`);
                         task.instruction = this.buildPostingInstruction(task, generated);
                     }
                 }
                 catch (err) {
-                    console.warn('[TheScheduler] Content pre-generation failed, using original instruction:', err.message);
+                    log.warn({ err: err.message }, 'Content pre-generation failed, using original instruction');
                 }
             }
             // 4. Execute via orchestrator.chat() — THIS is where credits are spent
@@ -192,7 +194,7 @@ class TheScheduler {
             task.executionDurationMs = Date.now() - new Date(task.executedAt).getTime();
             task.consecutiveFailures = 0; // Reset on success
             this.state.stats.totalCompleted++;
-            console.log(`[TheScheduler] Task ${task.id} completed in ${task.executionDurationMs}ms`);
+            log.info(`[TheScheduler] Task ${task.id} completed in ${task.executionDurationMs}ms`);
             // 5. Handle recurrence
             if (task.recurrence !== 'none') {
                 this.generateNextOccurrence(task);
@@ -207,23 +209,23 @@ class TheScheduler {
         task.retryCount++;
         task.lastError = error;
         task.consecutiveFailures = (task.consecutiveFailures || 0) + 1;
-        console.error(`[TheScheduler] Task ${task.id} failed (attempt ${task.retryCount}/${task.maxRetries}, consecutive: ${task.consecutiveFailures}): ${error}`);
+        log.error(`[TheScheduler] Task ${task.id} failed (attempt ${task.retryCount}/${task.maxRetries}, consecutive: ${task.consecutiveFailures}): ${error}`);
         if (task.retryCount >= task.maxRetries) {
             task.status = scheduler_types_1.TaskStatus.FAILED;
             task.completedAt = new Date().toISOString();
             this.state.stats.totalFailed++;
-            console.error(`[TheScheduler] Task ${task.id} max retries exhausted — marking FAILED`);
+            log.error(`[TheScheduler] Task ${task.id} max retries exhausted — marking FAILED`);
             // Auto-disable after 3 consecutive failures on recurring tasks
             if (task.consecutiveFailures >= 3 && task.recurrence !== 'none') {
                 task.enabled = false;
-                console.error(`[TheScheduler] Task ${task.id} auto-disabled after ${task.consecutiveFailures} consecutive failures`);
+                log.error(`[TheScheduler] Task ${task.id} auto-disabled after ${task.consecutiveFailures} consecutive failures`);
             }
         }
         else {
             // Reschedule retry 2 minutes from now
             task.status = scheduler_types_1.TaskStatus.SCHEDULED;
             task.scheduledTimeUtc = new Date(Date.now() + 2 * 60_000).toISOString();
-            console.log(`[TheScheduler] Task ${task.id} retrying at ${task.scheduledTimeUtc}`);
+            log.info(`[TheScheduler] Task ${task.id} retrying at ${task.scheduledTimeUtc}`);
         }
         this.persist();
     }
@@ -249,7 +251,7 @@ class TheScheduler {
         }
         // Check recurrence end date
         if (completedTask.recurrenceEndDate && next.toISOString() > completedTask.recurrenceEndDate) {
-            console.log(`[TheScheduler] Recurrence ended for task ${completedTask.id}`);
+            log.info(`[TheScheduler] Recurrence ended for task ${completedTask.id}`);
             return;
         }
         const newTask = {
@@ -274,7 +276,7 @@ class TheScheduler {
         };
         this.state.tasks.push(newTask);
         this.state.stats.totalScheduled++;
-        console.log(`[TheScheduler] Generated next ${completedTask.recurrence} occurrence: ${newTask.id} at ${newTask.scheduledTimeUtc}`);
+        log.info(`[TheScheduler] Generated next ${completedTask.recurrence} occurrence: ${newTask.id} at ${newTask.scheduledTimeUtc}`);
     }
     // ===========================================================================
     // COORDINATION
@@ -297,10 +299,10 @@ class TheScheduler {
         const startWait = Date.now();
         while (this.socialMonitor.getStatus().running) {
             if (Date.now() - startWait > this.config.maxMonitorWaitMs) {
-                console.warn('[TheScheduler] Monitor wait timeout — proceeding anyway');
+                log.warn('[TheScheduler] Monitor wait timeout — proceeding anyway');
                 break;
             }
-            console.log('[TheScheduler] Waiting for SocialMonitor to finish...');
+            log.info('[TheScheduler] Waiting for SocialMonitor to finish...');
             await new Promise(r => setTimeout(r, this.config.monitorCoordinationWaitMs));
         }
     }
@@ -329,7 +331,7 @@ class TheScheduler {
         this.state.tasks.push(task);
         this.state.stats.totalScheduled++;
         this.persist();
-        console.log(`[TheScheduler] Task added: ${task.id} — "${task.instruction.slice(0, 60)}..." at ${task.scheduledTimeUtc}`);
+        log.info(`[TheScheduler] Task added: ${task.id} — "${task.instruction.slice(0, 60)}..." at ${task.scheduledTimeUtc}`);
         return task.id;
     }
     cancelTask(taskId) {
@@ -337,12 +339,12 @@ class TheScheduler {
         if (!task)
             return false;
         if (task.status === scheduler_types_1.TaskStatus.EXECUTING) {
-            console.warn(`[TheScheduler] Cannot cancel executing task ${taskId}`);
+            log.warn(`[TheScheduler] Cannot cancel executing task ${taskId}`);
             return false;
         }
         task.status = scheduler_types_1.TaskStatus.CANCELLED;
         this.persist();
-        console.log(`[TheScheduler] Task cancelled: ${taskId}`);
+        log.info(`[TheScheduler] Task cancelled: ${taskId}`);
         return true;
     }
     cancelAllTasks(statusFilter) {
@@ -365,7 +367,7 @@ class TheScheduler {
         }
         if (cancelled > 0)
             this.persist();
-        console.log(`[TheScheduler] Bulk cancel: ${cancelled} cancelled, ${failed.length} failed (executing)`);
+        log.info(`[TheScheduler] Bulk cancel: ${cancelled} cancelled, ${failed.length} failed (executing)`);
         return { cancelled, failed };
     }
     toggleTask(taskId, enabled) {
@@ -378,7 +380,7 @@ class TheScheduler {
             task.consecutiveFailures = 0;
         }
         this.persist();
-        console.log(`[TheScheduler] Task ${taskId} ${enabled ? 'enabled' : 'disabled'}`);
+        log.info(`[TheScheduler] Task ${taskId} ${enabled ? 'enabled' : 'disabled'}`);
         return true;
     }
     rescheduleTask(taskId, newTimeUtc) {
@@ -386,12 +388,12 @@ class TheScheduler {
         if (!task)
             return false;
         if (task.status !== scheduler_types_1.TaskStatus.SCHEDULED) {
-            console.warn(`[TheScheduler] Cannot reschedule task in ${task.status} state`);
+            log.warn(`[TheScheduler] Cannot reschedule task in ${task.status} state`);
             return false;
         }
         task.scheduledTimeUtc = newTimeUtc;
         this.persist();
-        console.log(`[TheScheduler] Task ${taskId} rescheduled to ${newTimeUtc}`);
+        log.info(`[TheScheduler] Task ${taskId} rescheduled to ${newTimeUtc}`);
         return true;
     }
     getTasks(filter) {

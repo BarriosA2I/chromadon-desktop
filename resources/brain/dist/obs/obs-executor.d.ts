@@ -11,6 +11,9 @@ export type ObsExecutor = (toolName: string, input: Record<string, any>) => Prom
 /**
  * Creates an executor function that routes OBS tool calls
  * to the OBSClient WebSocket connection.
+ *
+ * @param obsClient - WebSocket client for OBS
+ * @param desktopUrl - Desktop control server URL (for obs_launch)
  */
-export declare function createObsExecutor(obsClient: OBSClient): ObsExecutor;
+export declare function createObsExecutor(obsClient: OBSClient, desktopUrl?: string): ObsExecutor;
 //# sourceMappingURL=obs-executor.d.ts.map

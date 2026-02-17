@@ -19,6 +19,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GeminiProvider = void 0;
 const generative_ai_1 = require("@google/generative-ai");
 const events_1 = require("events");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('ai');
 // ============================================================================
 // FORMAT CONVERTERS
 // ============================================================================
@@ -396,21 +398,21 @@ class GeminiProvider {
             // Debug: log response details when output is 0 tokens
             const finishReason = aggregated.candidates?.[0]?.finishReason;
             if (outputTokens === 0 || allParts.length === 0) {
-                console.log(`[Gemini] DEBUG 0-token response:`);
-                console.log(`  finishReason: ${finishReason}`);
-                console.log(`  allParts.length: ${allParts.length}`);
-                console.log(`  candidates: ${JSON.stringify(aggregated.candidates?.map((c) => ({ finishReason: c.finishReason, finishMessage: c.finishMessage?.substring(0, 200), partsCount: c.content?.parts?.length })))}`);
+                log.info(`[Gemini] DEBUG 0-token response:`);
+                log.info(`  finishReason: ${finishReason}`);
+                log.info(`  allParts.length: ${allParts.length}`);
+                log.info(`  candidates: ${JSON.stringify(aggregated.candidates?.map((c) => ({ finishReason: c.finishReason, finishMessage: c.finishMessage?.substring(0, 200), partsCount: c.content?.parts?.length })))}`);
             }
             // Handle MALFORMED_FUNCTION_CALL — Gemini tried to compute values via code
             // instead of outputting a proper function call JSON. Parse the intent and retry.
             if (finishReason === 'MALFORMED_FUNCTION_CALL' && allParts.length === 0) {
                 const finishMessage = aggregated.candidates?.[0]?.finishMessage || '';
-                console.log(`[Gemini] MALFORMED_FUNCTION_CALL detected. Attempting recovery...`);
-                console.log(`[Gemini] finishMessage: ${finishMessage.substring(0, 300)}`);
+                log.info(`[Gemini] MALFORMED_FUNCTION_CALL detected. Attempting recovery...`);
+                log.info(`[Gemini] finishMessage: ${finishMessage.substring(0, 300)}`);
                 // Try to extract the function name and reconstruct the call
                 const parsed = parseMalformedFunctionCall(finishMessage);
                 if (parsed) {
-                    console.log(`[Gemini] Recovered function call: ${parsed.name}(${JSON.stringify(parsed.args)})`);
+                    log.info(`[Gemini] Recovered function call: ${parsed.name}(${JSON.stringify(parsed.args)})`);
                     const recoveredBlock = {
                         type: 'tool_use',
                         id: `toolu_gemini_${Date.now()}_recovered`,
@@ -426,7 +428,7 @@ class GeminiProvider {
                     return;
                 }
                 // Could not parse — return error text so orchestrator ends the stream gracefully
-                console.warn(`[Gemini] Could not recover malformed function call`);
+                log.warn(`[Gemini] Could not recover malformed function call`);
                 const errorText = 'I tried to schedule that but ran into a formatting issue. Could you try again with the exact date and time? For example: "Schedule a post to Twitter for February 14 at 11:30 PM"';
                 emitter.emit('text', errorText);
                 resolve({
@@ -439,7 +441,7 @@ class GeminiProvider {
             // Handle STOP with 0 output tokens — Gemini sometimes returns empty
             // on tool-result continuations. Flag for orchestrator retry.
             if ((finishReason === 'STOP' || !finishReason) && allParts.length === 0 && outputTokens === 0) {
-                console.warn(`[Gemini] 0-token STOP response — flagging for retry`);
+                log.warn(`[Gemini] 0-token STOP response — flagging for retry`);
                 resolve({
                     content: [{ type: 'text', text: '' }],
                     stop_reason: 'end_turn',

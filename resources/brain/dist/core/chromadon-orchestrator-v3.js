@@ -21,6 +21,8 @@ exports.metricsRegistry = exports.createChromadonOrchestrator = exports.Chromado
 const events_1 = require("events");
 const api_1 = require("@opentelemetry/api");
 const prom_client_1 = require("prom-client");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('orchestrator');
 // ============================================================================
 // PROMETHEUS METRICS
 // ============================================================================
@@ -440,17 +442,17 @@ function createChromadonOrchestrator(aiEngine, cdp, config) {
     const orchestrator = new ChromadonOrchestrator(aiEngine, cdp, config);
     // Setup default event handlers
     orchestrator.on('commandCompleted', (result) => {
-        console.log(`[CHROMADON] Command completed: ${result.success ? '✓' : '✗'} (${result.totalDurationMs}ms, confidence: ${result.confidence.toFixed(2)})`);
+        log.info(`[CHROMADON] Command completed: ${result.success ? '✓' : '✗'} (${result.totalDurationMs}ms, confidence: ${result.confidence.toFixed(2)})`);
     });
     orchestrator.on('lowConfidence', ({ confidence, threshold }) => {
-        console.warn(`[CHROMADON] Low confidence: ${confidence.toFixed(2)} < ${threshold}`);
+        log.warn(`[CHROMADON] Low confidence: ${confidence.toFixed(2)} < ${threshold}`);
     });
     orchestrator.on('commandError', ({ command, error }) => {
-        console.error(`[CHROMADON] Command error: ${error.message}`);
+        log.error(`[CHROMADON] Command error: ${error.message}`);
     });
     orchestrator.on('actionExecuted', ({ action, result, index }) => {
         const status = result.success ? '✓' : '✗';
-        console.log(`[CHROMADON] Action ${index + 1}: ${status} ${action.type} - ${action.description}`);
+        log.info(`[CHROMADON] Action ${index + 1}: ${status} ${action.type} - ${action.description}`);
     });
     return orchestrator;
 }

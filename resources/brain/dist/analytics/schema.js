@@ -8,6 +8,8 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runMigrations = void 0;
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('analytics');
 // ============================================================================
 // SCHEMA MIGRATIONS (versioned, run in order)
 // ============================================================================
@@ -210,7 +212,7 @@ function runMigrations(db) {
     if (currentVersion >= MIGRATIONS.length) {
         return; // Already up to date
     }
-    console.log(`[Analytics DB] Running migrations ${currentVersion + 1} to ${MIGRATIONS.length}`);
+    log.info(`[Analytics DB] Running migrations ${currentVersion + 1} to ${MIGRATIONS.length}`);
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
     const runMigration = db.transaction((version) => {
@@ -227,9 +229,9 @@ function runMigrations(db) {
     });
     for (let v = currentVersion; v < MIGRATIONS.length; v++) {
         runMigration(v);
-        console.log(`[Analytics DB] Migration ${v + 1} applied`);
+        log.info(`[Analytics DB] Migration ${v + 1} applied`);
     }
-    console.log(`[Analytics DB] Schema at version ${MIGRATIONS.length}`);
+    log.info(`[Analytics DB] Schema at version ${MIGRATIONS.length}`);
 }
 exports.runMigrations = runMigrations;
 //# sourceMappingURL=schema.js.map

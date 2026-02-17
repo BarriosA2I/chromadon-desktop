@@ -161,6 +161,8 @@ const tier3_specialists_extended_2 = require("./tier3-specialists-extended");
 const tier4_resilience_2 = require("./tier4-resilience");
 const event_bus_2 = require("./event-bus");
 const ralph_1 = require("../ralph");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('agent');
 /**
  * Create all 27 agents with CDP controller injection
  */
@@ -260,12 +262,12 @@ class ChromadonAgentSystem {
     /** Set the YouTube Tool Bridge (called from server.ts after both systems are init'd) */
     setYouTubeBridge(bridge) {
         this.youtube = bridge;
-        console.log('[ChromadonAgentSystem] YouTube Tool Bridge connected');
+        log.info('[ChromadonAgentSystem] YouTube Tool Bridge connected');
     }
     setupEventHandlers() {
         // Log all agent events
         this.eventBus.subscribeAll((event) => {
-            console.log(`[${event.source}] ${event.type}`, event.payload);
+            log.info({ detail: event.payload }, `[${event.source}] ${event.type}`);
         });
         // Record learning events
         this.eventBus.subscribe({
@@ -298,13 +300,13 @@ class ChromadonAgentSystem {
             handler: async (event) => {
                 const { target, correlationId, payload } = event;
                 const { action, data } = payload;
-                console.log(`[ChromadonAgentSystem] Routing request: ${target}.${action}`);
+                log.info(`[ChromadonAgentSystem] Routing request: ${target}.${action}`);
                 try {
                     const result = await this.routeRequest(target, action, data);
                     this.eventBus.respond(correlationId, target, result);
                 }
                 catch (error) {
-                    console.error(`[ChromadonAgentSystem] Request failed: ${target}.${action}`, error);
+                    log.error({ err: error }, `[ChromadonAgentSystem] Request failed: ${target}.${action}`);
                     this.eventBus.respondError(correlationId, target, error);
                 }
             },
@@ -373,7 +375,7 @@ class ChromadonAgentSystem {
             case 'THE_NAVIGATOR':
                 if (action === 'navigate' || action === 'navigate_to_url' || action === 'navigateTo') {
                     const url = params.url || params.target_url || params;
-                    console.log(`[DIRECT CDP] Navigating to: ${url}`);
+                    log.info(`[DIRECT CDP] Navigating to: ${url}`);
                     return await this.cdp.navigate(url);
                 }
                 if (action === 'goBack' || action === 'go_back') {
@@ -394,10 +396,10 @@ class ChromadonAgentSystem {
                 if (action === 'click' || action === 'click_element') {
                     const selector = params.selector || params.element || params.target || (typeof params === 'string' ? params : null);
                     if (!selector) {
-                        console.log(`[DIRECT CDP] Click skipped - no selector provided`);
+                        log.info(`[DIRECT CDP] Click skipped - no selector provided`);
                         return { success: true, skipped: true };
                     }
-                    console.log(`[DIRECT CDP] Clicking: ${selector}`);
+                    log.info(`[DIRECT CDP] Clicking: ${selector}`);
                     return await this.cdp.click(selector, params);
                 }
                 break;
@@ -406,32 +408,32 @@ class ChromadonAgentSystem {
                     const selector = params.selector || params.element || params.target;
                     const text = params.text || params.query || params.value || params.input || '';
                     if (!selector) {
-                        console.log(`[DIRECT CDP] Type skipped - no selector provided`);
+                        log.info(`[DIRECT CDP] Type skipped - no selector provided`);
                         return { success: true, skipped: true };
                     }
-                    console.log(`[DIRECT CDP] Typing into: ${selector}`);
+                    log.info(`[DIRECT CDP] Typing into: ${selector}`);
                     return await this.cdp.type(selector, text, params);
                 }
                 if (action === 'press_key' || action === 'pressKey' || action === 'keyPress') {
                     const key = params.key || params.keyCode || 'Enter';
-                    console.log(`[DIRECT CDP] Pressing key: ${key}`);
+                    log.info(`[DIRECT CDP] Pressing key: ${key}`);
                     return await this.cdp.typeKeys([key]);
                 }
                 break;
             case 'THE_SCROLLER':
                 if (action === 'scroll' || action === 'scroll_down' || action === 'scrollDown'
                     || action === 'scroll_up' || action === 'scrollUp' || action === 'scrollPage') {
-                    console.log(`[DIRECT CDP] Scrolling: ${JSON.stringify(params)}`);
+                    log.info(`[DIRECT CDP] Scrolling: ${JSON.stringify(params)}`);
                     await this.cdp.scroll(params);
                     return { success: true };
                 }
                 if (action === 'scrollToElement' || action === 'scroll_to_element' || action === 'scroll_if_needed') {
                     const selector = params.selector || params.element || (typeof params === 'string' ? params : null);
                     if (!selector) {
-                        console.log(`[DIRECT CDP] Scroll skipped - no selector provided`);
+                        log.info(`[DIRECT CDP] Scroll skipped - no selector provided`);
                         return { success: true, skipped: true };
                     }
-                    console.log(`[DIRECT CDP] Scrolling to element: ${selector}`);
+                    log.info(`[DIRECT CDP] Scrolling to element: ${selector}`);
                     return await this.cdp.scrollToElement(selector);
                 }
                 break;
@@ -443,7 +445,7 @@ class ChromadonAgentSystem {
                     || action === 'analyzeImage' || action === 'analyze_image'
                     || action === 'analyzeSubmissionResult' || action === 'analyze_submission_result') {
                     // Return success stub - actual vision analysis would require screenshot + LLM
-                    console.log(`[DIRECT CDP] Vision analysis (stub)`);
+                    log.info(`[DIRECT CDP] Vision analysis (stub)`);
                     return { success: true, analysis: { pageLoaded: true } };
                 }
                 if (action === 'verifyScreenshot' || action === 'verify_screenshot')
@@ -464,14 +466,14 @@ class ChromadonAgentSystem {
                     || action === 'analyze_dom' || action === 'analyzeDom' || action === 'analyzeDOM'
                     || action === 'inspectDOM' || action === 'inspect_dom') {
                     // Return stub - actual inspection would require DOM analysis
-                    console.log(`[DIRECT CDP] DOM inspection (stub)`);
+                    log.info(`[DIRECT CDP] DOM inspection (stub)`);
                     return { success: true, elements: [] };
                 }
                 if (action === 'find_element' || action === 'findElement' || action === 'querySelector'
                     || action === 'find_elements' || action === 'findElements' || action === 'querySelectorAll') {
                     // Return common selectors for search boxes
                     const elementType = params.element_type || params.type || params.name || '';
-                    console.log(`[DIRECT CDP] Find element(s): ${elementType}`);
+                    log.info(`[DIRECT CDP] Find element(s): ${elementType}`);
                     if (elementType.toLowerCase().includes('search')) {
                         return { success: true, selector: 'textarea[name="q"], input[name="q"], input[type="search"]', elements: [] };
                     }
@@ -491,7 +493,7 @@ class ChromadonAgentSystem {
                     || action === 'synthesize_trending_context' || action === 'synthesizeTrendingContext'
                     || action === 'synthesize_findings' || action === 'synthesizeFindings'
                     || action === 'synthesize_analysis' || action === 'synthesizeAnalysis') {
-                    console.log(`[DIRECT CDP] Context builder (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Context builder (stub): ${action}`);
                     return { success: true, context: {}, summary: 'Context synthesized' };
                 }
                 if (action === 'verifyContext' || action === 'verify_context')
@@ -514,13 +516,13 @@ class ChromadonAgentSystem {
             case 'THE_FORM_MASTER':
                 if (action === 'detectForm' || action === 'detect_form' || action === 'analyzeForm' || action === 'analyze_form'
                     || action === 'detectForms' || action === 'detect_forms' || action === 'analyzeForms' || action === 'analyze_forms') {
-                    console.log(`[DIRECT CDP] Form detection (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Form detection (stub): ${action}`);
                     return { success: true, formDetected: true, fields: [] };
                 }
                 if (action === 'fillForm' || action === 'fill_form') {
                     // Fill form by iterating through fields and using direct CDP
                     const formData = params.formData || params;
-                    console.log(`[DIRECT CDP] Filling form with ${Array.isArray(formData) ? formData.length : Object.keys(formData).length} fields`);
+                    log.info(`[DIRECT CDP] Filling form with ${Array.isArray(formData) ? formData.length : Object.keys(formData).length} fields`);
                     if (Array.isArray(formData)) {
                         for (const field of formData) {
                             await this.cdp.type(field.selector, field.value, { clear: true });
@@ -534,31 +536,31 @@ class ChromadonAgentSystem {
                     return { success: true };
                 }
                 if (action === 'validateForm' || action === 'validate_form' || action === 'verifyForm' || action === 'verify_form') {
-                    console.log(`[DIRECT CDP] Form validation (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Form validation (stub): ${action}`);
                     return { success: true, valid: true };
                 }
                 break;
             case 'THE_SELECTOR':
                 if (action === 'select') {
-                    console.log(`[DIRECT CDP] Selecting: ${params.value} in ${params.selector}`);
+                    log.info(`[DIRECT CDP] Selecting: ${params.value} in ${params.selector}`);
                     return await this.cdp.select(params.selector, params.value);
                 }
                 if (action === 'find_trending_section' || action === 'findTrendingSection'
                     || action === 'find_section' || action === 'findSection' || action === 'locateSection') {
-                    console.log(`[DIRECT CDP] Find section (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Find section (stub): ${action}`);
                     return { success: true, selector: '[data-testid="trend"]', found: true };
                 }
                 break;
             case 'THE_FILE_HANDLER':
                 if (action === 'upload') {
-                    console.log(`[DIRECT CDP] Uploading file: ${params.filePath} to ${params.selector}`);
+                    log.info(`[DIRECT CDP] Uploading file: ${params.filePath} to ${params.selector}`);
                     return await this.cdp.uploadFile(params.selector, params.filePath);
                 }
                 break;
             case 'THE_AUTH_GUARDIAN':
                 if (action === 'login' || action === 'conditional_login' || action === 'conditionalLogin' || action === 'authenticate'
                     || action === 'ensure_authenticated' || action === 'ensureAuthenticated') {
-                    console.log(`[DIRECT CDP] Auth action (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Auth action (stub): ${action}`);
                     return { success: true, authenticated: false, reason: 'stub' };
                 }
                 if (action === 'check_login_status' || action === 'checkLoginStatus' || action === 'isLoggedIn'
@@ -574,13 +576,13 @@ class ChromadonAgentSystem {
                     || action === 'extractText' || action === 'extract_text'
                     || action === 'extract_posts' || action === 'extractPosts'
                     || action === 'extract_content' || action === 'extractContent') {
-                    console.log(`[DIRECT CDP] Data extraction (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Data extraction (stub): ${action}`);
                     return { success: true, data: [], extracted: true };
                 }
                 break;
             case 'THE_SOCIAL_MEDIA_PRO':
                 if (action === 'post' || action === 'create_post' || action === 'createPost') {
-                    console.log(`[DIRECT CDP] Social media action (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Social media action (stub): ${action}`);
                     return { success: true, posted: false, reason: 'stub' };
                 }
                 if (action === 'create_page' || action === 'createPage') {
@@ -589,39 +591,39 @@ class ChromadonAgentSystem {
                 if (action === 'navigateToNotifications' || action === 'navigate_to_notifications'
                     || action === 'navigateToFeed' || action === 'navigate_to_feed'
                     || action === 'navigateToProfile' || action === 'navigate_to_profile') {
-                    console.log(`[DIRECT CDP] Social navigation (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Social navigation (stub): ${action}`);
                     return { success: true, navigated: true };
                 }
                 break;
             case 'THE_CAPTCHA_BREAKER':
                 if (action === 'solve' || action === 'solve_captcha' || action === 'solveCaptcha' || action === 'detect') {
-                    console.log(`[DIRECT CDP] Captcha action (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Captcha action (stub): ${action}`);
                     return { success: true, solved: false, captchaDetected: false };
                 }
                 break;
             case 'THE_ECOMMERCE_EXPERT':
                 if (action === 'add_to_cart' || action === 'addToCart' || action === 'checkout'
                     || action === 'fill_checkout' || action === 'fillCheckout') {
-                    console.log(`[DIRECT CDP] Ecommerce action (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Ecommerce action (stub): ${action}`);
                     return { success: true, action: action };
                 }
                 break;
             case 'THE_RESEARCH_AGENT':
                 if (action === 'research' || action === 'search' || action === 'gather_info' || action === 'gatherInfo') {
-                    console.log(`[DIRECT CDP] Research action (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Research action (stub): ${action}`);
                     return { success: true, results: [] };
                 }
                 break;
             case 'THE_BOOKING_AGENT':
                 if (action === 'book' || action === 'make_reservation' || action === 'makeReservation' || action === 'reserve') {
-                    console.log(`[DIRECT CDP] Booking action (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Booking action (stub): ${action}`);
                     return { success: true, booked: false, reason: 'stub' };
                 }
                 break;
             case 'THE_PAYMENT_HANDLER':
                 if (action === 'pay' || action === 'process_payment' || action === 'processPayment'
                     || action === 'fill_payment' || action === 'fillPayment') {
-                    console.log(`[DIRECT CDP] Payment action (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Payment action (stub): ${action}`);
                     return { success: true, paid: false, reason: 'stub' };
                 }
                 break;
@@ -629,14 +631,14 @@ class ChromadonAgentSystem {
                 if (action === 'generateReport' || action === 'generate_report'
                     || action === 'generateSummary' || action === 'generate_summary'
                     || action === 'generateContent' || action === 'generate_content') {
-                    console.log(`[DIRECT CDP] Content generation (stub): ${action}`);
+                    log.info(`[DIRECT CDP] Content generation (stub): ${action}`);
                     return { success: true, content: 'Generated content placeholder', generated: true };
                 }
                 break;
         }
         // Default: return success for unknown verification actions
         if (action.startsWith('verify') || action.startsWith('check')) {
-            console.log(`[ChromadonAgentSystem] Auto-passing verification: ${target}.${action}`);
+            log.info(`[ChromadonAgentSystem] Auto-passing verification: ${target}.${action}`);
             return { success: true, verified: true };
         }
         throw new Error(`Unknown agent/action: ${target}.${action}`);
@@ -716,7 +718,7 @@ class ChromadonAgentSystem {
                 dependsOn: node.dependsOn || node.dependencies || [],
                 params: node.params || node.parameters || {},
             }));
-            console.log(`[ChromadonAgentSystem] Executing workflow with ${plan.nodes.length} steps`);
+            log.info(`[ChromadonAgentSystem] Executing workflow with ${plan.nodes.length} steps`);
             // 3. Execute steps directly (bypasses sequencer's @traced decorator issue)
             const stepNodes = plan.nodes || plan.steps || [];
             const results = [];
@@ -725,14 +727,14 @@ class ChromadonAgentSystem {
                 const agent = node.agent || this.inferAgentFromAction(node.action);
                 const action = node.action;
                 const params = node.params || node.parameters || {};
-                console.log(`[ChromadonAgentSystem] ▶ Executing: ${agent}.${action} (${stepId})`);
+                log.info(`[ChromadonAgentSystem] ▶ Executing: ${agent}.${action} (${stepId})`);
                 try {
                     const result = await this.routeRequest(agent, action, { params });
-                    console.log(`[ChromadonAgentSystem] ✓ Step ${stepId} SUCCESS`);
+                    log.info(`[ChromadonAgentSystem] ✓ Step ${stepId} SUCCESS`);
                     results.push({ nodeId: stepId, success: true, result });
                 }
                 catch (error) {
-                    console.error(`[ChromadonAgentSystem] ✗ Step ${stepId} FAILED:`, error.message);
+                    log.error({ err: error.message }, `[ChromadonAgentSystem] ✗ Step ${stepId} FAILED:`);
                     results.push({ nodeId: stepId, success: false, error: error.message });
                     // Continue to next step - don't fail the whole workflow
                 }
@@ -745,8 +747,8 @@ class ChromadonAgentSystem {
         }
         catch (error) {
             // Log the actual error for debugging
-            console.error(`[ChromadonAgentSystem] ERROR:`, error.message);
-            console.error(`[ChromadonAgentSystem] STACK:`, error.stack);
+            log.error(`[ChromadonAgentSystem] ERROR:`, error.message);
+            log.error(`[ChromadonAgentSystem] STACK:`, error.stack);
             // Classify and attempt recovery
             const classification = await this.agents.errorHandler.classify(error);
             if (classification.recoverable) {

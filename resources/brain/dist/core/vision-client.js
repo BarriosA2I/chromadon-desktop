@@ -10,13 +10,10 @@
  *
  * Supports intelligent model routing based on task complexity.
  */
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.VisionClient = void 0;
-const pino_1 = __importDefault(require("pino"));
-const logger = (0, pino_1.default)({ name: 'vision-client' });
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('vision');
 const DEFAULT_CONFIG = {
     provider: 'openai',
     defaultTier: 'balanced',
@@ -93,7 +90,7 @@ class VisionClient {
             }
             response.latencyMs = Date.now() - startTime;
             response.model = model;
-            logger.info({
+            log.info({
                 provider: this.config.provider,
                 model,
                 latencyMs: response.latencyMs,
@@ -102,7 +99,7 @@ class VisionClient {
             return response;
         }
         catch (error) {
-            logger.error({ error, provider: this.config.provider }, 'Vision analysis failed');
+            log.error({ error, provider: this.config.provider }, 'Vision analysis failed');
             throw error;
         }
     }

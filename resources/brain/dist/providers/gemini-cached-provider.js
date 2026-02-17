@@ -28,6 +28,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.GeminiCachedProvider = void 0;
 const generative_ai_1 = require("@google/generative-ai");
 const server_1 = require("@google/generative-ai/server");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('ai');
 class GeminiCachedProvider {
     genAI;
     cacheManager;
@@ -52,8 +54,8 @@ class GeminiCachedProvider {
      * @returns Cache ID if successful, null if caching unavailable
      */
     async initializeCache(systemPrompt, modelName = 'models/gemini-2.0-flash') {
-        console.log(`[GeminiCache] Initializing cache for model: ${modelName}`);
-        console.log(`[GeminiCache] System prompt length: ${systemPrompt.length} chars`);
+        log.info(`[GeminiCache] Initializing cache for model: ${modelName}`);
+        log.info(`[GeminiCache] System prompt length: ${systemPrompt.length} chars`);
         try {
             this.activeCache = await this.cacheManager.create({
                 model: modelName,
@@ -62,15 +64,15 @@ class GeminiCachedProvider {
                 ttlSeconds: this.cacheTTLSeconds,
             });
             this.cachedSystemPrompt = systemPrompt;
-            console.log(`[GeminiCache] SUCCESS. Cache ID: ${this.activeCache.name}`);
-            console.log(`[GeminiCache] Expiration: ${this.activeCache.expireTime}`);
-            console.log(`[GeminiCache] Token count: ${this.activeCache.usageMetadata?.totalTokenCount || 'unknown'}`);
+            log.info(`[GeminiCache] SUCCESS. Cache ID: ${this.activeCache.name}`);
+            log.info(`[GeminiCache] Expiration: ${this.activeCache.expireTime}`);
+            log.info(`[GeminiCache] Token count: ${this.activeCache.usageMetadata?.totalTokenCount || 'unknown'}`);
             return this.activeCache.name;
         }
         catch (error) {
-            console.warn(`[GeminiCache] Cache creation failed: ${error.message}`);
-            console.warn('[GeminiCache] Falling back to standard (non-cached) mode.');
-            console.warn('[GeminiCache] Ensure you have a billing-enabled API key for context caching.');
+            log.warn(`[GeminiCache] Cache creation failed: ${error.message}`);
+            log.warn('[GeminiCache] Falling back to standard (non-cached) mode.');
+            log.warn('[GeminiCache] Ensure you have a billing-enabled API key for context caching.');
             this.activeCache = null;
             return null;
         }
@@ -87,20 +89,20 @@ class GeminiCachedProvider {
             const expireTime = new Date(cached.expireTime);
             const now = new Date();
             if (expireTime <= now) {
-                console.log('[GeminiCache] Cache expired, refreshing...');
+                log.info('[GeminiCache] Cache expired, refreshing...');
                 await this.initializeCache(systemPrompt, modelName);
                 return !!this.activeCache;
             }
             // Check if system prompt changed
             if (systemPrompt !== this.cachedSystemPrompt) {
-                console.log('[GeminiCache] System prompt changed, refreshing cache...');
+                log.info('[GeminiCache] System prompt changed, refreshing cache...');
                 await this.initializeCache(systemPrompt, modelName);
                 return !!this.activeCache;
             }
             return true;
         }
         catch {
-            console.warn('[GeminiCache] Cache validation failed, will refresh on next call.');
+            log.warn('[GeminiCache] Cache validation failed, will refresh on next call.');
             this.activeCache = null;
             return false;
         }
@@ -115,7 +117,7 @@ class GeminiCachedProvider {
                 return this.genAI.getGenerativeModelFromCachedContent(this.activeCache);
             }
             catch (err) {
-                console.warn('[GeminiCache] Failed to use cached model, falling back to standard.');
+                log.warn('[GeminiCache] Failed to use cached model, falling back to standard.');
             }
         }
         // Standard path (no caching)
@@ -151,10 +153,10 @@ class GeminiCachedProvider {
         if (this.activeCache?.name) {
             try {
                 await this.cacheManager.delete(this.activeCache.name);
-                console.log(`[GeminiCache] Cache ${this.activeCache.name} destroyed.`);
+                log.info(`[GeminiCache] Cache ${this.activeCache.name} destroyed.`);
             }
             catch (err) {
-                console.warn(`[GeminiCache] Failed to destroy cache: ${err.message}`);
+                log.warn(`[GeminiCache] Failed to destroy cache: ${err.message}`);
             }
         }
         this.activeCache = null;

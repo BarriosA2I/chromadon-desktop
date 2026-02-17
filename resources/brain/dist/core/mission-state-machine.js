@@ -13,6 +13,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createMissionStateMachine = exports.MissionStateMachine = void 0;
 const uuid_1 = require("uuid");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('mission');
 /**
  * Valid state transitions.
  */
@@ -76,7 +78,7 @@ class MissionStateMachine {
     transition(newState, reason) {
         const allowed = STATE_TRANSITIONS[this.state];
         if (!allowed.includes(newState)) {
-            console.warn(`Invalid state transition: ${this.state} → ${newState}. ` +
+            log.warn(`Invalid state transition: ${this.state} → ${newState}. ` +
                 `Allowed: ${allowed.join(', ')}`);
             return false;
         }
@@ -422,7 +424,7 @@ class MissionStateMachine {
                 callback(transition);
             }
             catch (error) {
-                console.error('State change callback error:', error);
+                log.error({ err: error }, 'State change callback error:');
             }
         }
     }
@@ -435,7 +437,7 @@ class MissionStateMachine {
                 callback(step);
             }
             catch (error) {
-                console.error('Step complete callback error:', error);
+                log.error({ err: error }, 'Step complete callback error:');
             }
         }
     }
@@ -449,7 +451,7 @@ class MissionStateMachine {
                 callback(progress);
             }
             catch (error) {
-                console.error('Progress callback error:', error);
+                log.error({ err: error }, 'Progress callback error:');
             }
         }
     }

@@ -39,6 +39,8 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const scheduler_types_1 = require("./scheduler-types");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('scheduler');
 class SchedulerPersistence {
     stateFile;
     backupFile;
@@ -80,7 +82,7 @@ class SchedulerPersistence {
     loadState() {
         let state = this.tryLoadFile(this.stateFile);
         if (!state) {
-            console.log('[SchedulerPersistence] Main state corrupt/missing, trying backup...');
+            log.info('[SchedulerPersistence] Main state corrupt/missing, trying backup...');
             state = this.tryLoadFile(this.backupFile);
         }
         if (!state)
@@ -95,7 +97,7 @@ class SchedulerPersistence {
             }
         }
         if (recovered > 0) {
-            console.log(`[SchedulerPersistence] Crash recovery: ${recovered} task(s) reset to PENDING`);
+            log.info(`[SchedulerPersistence] Crash recovery: ${recovered} task(s) reset to PENDING`);
             this.saveState(state);
         }
         return state;
@@ -111,7 +113,7 @@ class SchedulerPersistence {
             return parsed;
         }
         catch (err) {
-            console.error(`[SchedulerPersistence] Failed to load ${filePath}:`, err.message);
+            log.error(`[SchedulerPersistence] Failed to load ${filePath}:`, err.message);
             return null;
         }
     }

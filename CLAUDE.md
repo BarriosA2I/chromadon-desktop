@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.29.1 — 2026-02-17)
+## Recent Changes (v1.29.2 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Added: POST /obs/launch endpoint — Spawns OBS Studio from known install paths (Program Files, AppData). Detached process, returns PID. Handles OBS-not-found and launch errors gracefully | `electron/main.ts` |
+| Updated: Brain dist v1.14.2 — 10 new OBS configuration tools (stream setup, video settings, recording config, scene/source management, settings inspection, OBS launch). Total OBS tools: 19 | `resources/brain/dist/` |
+
+## Changes (v1.29.1 — 2026-02-17)
 
 | Change | File |
 |--------|------|

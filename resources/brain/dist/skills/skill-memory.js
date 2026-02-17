@@ -36,6 +36,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SkillMemory = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('skills');
 // ─── Constants ───
 const MAX_RECENT_HISTORY = 10;
 const MAX_DRIFT_RECORDS = 10;
@@ -51,7 +53,7 @@ class SkillMemory {
         // Eagerly load on construction so getSkillsJson() is always ready
         this.cache = this.loadSkills();
         const stats = this.getStats();
-        console.log(`[SkillMemory] Initialized (${stats.domains} domains, ${stats.totalTasks} tasks)`);
+        log.info(`[SkillMemory] Initialized (${stats.domains} domains, ${stats.totalTasks} tasks)`);
     }
     // ─── Core I/O ───
     loadSkills() {
@@ -61,7 +63,7 @@ class SkillMemory {
                 return JSON.parse(fs.readFileSync(this.skillsPath, 'utf-8'));
             }
             catch (err) {
-                console.error('[SkillMemory] Corrupted skills file, falling back to defaults:', err);
+                log.error({ err: err }, '[SkillMemory] Corrupted skills file, falling back to defaults:');
             }
         }
         // Copy defaults to runtime location
@@ -73,7 +75,7 @@ class SkillMemory {
                 return JSON.parse(defaults);
             }
             catch (err) {
-                console.error('[SkillMemory] Failed to load defaults:', err);
+                log.error({ err: err }, '[SkillMemory] Failed to load defaults:');
             }
         }
         return { version: '2.1', skills: {}, globalRules: [] };
@@ -86,7 +88,7 @@ class SkillMemory {
             fs.writeFileSync(this.skillsPath, JSON.stringify(this.cache, null, 2));
         }
         catch (err) {
-            console.error('[SkillMemory] Failed to save skills:', err);
+            log.error({ err: err }, '[SkillMemory] Failed to save skills:');
         }
     }
     // ─── Lookups ───
@@ -187,7 +189,7 @@ class SkillMemory {
         // Record execution stats
         this.recordExecution(domain, taskName, true, options?.durationMs);
         this.save();
-        console.log(`[SkillMemory] Learned: ${domain} -> ${taskName} (${site.tasks[taskName].successCount} successes)`);
+        log.info(`[SkillMemory] Learned: ${domain} -> ${taskName} (${site.tasks[taskName].successCount} successes)`);
     }
     recordFailure(domain, taskName, failedStep, error, failedSelector) {
         if (!this.cache)
@@ -201,7 +203,7 @@ class SkillMemory {
                 this.recordSelectorDrift(domain, taskName, failedStep, failedSelector, error);
             }
             this.save();
-            console.log(`[SkillMemory] Failure: ${domain} -> ${taskName} step ${failedStep}: ${error}`);
+            log.info(`[SkillMemory] Failure: ${domain} -> ${taskName} step ${failedStep}: ${error}`);
         }
     }
     addSelector(domain, elementType, selector) {
@@ -232,7 +234,7 @@ class SkillMemory {
         if (this.cache.skills[domain]?.tasks[taskName]) {
             this.cache.skills[domain].tasks[taskName].clientNotes = notes;
             this.save();
-            console.log(`[SkillMemory] Client notes saved: ${domain} -> ${taskName}`);
+            log.info(`[SkillMemory] Client notes saved: ${domain} -> ${taskName}`);
         }
     }
     // ─── Execution Stats ───
@@ -330,7 +332,7 @@ class SkillMemory {
             record.resolvedAt = new Date().toISOString();
             task.drift.stabilityScore = this.computeStabilityScore(task);
             this.save();
-            console.log(`[SkillMemory] Drift resolved: ${failedSelector} → ${newSelector}`);
+            log.info(`[SkillMemory] Drift resolved: ${failedSelector} → ${newSelector}`);
         }
     }
     computeStabilityScore(task) {
@@ -390,7 +392,7 @@ class SkillMemory {
         task.steps = previousVersion.steps;
         task.lastUsed = new Date().toISOString();
         this.save();
-        console.log(`[SkillMemory] Rolled back: ${domain} -> ${taskName} to version from ${previousVersion.savedAt}`);
+        log.info(`[SkillMemory] Rolled back: ${domain} -> ${taskName} to version from ${previousVersion.savedAt}`);
         return true;
     }
     // ─── Prompt Injection ───

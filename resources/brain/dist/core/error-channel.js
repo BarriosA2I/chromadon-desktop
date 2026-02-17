@@ -11,6 +11,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.errorChannel = void 0;
 const events_1 = require("events");
 const uuid_1 = require("uuid");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('error');
 class ErrorChannelImpl extends events_1.EventEmitter {
     buffer = [];
     maxBuffer = 100;
@@ -34,7 +36,7 @@ class ErrorChannelImpl extends events_1.EventEmitter {
         this.emit('brain-error', error);
         // Console output for error/critical
         if (severity === 'error' || severity === 'critical') {
-            console.error(`[ErrorChannel] [${severity.toUpperCase()}] ${source}: ${message}`);
+            log.error(`[ErrorChannel] [${severity.toUpperCase()}] ${source}: ${message}`);
         }
         return error;
     }

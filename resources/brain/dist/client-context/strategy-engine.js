@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StrategyEngine = void 0;
 const llm_helper_1 = require("./llm-helper");
 const strategy_prompts_1 = require("./strategy-prompts");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('client');
 // ============================================================================
 // STRATEGY ENGINE
 // ============================================================================
@@ -61,7 +63,7 @@ class StrategyEngine {
             version: 1,
         };
         this.storage.updateStrategy(clientId, strategy);
-        console.log(`[StrategyEngine] Generated strategy for client: ${clientId} (${strategy.channels.length} channels)`);
+        log.info(`[StrategyEngine] Generated strategy for client: ${clientId} (${strategy.channels.length} channels)`);
         return strategy;
     }
     // =========================================================================
@@ -90,7 +92,7 @@ class StrategyEngine {
         existing.updatedAt = new Date().toISOString();
         existing.version += 1;
         this.storage.updateStrategy(clientId, existing);
-        console.log(`[StrategyEngine] Updated strategy for client: ${clientId} (v${existing.version})`);
+        log.info(`[StrategyEngine] Updated strategy for client: ${clientId} (v${existing.version})`);
         return existing;
     }
     // =========================================================================
@@ -125,7 +127,7 @@ class StrategyEngine {
             strategy.updatedAt = new Date().toISOString();
             this.storage.updateStrategy(clientId, strategy);
         }
-        console.log(`[StrategyEngine] Generated ${calendarData.length} calendar entries for ${weeks} weeks`);
+        log.info(`[StrategyEngine] Generated ${calendarData.length} calendar entries for ${weeks} weeks`);
         return calendarData;
     }
     // =========================================================================
@@ -147,7 +149,7 @@ class StrategyEngine {
             jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
         }
         const reviewData = JSON.parse(jsonStr);
-        console.log(`[StrategyEngine] Weekly review completed for client: ${clientId}`);
+        log.info(`[StrategyEngine] Weekly review completed for client: ${clientId}`);
         return {
             assessment: reviewData.assessment || '',
             working: reviewData.working || [],

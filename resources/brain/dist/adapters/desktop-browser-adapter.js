@@ -1,12 +1,8 @@
 "use strict";
-/**
- * DesktopBrowserAdapter
- *
- * Implements CDPController interface by calling chromadon-desktop's REST API.
- * Allows the 27-Agent System to control Electron BrowserView tabs.
- */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DesktopBrowserAdapter = void 0;
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('browser');
 class DesktopBrowserAdapter {
     baseUrl;
     activeTabId = null;
@@ -255,7 +251,7 @@ class DesktopBrowserAdapter {
     }
     async uploadFile(selector, filePath) {
         // File upload requires special handling - not fully supported via REST
-        console.warn('[DesktopBrowserAdapter] uploadFile not fully implemented - requires IPC');
+        log.warn('[DesktopBrowserAdapter] uploadFile not fully implemented - requires IPC');
         return { success: false };
     }
     async screenshot() {
@@ -340,7 +336,7 @@ class DesktopBrowserAdapter {
                 return { data };
             }
             default:
-                console.warn(`[DesktopBrowserAdapter] Unhandled CDP method: ${method}`);
+                log.warn(`[DesktopBrowserAdapter] Unhandled CDP method: ${method}`);
                 return { error: `Unsupported CDP method: ${method}` };
         }
     }

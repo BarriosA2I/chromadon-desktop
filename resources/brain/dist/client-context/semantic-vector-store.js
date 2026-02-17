@@ -35,6 +35,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SemanticVectorStore = void 0;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('client');
 // Lazy-load better-sqlite3
 let Database = null;
 function getDatabase() {
@@ -90,7 +92,7 @@ class SemanticVectorStore {
                     }),
                 });
                 if (!response.ok) {
-                    console.log(`[SemanticVectorStore] Embedding API error: ${response.status}`);
+                    log.info(`[SemanticVectorStore] Embedding API error: ${response.status}`);
                     // Return zero vectors on failure
                     for (let j = 0; j < batch.length; j++) {
                         results.push(new Float32Array(EMBEDDING_DIMS));
@@ -109,7 +111,7 @@ class SemanticVectorStore {
                 }
             }
             catch (err) {
-                console.log(`[SemanticVectorStore] Embedding batch failed: ${err.message}`);
+                log.info(`[SemanticVectorStore] Embedding batch failed: ${err.message}`);
                 for (let j = 0; j < batch.length; j++) {
                     results.push(new Float32Array(EMBEDDING_DIMS));
                 }

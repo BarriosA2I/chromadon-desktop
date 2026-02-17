@@ -4,6 +4,7 @@ import path from 'path'
 import express from 'express'
 import type { Request, Response } from 'express'
 import * as fs from 'fs'
+import { spawn } from 'child_process'
 import { browserViewManager, TabInfo, Platform, SessionMode, PlatformSession } from './browser-view-manager'
 import { vault, ChromadonProfile, StoredCredential } from './security/vault'
 import { StorageManager } from './storage-manager'
@@ -622,6 +623,55 @@ function startControlServer() {
       res.json({ success: true })
     } catch (error) {
       res.status(500).json({ success: false, error: (error as Error).message })
+    }
+  })
+
+  // ==================== OBS LAUNCH ENDPOINT ====================
+
+  server.post('/obs/launch', async (_req: Request, res: Response) => {
+    const OBS_PATHS = [
+      'C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe',
+      'C:\\Program Files (x86)\\obs-studio\\bin\\64bit\\obs64.exe',
+      path.join(app.getPath('home'), 'AppData', 'Local', 'Programs', 'obs-studio', 'bin', '64bit', 'obs64.exe'),
+    ]
+
+    // Find OBS executable
+    let obsPath: string | null = null
+    for (const p of OBS_PATHS) {
+      if (fs.existsSync(p)) {
+        obsPath = p
+        break
+      }
+    }
+
+    if (!obsPath) {
+      res.json({
+        success: false,
+        message: 'OBS Studio not found. Please install OBS from https://obsproject.com and ensure it is in the default install location.',
+      })
+      return
+    }
+
+    try {
+      const child = spawn(obsPath, ['--minimize-to-tray'], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      child.unref()
+
+      console.log(`[OBS] Launched OBS Studio from ${obsPath} (PID: ${child.pid})`)
+      res.json({
+        success: true,
+        message: `OBS Studio launched (PID: ${child.pid}). WebSocket connection will be available in a few seconds.`,
+        pid: child.pid,
+      })
+    } catch (error) {
+      console.error('[OBS] Failed to launch:', error)
+      res.json({
+        success: false,
+        message: `Failed to launch OBS: ${(error as Error).message}`,
+      })
     }
   })
 

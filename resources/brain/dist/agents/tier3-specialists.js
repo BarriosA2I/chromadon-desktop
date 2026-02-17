@@ -25,10 +25,12 @@ try {
     authenticator = require('otplib').authenticator;
 }
 catch {
-    console.warn('[Tier3] otplib not available — TOTP 2FA disabled');
+    log.warn('[Tier3] otplib not available — TOTP 2FA disabled');
 }
 const tier0_orchestration_1 = require("./tier0-orchestration");
 const event_bus_1 = require("./event-bus");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('agent');
 // =============================================================================
 // AGENT 17: THE AUTH GUARDIAN
 // =============================================================================

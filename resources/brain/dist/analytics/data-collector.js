@@ -10,6 +10,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DataCollector = void 0;
 const collector_prompts_1 = require("./collector-prompts");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('analytics');
 // ============================================================================
 // COLLECTOR WRITER (captures orchestrator output)
 // ============================================================================
@@ -51,7 +53,7 @@ class DataCollector {
     startSchedule(intervalMs = 6 * 60 * 60 * 1000) {
         if (this.collectInterval)
             return;
-        console.log(`[Analytics Collector] Scheduled every ${(intervalMs / 3600000).toFixed(1)}h`);
+        log.info(`[Analytics Collector] Scheduled every ${(intervalMs / 3600000).toFixed(1)}h`);
         this.collectInterval = setInterval(() => this.collectAll(), intervalMs);
     }
     stopSchedule() {
@@ -65,13 +67,13 @@ class DataCollector {
      */
     async collectAll() {
         if (this.isCollecting) {
-            console.log('[Analytics Collector] Already collecting, skipping');
+            log.info('[Analytics Collector] Already collecting, skipping');
             return [];
         }
         this.isCollecting = true;
         const results = [];
         const platforms = (0, collector_prompts_1.getSupportedPlatforms)();
-        console.log(`[Analytics Collector] Starting collection for ${platforms.length} platforms`);
+        log.info(`[Analytics Collector] Starting collection for ${platforms.length} platforms`);
         for (const platform of platforms) {
             try {
                 const result = await this.collectPlatform(platform);
@@ -89,14 +91,14 @@ class DataCollector {
             }
         }
         this.isCollecting = false;
-        console.log(`[Analytics Collector] Collection complete: ${results.filter(r => r.success).length}/${results.length} successful`);
+        log.info(`[Analytics Collector] Collection complete: ${results.filter(r => r.success).length}/${results.length} successful`);
         return results;
     }
     /**
      * Collect data from a single platform via the orchestrator.
      */
     async collectPlatform(platform) {
-        console.log(`[Analytics Collector] Collecting ${platform}...`);
+        log.info(`[Analytics Collector] Collecting ${platform}...`);
         const prompt = (0, collector_prompts_1.getCollectionPrompt)(platform);
         const writer = new CollectorWriter();
         try {
@@ -107,7 +109,7 @@ class DataCollector {
         }
         catch (error) {
             const errMsg = error.message;
-            console.error(`[Analytics Collector] ${platform} collection failed:`, errMsg);
+            log.error({ err: errMsg }, `[Analytics Collector] ${platform} collection failed:`);
             return { platform, success: false, postsCollected: 0, error: errMsg };
         }
     }
@@ -186,7 +188,7 @@ class DataCollector {
                 : 0,
             top_post_id: null, // We could track this but it complicates insert order
         });
-        console.log(`[Analytics Collector] ${platform}: ${data.followers || 0} followers, ${postsCollected} posts stored`);
+        log.info(`[Analytics Collector] ${platform}: ${data.followers || 0} followers, ${postsCollected} posts stored`);
         return { platform, success: true, postsCollected };
     }
     calculateEngagement(post) {

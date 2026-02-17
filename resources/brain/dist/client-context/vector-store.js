@@ -35,6 +35,8 @@ exports.VectorStore = void 0;
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
 const semantic_vector_store_1 = require("./semantic-vector-store");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('client');
 // Lazy-load better-sqlite3 — see database.ts for rationale
 let Database = null;
 function getDatabase() {
@@ -65,10 +67,10 @@ class VectorStore {
             try {
                 const semanticDbPath = dbPath.replace('.db', '-semantic.db');
                 this.semanticStore = new semantic_vector_store_1.SemanticVectorStore(semanticDbPath, geminiKey);
-                console.log('[VectorStore] Semantic search enabled (Gemini text-embedding-004)');
+                log.info('[VectorStore] Semantic search enabled (Gemini text-embedding-004)');
             }
             catch (err) {
-                console.log(`[VectorStore] Semantic search init failed (TF-IDF only): ${err.message}`);
+                log.info(`[VectorStore] Semantic search init failed (TF-IDF only): ${err.message}`);
             }
         }
     }
@@ -143,7 +145,7 @@ class VectorStore {
                 content: c.content,
                 metadata: typeof c.metadata === 'string' ? JSON.parse(c.metadata) : c.metadata,
             }))).catch(err => {
-                console.log(`[VectorStore] Semantic indexing failed (non-critical): ${err.message}`);
+                log.info(`[VectorStore] Semantic indexing failed (non-critical): ${err.message}`);
             });
         }
     }

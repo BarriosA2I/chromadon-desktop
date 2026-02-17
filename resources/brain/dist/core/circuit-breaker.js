@@ -14,6 +14,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createCircuitBreaker = exports.CircuitOpenError = exports.CircuitBreaker = void 0;
 const types_1 = require("../interfaces/types");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('core');
 // =============================================================================
 // DEFAULT CONFIGURATION
 // =============================================================================
@@ -133,7 +135,7 @@ class CircuitBreaker {
         this.successfulRequests++;
         this.lastSuccess = new Date();
         if (this.config.enableLogging) {
-            console.log(`[CircuitBreaker] Success: ${actionId} (state: ${this.state})`);
+            log.info(`[CircuitBreaker] Success: ${actionId} (state: ${this.state})`);
         }
         if (this.state === types_1.CircuitState.HALF_OPEN) {
             this.halfOpenSuccesses++;
@@ -153,7 +155,7 @@ class CircuitBreaker {
         this.failedRequests++;
         this.lastFailure = new Date();
         if (this.config.enableLogging) {
-            console.log(`[CircuitBreaker] Failure: ${actionId} - ${error.message} (state: ${this.state})`);
+            log.info(`[CircuitBreaker] Failure: ${actionId} - ${error.message} (state: ${this.state})`);
         }
         // Add to failures list
         this.failures.push({
@@ -193,7 +195,7 @@ class CircuitBreaker {
             this.halfOpenSuccesses = 0;
         }
         if (this.config.enableLogging) {
-            console.log(`[CircuitBreaker] State change: ${oldState} → ${newState} (${reason})`);
+            log.info(`[CircuitBreaker] State change: ${oldState} → ${newState} (${reason})`);
         }
         // Emit state change event
         this.emitStateChange({
@@ -346,7 +348,7 @@ class CircuitBreaker {
                 callback(change);
             }
             catch (error) {
-                console.error('State change callback error:', error);
+                log.error({ err: error }, 'State change callback error:');
             }
         }
     }

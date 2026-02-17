@@ -1,4 +1,8 @@
 "use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.BudgetMonitor = void 0;
+const logger_1 = require("../../lib/logger");
+const log = (0, logger_1.createChildLogger)('budget');
 /**
  * LLM Budget Monitor — Per-client Cost Tracking
  *
@@ -7,8 +11,6 @@
  *
  * @author Barrios A2I
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.BudgetMonitor = void 0;
 // Lazy-load better-sqlite3
 let Database = null;
 function getDatabase() {
@@ -74,7 +76,7 @@ class BudgetMonitor {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(entry.clientId, entry.missionId || null, entry.model, entry.provider, entry.inputTokens, entry.outputTokens, cost, Date.now());
         if (entry.missionId && this.isOverBudget(entry.missionId)) {
-            console.log(`[BudgetMonitor] WARNING: Mission ${entry.missionId} exceeded $${this.taskLimitUsd} budget`);
+            log.info(`[BudgetMonitor] WARNING: Mission ${entry.missionId} exceeded $${this.taskLimitUsd} budget`);
         }
     }
     getMissionCost(missionId) {

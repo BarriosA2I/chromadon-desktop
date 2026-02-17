@@ -26,6 +26,8 @@ const api_1 = require("@opentelemetry/api");
 const prom_client_1 = require("prom-client");
 const uuid_1 = require("uuid");
 const immer_1 = require("immer");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('ai');
 // ============================================================================
 // PROMETHEUS METRICS
 // ============================================================================
@@ -116,7 +118,7 @@ class CircuitBreaker {
                     });
                     this.updateMetric();
                     span.setAttribute('circuit_breaker.transition', 'open->half-open');
-                    console.log(`[CircuitBreaker:${this.componentName}] Transitioning to half-open after ${timeSinceFailure}ms`);
+                    log.info(`[CircuitBreaker:${this.componentName}] Transitioning to half-open after ${timeSinceFailure}ms`);
                 }
                 else {
                     span.setAttribute('circuit_breaker.rejected', true);
@@ -161,7 +163,7 @@ class CircuitBreaker {
                     draft.state = 'closed';
                     draft.failures = 0;
                     draft.successes = 0;
-                    console.log(`[CircuitBreaker:${this.componentName}] Circuit CLOSED after ${this.config.successThreshold} successes`);
+                    log.info(`[CircuitBreaker:${this.componentName}] Circuit CLOSED after ${this.config.successThreshold} successes`);
                 }
             }
             else if (draft.state === 'closed') {
@@ -180,12 +182,12 @@ class CircuitBreaker {
             if (draft.state === 'half-open') {
                 // Any failure in half-open returns to open
                 draft.state = 'open';
-                console.log(`[CircuitBreaker:${this.componentName}] Circuit OPEN (half-open failure): ${error.message}`);
+                log.info(`[CircuitBreaker:${this.componentName}] Circuit OPEN (half-open failure): ${error.message}`);
             }
             else if (draft.state === 'closed' && draft.failures >= this.config.failureThreshold) {
                 // Trip the circuit
                 draft.state = 'open';
-                console.log(`[CircuitBreaker:${this.componentName}] Circuit OPEN after ${draft.failures} failures: ${error.message}`);
+                log.info(`[CircuitBreaker:${this.componentName}] Circuit OPEN after ${draft.failures} failures: ${error.message}`);
             }
         });
         this.updateMetric();
@@ -202,7 +204,7 @@ class CircuitBreaker {
             totalFailures: this.state.totalFailures,
         };
         this.updateMetric();
-        console.log(`[CircuitBreaker:${this.componentName}] Circuit manually reset`);
+        log.info(`[CircuitBreaker:${this.componentName}] Circuit manually reset`);
     }
 }
 exports.CircuitBreaker = CircuitBreaker;
@@ -735,13 +737,13 @@ class NeuralRAGAIEngine {
                 // Regenerate if verification fails
                 if (!reflection.isSupported || !reflection.isUseful) {
                     span.setAttribute('regenerated', true);
-                    console.log(`[NeuralRAGAIEngine] Regenerating due to low verification: SUP=${reflection.isSupported}, USE=${reflection.isUseful}`);
+                    log.info(`[NeuralRAGAIEngine] Regenerating due to low verification: SUP=${reflection.isSupported}, USE=${reflection.isUseful}`);
                     parsed = await this.regenerateWithGuidance(command, pageContext, memoryContext, classification, reflection);
                 }
                 // Apply escalation for hybrid mode
                 if (classification.cognitiveMode === 'hybrid' && this.router.shouldEscalate(reflection.confidence)) {
                     span.setAttribute('escalated', true);
-                    console.log(`[NeuralRAGAIEngine] Escalating to System 2 due to low confidence: ${reflection.confidence}`);
+                    log.info(`[NeuralRAGAIEngine] Escalating to System 2 due to low confidence: ${reflection.confidence}`);
                     // Re-run with System 2 settings
                     const escalatedClassification = {
                         ...classification,
@@ -928,7 +930,7 @@ CRITICAL RULES:
             // Try to extract JSON from response
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (!jsonMatch) {
-                console.warn('[NeuralRAGAIEngine] No JSON found in response, attempting text parse');
+                log.warn('[NeuralRAGAIEngine] No JSON found in response, attempting text parse');
                 return this.parseTextResponse(text);
             }
             // Sanitize control characters that break JSON.parse
@@ -953,7 +955,7 @@ CRITICAL RULES:
             };
         }
         catch (error) {
-            console.warn('[NeuralRAGAIEngine] Failed to parse JSON response:', error);
+            log.warn({ detail: error }, '[NeuralRAGAIEngine] Failed to parse JSON response:');
             return this.parseTextResponse(text);
         }
     }

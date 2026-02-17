@@ -35,6 +35,8 @@ exports.ClientStorage = void 0;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const uuid_1 = require("uuid");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('client');
 // ============================================================================
 // CLIENT STORAGE CLASS
 // ============================================================================
@@ -51,7 +53,7 @@ class ClientStorage {
         if (!fs.existsSync(this.metaPath)) {
             this.writeMeta({ activeClientId: null });
         }
-        console.log(`[ClientStorage] Initialized: ${this.baseDir}`);
+        log.info(`[ClientStorage] Initialized: ${this.baseDir}`);
     }
     // =========================================================================
     // CLIENT LIFECYCLE
@@ -73,7 +75,7 @@ class ClientStorage {
             hasStrategy: false,
         };
         this.writeJson(clientDir, 'info.json', info);
-        console.log(`[ClientStorage] Created client: ${name} (${id})`);
+        log.info(`[ClientStorage] Created client: ${name} (${id})`);
         return info;
     }
     getClient(clientId) {
@@ -106,7 +108,7 @@ class ClientStorage {
             meta.activeClientId = null;
             this.writeMeta(meta);
         }
-        console.log(`[ClientStorage] Deleted client: ${clientId}`);
+        log.info(`[ClientStorage] Deleted client: ${clientId}`);
         return true;
     }
     // =========================================================================
@@ -124,7 +126,7 @@ class ClientStorage {
         meta.activeClientId = clientId;
         this.writeMeta(meta);
         this.touchClient(clientId);
-        console.log(`[ClientStorage] Active client set: ${clientId}`);
+        log.info(`[ClientStorage] Active client set: ${clientId}`);
         return true;
     }
     // =========================================================================

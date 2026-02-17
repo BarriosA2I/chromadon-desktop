@@ -44,6 +44,8 @@ function getDatabase() {
     }
     return Database;
 }
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('analytics');
 // ============================================================================
 // DATABASE CLASS
 // ============================================================================
@@ -60,7 +62,7 @@ class AnalyticsDatabase {
         this.db.pragma('journal_mode = WAL');
         this.db.pragma('foreign_keys = ON');
         (0, schema_1.runMigrations)(this.db);
-        console.log(`[Analytics DB] Opened: ${resolvedPath}`);
+        log.info(`[Analytics DB] Opened: ${resolvedPath}`);
     }
     getDefaultPath() {
         const appData = process.env.APPDATA || process.env.HOME || '.';

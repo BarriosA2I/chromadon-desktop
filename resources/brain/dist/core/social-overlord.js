@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SocialOverlord = void 0;
 const social_collector_writer_1 = require("./social-collector-writer");
 const social_prompts_1 = require("./social-prompts");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('social');
 // ============================================================================
 // SOCIAL OVERLORD
 // ============================================================================
@@ -44,7 +46,7 @@ class SocialOverlord {
             return postId;
         }
         catch (err) {
-            console.error('[SocialOverlord] Failed to record post to analytics:', err);
+            log.error({ err: err }, '[SocialOverlord] Failed to record post to analytics:');
             return undefined;
         }
     }

@@ -34,6 +34,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createSchedulerExecutor = void 0;
 const chrono = __importStar(require("chrono-node"));
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('scheduler');
 /**
  * Parse natural language or ISO 8601 time into UTC ISO string.
  * Uses chrono-node for NL ("3pm tomorrow", "next Monday at 9am", "in 2 hours").
@@ -155,7 +157,7 @@ function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClient
                             }
                         }
                         catch (e) {
-                            console.log('[CHROMADON] Trinity intelligence unavailable:', e.message);
+                            log.info({ err: e.message }, 'Trinity intelligence unavailable');
                         }
                     }
                     const scheduledTimeUtc = parseTime(scheduled_time);

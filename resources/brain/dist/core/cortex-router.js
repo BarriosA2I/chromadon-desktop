@@ -22,6 +22,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CortexRouter = void 0;
 const event_bus_1 = require("../agents/event-bus");
 const uuid_1 = require("uuid");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('orchestrator');
 // ============================================================================
 // URL RESOLUTION
 // ============================================================================
@@ -67,7 +69,7 @@ class CortexRouter {
                 priority: 100,
                 match: (msg) => this.isCopyrightWorkflow(msg),
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    console.log('[CortexRouter] Copyright workflow → monolithic');
+                    log.info('[CortexRouter] Copyright workflow → monolithic');
                     return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
                 },
             },
@@ -76,7 +78,7 @@ class CortexRouter {
                 priority: 90,
                 match: (msg) => this.parseSimpleCommand(msg),
                 execute: async (simple, sessionId, _message, writer) => {
-                    console.log(`[CortexRouter] Simple command: ${simple.agent}.${simple.action} →`, simple.params);
+                    log.info({ detail: simple.params }, `[CortexRouter] Simple command: ${simple.agent}.${simple.action} →`);
                     const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
                     writer.writeEvent('session_id', { sessionId: sid });
                     return this.executeSimpleCommand(simple, sid, writer);
@@ -87,7 +89,7 @@ class CortexRouter {
                 priority: 80,
                 match: (msg) => this.parseYouTubeAPICommand(msg),
                 execute: async (ytCommand, sessionId, _message, writer) => {
-                    console.log(`[CortexRouter] YouTube API: ${ytCommand.tool}`);
+                    log.info(`[CortexRouter] YouTube API: ${ytCommand.tool}`);
                     const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
                     writer.writeEvent('session_id', { sessionId: sid });
                     return this.executeYouTubeAPI(ytCommand, sid, writer);
@@ -98,7 +100,7 @@ class CortexRouter {
                 priority: 75,
                 match: (msg) => this.isConversational(msg),
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    console.log('[CortexRouter] Conversational → monolithic');
+                    log.info('[CortexRouter] Conversational → monolithic');
                     return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
                 },
             },
@@ -107,7 +109,7 @@ class CortexRouter {
                 priority: 70,
                 match: (msg) => this.parseSocialMediaTask(msg),
                 execute: async (socialTask, sessionId, _message, writer) => {
-                    console.log(`[CortexRouter] Social media: ${socialTask.platform}/${socialTask.action}`);
+                    log.info(`[CortexRouter] Social media: ${socialTask.platform}/${socialTask.action}`);
                     const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
                     writer.writeEvent('session_id', { sessionId: sid });
                     return this.executeSocialMedia(socialTask, sid, writer);
@@ -118,7 +120,7 @@ class CortexRouter {
                 priority: 65,
                 match: (msg) => this.isBrowserNavigation(msg),
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    console.log('[CortexRouter] Browser navigation → monolithic orchestrator');
+                    log.info('[CortexRouter] Browser navigation → monolithic orchestrator');
                     return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
                 },
             },
@@ -127,7 +129,7 @@ class CortexRouter {
                 priority: 60,
                 match: (msg) => this.isClientContextQuery(msg),
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    console.log('[CortexRouter] Client context query detected');
+                    log.info('[CortexRouter] Client context query detected');
                     return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
                 },
             },
@@ -136,7 +138,7 @@ class CortexRouter {
                 priority: 55,
                 match: (msg) => this.isSchedulingIntent(msg),
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    console.log('[CortexRouter] Scheduling intent → monolithic orchestrator');
+                    log.info('[CortexRouter] Scheduling intent → monolithic orchestrator');
                     return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
                 },
             },
@@ -176,14 +178,14 @@ class CortexRouter {
             if (matchData) {
                 const routeMs = Date.now() - routeStartMs;
                 this._lastRouteDecision = { route: route.name, priority: route.priority, message: msg.slice(0, 80), routeMs, timestamp: Date.now() };
-                console.log(`[CortexRouter] ROUTE: ${route.name} (p${route.priority}) matched in ${routeMs}ms — "${msg.slice(0, 60)}"`);
+                log.info(`[CortexRouter] ROUTE: ${route.name} (p${route.priority}) matched in ${routeMs}ms — "${msg.slice(0, 60)}"`);
                 return route.execute(matchData, sessionId, message, writer, context, pageContext);
             }
         }
         // No route matched — fall through to monolithic orchestrator
         const routeMs = Date.now() - routeStartMs;
         this._lastRouteDecision = { route: 'default_fallback', priority: 0, message: msg.slice(0, 80), routeMs, timestamp: Date.now() };
-        console.log(`[CortexRouter] ROUTE: default_fallback (no match) in ${routeMs}ms — "${msg.slice(0, 60)}"`);
+        log.info(`[CortexRouter] ROUTE: default_fallback (no match) in ${routeMs}ms — "${msg.slice(0, 60)}"`);
         return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
     }
     /** Last routing decision — exposed for diagnostics */

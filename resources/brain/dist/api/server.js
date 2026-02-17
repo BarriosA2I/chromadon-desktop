@@ -96,6 +96,8 @@ const budget_1 = require("../core/budget");
 const monitoring_2 = require("../core/monitoring");
 // Middleware imports
 const middleware_1 = require("./middleware");
+const request_logger_1 = require("./middleware/request-logger");
+const logger_1 = require("../lib/logger");
 // SessionWarmup imports
 const session_1 = require("../core/session");
 // ErrorChannel import
@@ -104,6 +106,7 @@ const error_channel_1 = require("../core/error-channel");
 const export_1 = require("./routes/export");
 // 27-Agent System imports
 const agents_1 = require("../agents");
+const log = (0, logger_1.createChildLogger)('api');
 const app = (0, express_1.default)();
 exports.app = app;
 const PORT = process.env.CHROMADON_PORT || 3001;
@@ -114,6 +117,7 @@ const PREFER_DESKTOP = process.env.PREFER_DESKTOP !== 'false'; // Default true -
 app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '50mb' }));
 app.use(middleware_1.requestIdMiddleware);
+app.use(request_logger_1.requestLoggerMiddleware);
 app.use(middleware_1.brainAuthMiddleware);
 // OpenTelemetry request tracing middleware
 const tracer = api_1.trace.getTracer('chromadon-brain-api');
@@ -216,20 +220,20 @@ async function checkDesktopHealth() {
             const data = await response.json();
             desktopAvailable = data.status === 'healthy' && data.windowReady === true;
             if (desktopAvailable) {
-                console.log('[CHROMADON] ✅ Desktop routing ACTIVE (port 3002)');
+                log.info('[CHROMADON] ✅ Desktop routing ACTIVE (port 3002)');
                 return true;
             }
-            console.log(`[CHROMADON] Desktop health check attempt ${attempt}/${maxRetries}: windowReady=${data.windowReady}`);
+            log.info(`[CHROMADON] Desktop health check attempt ${attempt}/${maxRetries}: windowReady=${data.windowReady}`);
         }
         catch {
-            console.log(`[CHROMADON] Desktop health check attempt ${attempt}/${maxRetries}: connection failed`);
+            log.info(`[CHROMADON] Desktop health check attempt ${attempt}/${maxRetries}: connection failed`);
         }
         if (attempt < maxRetries) {
             await new Promise(resolve => setTimeout(resolve, retryDelayMs));
         }
     }
     desktopAvailable = false;
-    console.log(`[CHROMADON] ⚠️ Desktop not available after ${maxRetries} attempts`);
+    log.info(`[CHROMADON] ⚠️ Desktop not available after ${maxRetries} attempts`);
     return false;
 }
 /**
@@ -354,7 +358,7 @@ async function desktopScreenshot(tabId) {
  */
 async function connectViaCDP() {
     try {
-        console.log(`[CHROMADON] Attempting CDP connection to ${CDP_ENDPOINT}...`);
+        log.info(`[CHROMADON] Attempting CDP connection to ${CDP_ENDPOINT}...`);
         const { chromium } = await import('playwright');
         globalBrowser = await chromium.connectOverCDP(CDP_ENDPOINT);
         connectionMode = 'CDP';
@@ -380,13 +384,13 @@ async function connectViaCDP() {
         for (const page of globalPages) {
             setupPageListeners(page, globalPages.indexOf(page));
         }
-        console.log(`[CHROMADON] ✅ CDP connection established!`);
-        console.log(`[CHROMADON] ✅ Found ${globalPages.length} existing page(s)`);
-        console.log(`[CHROMADON] ✅ Login sessions PRESERVED (Vercel, GitHub, etc.)`);
+        log.info(`[CHROMADON] ✅ CDP connection established!`);
+        log.info(`[CHROMADON] ✅ Found ${globalPages.length} existing page(s)`);
+        log.info(`[CHROMADON] ✅ Login sessions PRESERVED (Vercel, GitHub, etc.)`);
         return true;
     }
     catch (error) {
-        console.log(`[CHROMADON] ⚠️ CDP connection failed: ${error.message}`);
+        log.info(`[CHROMADON] ⚠️ CDP connection failed: ${error.message}`);
         return false;
     }
 }
@@ -394,7 +398,7 @@ async function connectViaCDP() {
  * Launch fresh Chromium (fallback if CDP fails)
  */
 async function launchFreshBrowser() {
-    console.log(`[CHROMADON] Launching fresh Chromium browser...`);
+    log.info(`[CHROMADON] Launching fresh Chromium browser...`);
     const { chromium } = await import('playwright');
     globalBrowser = await chromium.launch({
         headless: false,
@@ -430,7 +434,7 @@ async function launchFreshBrowser() {
       </body>
     </html>
   `);
-    console.log(`[CHROMADON] ✅ Fresh browser launched`);
+    log.info(`[CHROMADON] ✅ Fresh browser launched`);
 }
 /**
  * Set up listeners on a page
@@ -474,15 +478,15 @@ function setupPageListeners(page, pageIndex) {
 async function initializeBrowser() {
     // In DESKTOP mode, skip all browser launching - Desktop app IS the browser
     if (desktopAvailable) {
-        console.log('[CHROMADON] DESKTOP mode - skipping browser launch (using Desktop BrowserViews via port 3002)');
+        log.info('[CHROMADON] DESKTOP mode - skipping browser launch (using Desktop BrowserViews via port 3002)');
         connectionMode = 'CDP'; // Report as CDP for compatibility, but no browser launched
         return;
     }
     // When PREFER_DESKTOP is true, NEVER launch external browsers
     // The user will start the Desktop app and restart Brain API
     if (PREFER_DESKTOP) {
-        console.log('[CHROMADON] ⚠️ PREFER_DESKTOP=true but Desktop not available. Waiting for Desktop app...');
-        console.log('[CHROMADON] ⚠️ No external browser will be launched. Start the Desktop app and restart Brain API.');
+        log.info('[CHROMADON] ⚠️ PREFER_DESKTOP=true but Desktop not available. Waiting for Desktop app...');
+        log.info('[CHROMADON] ⚠️ No external browser will be launched. Start the Desktop app and restart Brain API.');
         connectionMode = 'CDP'; // Set for compatibility
         return;
     }
@@ -506,7 +510,7 @@ async function getOrReusePage(targetUrl) {
                 const pageIndex = pageRegistry.get(targetDomain);
                 const existingPage = globalPages[pageIndex];
                 if (existingPage && !existingPage.isClosed()) {
-                    console.log(`[CHROMADON] Reusing existing page for ${targetDomain} (index ${pageIndex})`);
+                    log.info(`[CHROMADON] Reusing existing page for ${targetDomain} (index ${pageIndex})`);
                     selectedPageIndex = pageIndex;
                     return existingPage;
                 }
@@ -517,7 +521,7 @@ async function getOrReusePage(targetUrl) {
                 if (page && !page.isClosed()) {
                     const pageUrl = page.url();
                     if (pageUrl.includes(targetDomain)) {
-                        console.log(`[CHROMADON] Found existing page for ${targetDomain} at index ${i}`);
+                        log.info(`[CHROMADON] Found existing page for ${targetDomain} at index ${i}`);
                         pageRegistry.set(targetDomain, i);
                         selectedPageIndex = i;
                         return page;
@@ -530,7 +534,7 @@ async function getOrReusePage(targetUrl) {
         }
     }
     // No reusable page found, create new
-    console.log(`[CHROMADON] Creating new page for ${targetUrl || 'blank'}`);
+    log.info({ targetUrl: targetUrl || 'blank' }, 'Creating new page');
     const page = await globalContext.newPage();
     globalPages.push(page);
     const newIndex = globalPages.length - 1;
@@ -554,11 +558,11 @@ async function getSelectedPage() {
         throw new Error('No Playwright page in DESKTOP mode - use Desktop BrowserView tools instead');
     }
     if (!globalBrowser?.isConnected()) {
-        console.log(`[CHROMADON] Browser disconnected, attempting graceful reconnect...`);
+        log.info(`[CHROMADON] Browser disconnected, attempting graceful reconnect...`);
         // Try CDP reconnect first (don't launch new browser)
         const reconnected = await connectViaCDP();
         if (!reconnected) {
-            console.log(`[CHROMADON] CDP reconnect failed, will use existing pages if available`);
+            log.info(`[CHROMADON] CDP reconnect failed, will use existing pages if available`);
             // NEVER launch fresh browser when PREFER_DESKTOP is true
             if (!globalContext && !PREFER_DESKTOP) {
                 await launchFreshBrowser();
@@ -587,6 +591,20 @@ async function getSelectedPage() {
         // Ignore if can't bring to front
     }
     return page;
+}
+/**
+ * Middleware: reject Playwright-era endpoints when running in DESKTOP mode.
+ * Returns a clear 400 instead of letting getSelectedPage() throw a cryptic 500.
+ */
+function requirePlaywright(req, res, next) {
+    if (desktopAvailable) {
+        res.status(400).json({
+            error: 'Endpoint unavailable in DESKTOP mode',
+            hint: 'Use Desktop control server on :3002 instead',
+        });
+        return;
+    }
+    next();
 }
 /**
  * Generate DOM snapshot with UIDs
@@ -642,7 +660,7 @@ async function getDOMSnapshot(page) {
 }
 // Error handler middleware
 function errorHandler(err, _req, res, _next) {
-    console.error('[CHROMADON] Error:', err);
+    log.error({ err: err }, '[CHROMADON] Error:');
     res.status(500).json({
         success: false,
         error: err.message,
@@ -694,7 +712,7 @@ app.get('/api/youtube/oauth/callback', async (req, res) => {
     }
     try {
         await youtubeTokenManager.exchangeCode(code, 'http://localhost:3001/api/youtube/oauth/callback');
-        console.log('[YOUTUBE] OAuth callback received — tokens exchanged successfully');
+        log.info('[YOUTUBE] OAuth callback received — tokens exchanged successfully');
         res.send(`<html><body style="background:#0A0A0F;color:#00CED1;font-family:monospace;padding:40px;text-align:center;">
       <h1 style="font-size:48px;">&#x2705;</h1>
       <h1>YouTube Authorized!</h1>
@@ -702,7 +720,7 @@ app.get('/api/youtube/oauth/callback', async (req, res) => {
       <p style="color:#888;">You can close this tab.</p></body></html>`);
     }
     catch (err) {
-        console.error('[YOUTUBE] OAuth callback error:', err.message);
+        log.error({ err: err }, 'YouTube OAuth callback error');
         res.status(500).send(`<html><body style="background:#0A0A0F;color:#FF6B6B;font-family:monospace;padding:40px;text-align:center;">
       <h1>Token Exchange Failed</h1><p>${err.message}</p>
       <p style="color:#888;">Try the authorization flow again.</p></body></html>`);
@@ -811,7 +829,7 @@ app.post('/api/pages/new', async (req, res) => {
         // Desktop routing - creates BrowserView with authenticated session partition
         if (desktopAvailable) {
             const platform = url ? detectPlatformFromUrl(url) : null;
-            console.log(`[CHROMADON] 🖥️ Creating Desktop tab: ${url || 'blank'}${platform ? ` (platform: ${platform})` : ''}`);
+            log.info({ url: url || 'blank', platform }, 'Creating Desktop tab');
             const tab = await desktopCreateTab(url || 'about:blank');
             // Refresh tab list to get accurate index
             const tabs = await desktopListTabs();
@@ -911,11 +929,11 @@ app.post('/api/pages/close', async (req, res) => {
     }
 });
 // ==================== NAVIGATION ====================
-app.post('/api/navigate', async (req, res) => {
+app.post('/api/navigate', requirePlaywright, async (req, res) => {
     try {
         const { url, type, waitFor, timeout } = req.body;
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 🌐 Navigation: ${type || 'url'} ${url || ''}`);
+        log.info({ type: type || 'url', url }, 'Navigation');
         const navTimeout = timeout || 30000;
         if (type === 'back') {
             await page.goBack({ timeout: navTimeout });
@@ -951,7 +969,7 @@ app.post('/api/navigate', async (req, res) => {
 });
 // ==================== INTERACTIONS ====================
 // Click element (by selector or UID)
-app.post('/api/click', async (req, res) => {
+app.post('/api/click', requirePlaywright, async (req, res) => {
     try {
         const { selector, uid, dblClick, description } = req.body;
         const page = await getSelectedPage();
@@ -960,7 +978,7 @@ app.post('/api/click', async (req, res) => {
             res.status(400).json({ success: false, error: 'Selector or UID is required' });
             return;
         }
-        console.log(`[CHROMADON] 👆 Click: ${targetSelector} ${description ? `(${description})` : ''}`);
+        log.info({ selector: targetSelector, description }, 'Click');
         if (dblClick) {
             await page.dblclick(targetSelector, { timeout: 10000 });
         }
@@ -983,7 +1001,7 @@ app.post('/api/click', async (req, res) => {
     }
 });
 // Hover over element
-app.post('/api/hover', async (req, res) => {
+app.post('/api/hover', requirePlaywright, async (req, res) => {
     try {
         const { selector, uid } = req.body;
         const page = await getSelectedPage();
@@ -992,7 +1010,7 @@ app.post('/api/hover', async (req, res) => {
             res.status(400).json({ success: false, error: 'Selector or UID is required' });
             return;
         }
-        console.log(`[CHROMADON] 🖱️ Hover: ${targetSelector}`);
+        log.info(`[CHROMADON] 🖱️ Hover: ${targetSelector}`);
         await page.hover(targetSelector, { timeout: 10000 });
         res.json({
             success: true,
@@ -1008,7 +1026,7 @@ app.post('/api/hover', async (req, res) => {
     }
 });
 // Fill form field
-app.post('/api/fill', async (req, res) => {
+app.post('/api/fill', requirePlaywright, async (req, res) => {
     try {
         const { selector, uid, value, clearFirst } = req.body;
         const page = await getSelectedPage();
@@ -1017,7 +1035,7 @@ app.post('/api/fill', async (req, res) => {
             res.status(400).json({ success: false, error: 'Selector/UID and value are required' });
             return;
         }
-        console.log(`[CHROMADON] ✏️ Fill: ${targetSelector}`);
+        log.info(`[CHROMADON] ✏️ Fill: ${targetSelector}`);
         // Check if target is contenteditable (Facebook, etc.)
         const isContentEditable = await page.evaluate((sel) => {
             const el = document.querySelector(sel);
@@ -1029,7 +1047,7 @@ app.post('/api/fill', async (req, res) => {
         }, targetSelector);
         if (isContentEditable) {
             // Contenteditable-safe approach using execCommand
-            console.log(`[CHROMADON] ✏️ Using contenteditable-safe fill`);
+            log.info(`[CHROMADON] ✏️ Using contenteditable-safe fill`);
             await page.click(targetSelector, { timeout: 10000 });
             await page.evaluate((text) => {
                 document.execCommand('selectAll', false);
@@ -1058,7 +1076,7 @@ app.post('/api/fill', async (req, res) => {
     }
 });
 // Fill multiple form elements at once
-app.post('/api/fill-form', async (req, res) => {
+app.post('/api/fill-form', requirePlaywright, async (req, res) => {
     try {
         const { elements } = req.body;
         const page = await getSelectedPage();
@@ -1066,7 +1084,7 @@ app.post('/api/fill-form', async (req, res) => {
             res.status(400).json({ success: false, error: 'Elements array is required' });
             return;
         }
-        console.log(`[CHROMADON] 📝 Filling ${elements.length} form fields`);
+        log.info(`[CHROMADON] 📝 Filling ${elements.length} form fields`);
         const results = [];
         for (const el of elements) {
             const targetSelector = el.uid ? `[data-chromadon-uid="${el.uid}"]` : el.selector;
@@ -1093,7 +1111,7 @@ app.post('/api/fill-form', async (req, res) => {
     }
 });
 // Type text (keystroke by keystroke)
-app.post('/api/type', async (req, res) => {
+app.post('/api/type', requirePlaywright, async (req, res) => {
     try {
         const { selector, uid, text, delay } = req.body;
         const page = await getSelectedPage();
@@ -1102,7 +1120,7 @@ app.post('/api/type', async (req, res) => {
             res.status(400).json({ success: false, error: 'Selector/UID and text are required' });
             return;
         }
-        console.log(`[CHROMADON] ⌨️ Type: ${targetSelector}`);
+        log.info(`[CHROMADON] ⌨️ Type: ${targetSelector}`);
         await page.click(targetSelector, { timeout: 10000 });
         await page.keyboard.type(text, { delay: delay || 50 });
         res.json({
@@ -1120,7 +1138,7 @@ app.post('/api/type', async (req, res) => {
     }
 });
 // Press key or key combination
-app.post('/api/press', async (req, res) => {
+app.post('/api/press', requirePlaywright, async (req, res) => {
     try {
         const { key } = req.body;
         const page = await getSelectedPage();
@@ -1128,7 +1146,7 @@ app.post('/api/press', async (req, res) => {
             res.status(400).json({ success: false, error: 'Key is required' });
             return;
         }
-        console.log(`[CHROMADON] ⌨️ Press: ${key}`);
+        log.info(`[CHROMADON] ⌨️ Press: ${key}`);
         // Handle key combinations like "Control+A" or "Control+Shift+R"
         await page.keyboard.press(key);
         res.json({
@@ -1145,11 +1163,11 @@ app.post('/api/press', async (req, res) => {
     }
 });
 // Scroll the page or element
-app.post('/api/scroll', async (req, res) => {
+app.post('/api/scroll', requirePlaywright, async (req, res) => {
     try {
         const { selector, uid, direction, amount, x, y } = req.body;
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 📜 Scroll: ${direction || 'custom'}`);
+        log.info({ direction: direction || 'custom' }, 'Scroll');
         if (selector || uid) {
             const targetSelector = uid ? `[data-chromadon-uid="${uid}"]` : selector;
             await page.locator(targetSelector).scrollIntoViewIfNeeded();
@@ -1184,7 +1202,7 @@ app.post('/api/scroll', async (req, res) => {
     }
 });
 // Drag element to another element
-app.post('/api/drag', async (req, res) => {
+app.post('/api/drag', requirePlaywright, async (req, res) => {
     try {
         const { fromSelector, fromUid, toSelector, toUid } = req.body;
         const page = await getSelectedPage();
@@ -1194,7 +1212,7 @@ app.post('/api/drag', async (req, res) => {
             res.status(400).json({ success: false, error: 'From and To selectors/UIDs are required' });
             return;
         }
-        console.log(`[CHROMADON] 🎯 Drag: ${from} → ${to}`);
+        log.info(`[CHROMADON] 🎯 Drag: ${from} → ${to}`);
         await page.dragAndDrop(from, to);
         res.json({
             success: true,
@@ -1211,7 +1229,7 @@ app.post('/api/drag', async (req, res) => {
     }
 });
 // Upload file
-app.post('/api/upload', async (req, res) => {
+app.post('/api/upload', requirePlaywright, async (req, res) => {
     try {
         const { selector, uid, filePath } = req.body;
         const page = await getSelectedPage();
@@ -1220,7 +1238,7 @@ app.post('/api/upload', async (req, res) => {
             res.status(400).json({ success: false, error: 'Selector/UID and filePath are required' });
             return;
         }
-        console.log(`[CHROMADON] 📁 Upload: ${filePath} to ${targetSelector}`);
+        log.info(`[CHROMADON] 📁 Upload: ${filePath} to ${targetSelector}`);
         await page.setInputFiles(targetSelector, filePath);
         res.json({
             success: true,
@@ -1238,11 +1256,11 @@ app.post('/api/upload', async (req, res) => {
 });
 // ==================== SCREENSHOTS & CONTENT ====================
 // Take screenshot
-app.post('/api/screenshot', async (req, res) => {
+app.post('/api/screenshot', requirePlaywright, async (req, res) => {
     try {
         const { fullPage, selector, uid, format, quality } = req.body;
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 📸 Screenshot`);
+        log.info(`[CHROMADON] 📸 Screenshot`);
         let screenshotBuffer;
         const screenshotFormat = format || 'png';
         if (selector || uid) {
@@ -1278,10 +1296,10 @@ app.post('/api/screenshot', async (req, res) => {
     }
 });
 // Get DOM snapshot with UIDs
-app.get('/api/snapshot', async (_req, res) => {
+app.get('/api/snapshot', requirePlaywright, async (_req, res) => {
     try {
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 📋 DOM Snapshot`);
+        log.info(`[CHROMADON] 📋 DOM Snapshot`);
         const snapshot = await getDOMSnapshot(page);
         res.json({
             success: true,
@@ -1298,10 +1316,10 @@ app.get('/api/snapshot', async (_req, res) => {
     }
 });
 // Get page content (HTML)
-app.get('/api/content', async (_req, res) => {
+app.get('/api/content', requirePlaywright, async (_req, res) => {
     try {
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 📄 Page content`);
+        log.info(`[CHROMADON] 📄 Page content`);
         res.json({
             success: true,
             data: {
@@ -1317,11 +1335,11 @@ app.get('/api/content', async (_req, res) => {
     }
 });
 // Generate PDF
-app.post('/api/pdf', async (req, res) => {
+app.post('/api/pdf', requirePlaywright, async (req, res) => {
     try {
         const { format, landscape, printBackground } = req.body;
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 📑 Generate PDF`);
+        log.info(`[CHROMADON] 📑 Generate PDF`);
         const pdfBuffer = await page.pdf({
             format: format || 'A4',
             landscape: landscape || false,
@@ -1343,7 +1361,7 @@ app.post('/api/pdf', async (req, res) => {
 });
 // ==================== WAITING ====================
 // Wait for element
-app.post('/api/wait', async (req, res) => {
+app.post('/api/wait', requirePlaywright, async (req, res) => {
     try {
         const { selector, uid, state, timeout } = req.body;
         const page = await getSelectedPage();
@@ -1352,7 +1370,7 @@ app.post('/api/wait', async (req, res) => {
             res.status(400).json({ success: false, error: 'Selector or UID is required' });
             return;
         }
-        console.log(`[CHROMADON] ⏳ Wait for: ${targetSelector}`);
+        log.info(`[CHROMADON] ⏳ Wait for: ${targetSelector}`);
         await page.waitForSelector(targetSelector, {
             state: (state || 'visible'),
             timeout: timeout || 30000,
@@ -1372,7 +1390,7 @@ app.post('/api/wait', async (req, res) => {
     }
 });
 // Wait for text to appear
-app.post('/api/wait-for-text', async (req, res) => {
+app.post('/api/wait-for-text', requirePlaywright, async (req, res) => {
     try {
         const { text, timeout } = req.body;
         const page = await getSelectedPage();
@@ -1380,7 +1398,7 @@ app.post('/api/wait-for-text', async (req, res) => {
             res.status(400).json({ success: false, error: 'Text is required' });
             return;
         }
-        console.log(`[CHROMADON] ⏳ Wait for text: "${text}"`);
+        log.info(`[CHROMADON] ⏳ Wait for text: "${text}"`);
         await page.waitForFunction((searchText) => document.body.innerText.includes(searchText), text, { timeout: timeout || 30000 });
         res.json({
             success: true,
@@ -1396,11 +1414,11 @@ app.post('/api/wait-for-text', async (req, res) => {
     }
 });
 // Wait for navigation
-app.post('/api/wait-for-navigation', async (req, res) => {
+app.post('/api/wait-for-navigation', requirePlaywright, async (req, res) => {
     try {
         const { url, timeout } = req.body;
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] ⏳ Wait for navigation${url ? `: ${url}` : ''}`);
+        log.info({ url }, 'Wait for navigation');
         await page.waitForURL(url || '**/*', { timeout: timeout || 30000 });
         res.json({
             success: true,
@@ -1417,11 +1435,11 @@ app.post('/api/wait-for-navigation', async (req, res) => {
 });
 // ==================== DIALOGS ====================
 // Handle browser dialog (alert, confirm, prompt)
-app.post('/api/dialog', async (req, res) => {
+app.post('/api/dialog', requirePlaywright, async (req, res) => {
     try {
         const { action, promptText } = req.body;
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 🗨️ Dialog: ${action}`);
+        log.info(`[CHROMADON] 🗨️ Dialog: ${action}`);
         // Set up dialog handler
         page.once('dialog', async (dialog) => {
             if (action === 'accept') {
@@ -1446,7 +1464,7 @@ app.post('/api/dialog', async (req, res) => {
 });
 // ==================== COOKIES ====================
 // Get cookies
-app.get('/api/cookies', async (_req, res) => {
+app.get('/api/cookies', requirePlaywright, async (_req, res) => {
     try {
         const page = await getSelectedPage();
         const cookies = await page.context().cookies();
@@ -1464,7 +1482,7 @@ app.get('/api/cookies', async (_req, res) => {
     }
 });
 // Set cookies
-app.post('/api/cookies', async (req, res) => {
+app.post('/api/cookies', requirePlaywright, async (req, res) => {
     try {
         const { cookies } = req.body;
         const page = await getSelectedPage();
@@ -1486,7 +1504,7 @@ app.post('/api/cookies', async (req, res) => {
     }
 });
 // Clear cookies
-app.delete('/api/cookies', async (_req, res) => {
+app.delete('/api/cookies', requirePlaywright, async (_req, res) => {
     try {
         const page = await getSelectedPage();
         await page.context().clearCookies();
@@ -1504,7 +1522,7 @@ app.delete('/api/cookies', async (_req, res) => {
 });
 // ==================== CONSOLE ====================
 // Get console messages
-app.get('/api/console', async (req, res) => {
+app.get('/api/console', requirePlaywright, async (req, res) => {
     try {
         const { types, pageIdx, limit } = req.query;
         let messages = [...consoleMessages];
@@ -1536,7 +1554,7 @@ app.get('/api/console', async (req, res) => {
     }
 });
 // Clear console messages
-app.delete('/api/console', async (_req, res) => {
+app.delete('/api/console', requirePlaywright, async (_req, res) => {
     consoleMessages = [];
     res.json({
         success: true,
@@ -1548,11 +1566,11 @@ app.delete('/api/console', async (_req, res) => {
 });
 // ==================== EMULATION ====================
 // Emulate device/conditions
-app.post('/api/emulate', async (req, res) => {
+app.post('/api/emulate', requirePlaywright, async (req, res) => {
     try {
         const { viewport, geolocation, locale, colorScheme } = req.body;
         const page = await getSelectedPage();
-        console.log(`[CHROMADON] 🔧 Emulate settings`);
+        log.info(`[CHROMADON] 🔧 Emulate settings`);
         if (viewport) {
             await page.setViewportSize(viewport);
         }
@@ -1577,7 +1595,7 @@ app.post('/api/emulate', async (req, res) => {
     }
 });
 // Resize page
-app.post('/api/resize', async (req, res) => {
+app.post('/api/resize', requirePlaywright, async (req, res) => {
     try {
         const { width, height } = req.body;
         const page = await getSelectedPage();
@@ -1602,7 +1620,7 @@ app.post('/api/resize', async (req, res) => {
 });
 // ==================== JAVASCRIPT ====================
 // Evaluate JavaScript
-app.post('/api/evaluate', async (req, res) => {
+app.post('/api/evaluate', requirePlaywright, async (req, res) => {
     try {
         const { script } = req.body;
         const page = await getSelectedPage();
@@ -1610,7 +1628,7 @@ app.post('/api/evaluate', async (req, res) => {
             res.status(400).json({ success: false, error: 'Script is required' });
             return;
         }
-        console.log(`[CHROMADON] 🔧 Evaluate script`);
+        log.info(`[CHROMADON] 🔧 Evaluate script`);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result = await page.evaluate((code) => eval(code), script);
         res.json({
@@ -1627,7 +1645,7 @@ app.post('/api/evaluate', async (req, res) => {
 });
 // ==================== VERIFICATION ====================
 // Verify page state
-app.post('/api/verify', async (req, res) => {
+app.post('/api/verify', requirePlaywright, async (req, res) => {
     try {
         const { assertions } = req.body;
         const page = await getSelectedPage();
@@ -1635,7 +1653,7 @@ app.post('/api/verify', async (req, res) => {
             res.status(400).json({ success: false, error: 'Assertions array is required' });
             return;
         }
-        console.log(`[CHROMADON] 🔍 Verify ${assertions.length} assertions`);
+        log.info(`[CHROMADON] 🔍 Verify ${assertions.length} assertions`);
         const results = [];
         for (const assertion of assertions) {
             let actual;
@@ -1704,7 +1722,7 @@ app.post('/api/verify', async (req, res) => {
 });
 // ==================== MISSION (NL Command) ====================
 // Execute mission (natural language)
-app.post('/api/mission', async (req, res) => {
+app.post('/api/mission', requirePlaywright, async (req, res) => {
     try {
         const { intent } = req.body;
         const page = await getSelectedPage();
@@ -1715,7 +1733,7 @@ app.post('/api/mission', async (req, res) => {
             res.status(400).json({ success: false, error: 'Intent is required' });
             return;
         }
-        console.log(`[CHROMADON] 🎯 Mission: ${intent}`);
+        log.info(`[CHROMADON] 🎯 Mission: ${intent}`);
         // Simple intent parsing
         const intentLower = intent.toLowerCase();
         if (intentLower.includes('navigate to') || intentLower.includes('go to')) {
@@ -1842,7 +1860,7 @@ app.post('/api/mission/ai', async (req, res) => {
             return;
         }
         if (!aiEngine) {
-            console.log('[CHROMADON] ⚠️ AI Engine not available, falling back to basic mission');
+            log.info('[CHROMADON] ⚠️ AI Engine not available, falling back to basic mission');
             res.status(503).json({
                 success: false,
                 error: 'Neural RAG AI Engine not initialized. Set ANTHROPIC_API_KEY or GEMINI_API_KEY environment variable.',
@@ -1855,11 +1873,11 @@ app.post('/api/mission/ai', async (req, res) => {
         let desktopTabId = null;
         if (useDesktop) {
             desktopTabId = desktopActiveTabId;
-            console.log(`[CHROMADON] 🧠 AI Mission (Desktop${desktopTabId !== null ? ` tab ${desktopTabId}` : ''}): ${command}`);
+            log.info({ desktopTabId, command }, 'AI Mission (Desktop)');
         }
         else {
             page = await getSelectedPage();
-            console.log(`[CHROMADON] 🧠 AI Mission (CDP): ${command}`);
+            log.info(`[CHROMADON] 🧠 AI Mission (CDP): ${command}`);
         }
         // Extract page context
         const pageContext = useDesktop
@@ -1867,7 +1885,7 @@ app.post('/api/mission/ai', async (req, res) => {
             : await extractPageContext(page);
         // Process command with AI Engine
         const aiResponse = await aiEngine.processCommand(command, pageContext);
-        console.log(`[CHROMADON] 🧠 AI Response: ${aiResponse.actions.length} actions, confidence: ${aiResponse.confidence}`);
+        log.info(`[CHROMADON] 🧠 AI Response: ${aiResponse.actions.length} actions, confidence: ${aiResponse.confidence}`);
         // Check confidence threshold
         const threshold = minConfidence || 0.6;
         if (aiResponse.confidence < threshold) {
@@ -2078,7 +2096,7 @@ app.post('/api/mission/ai', async (req, res) => {
         });
     }
     catch (error) {
-        console.error('[CHROMADON] AI Mission error:', error);
+        log.error({ err: error }, '[CHROMADON] AI Mission error:');
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -2356,9 +2374,9 @@ app.post('/api/social/process', async (req, res) => {
         return;
     }
     try {
-        console.log(`[SOCIAL OVERLORD] Processing task ${task.id}: ${task.platform}/${task.action}`);
+        log.info(`[SOCIAL OVERLORD] Processing task ${task.id}: ${task.platform}/${task.action}`);
         const result = await socialOverlord.processTask(task);
-        console.log(`[SOCIAL OVERLORD] Task ${task.id} ${result.success ? 'completed' : 'failed'} in ${result.durationMs}ms`);
+        log.info({ taskId: task.id, success: result.success, durationMs: result.durationMs }, 'Social Overlord task completed');
         res.json(result);
     }
     catch (error) {
@@ -2453,7 +2471,7 @@ app.post('/api/social/process-all', async (req, res) => {
     };
     res.on('close', () => { closed = true; });
     try {
-        console.log(`[SOCIAL OVERLORD] Processing batch of ${tasks.length} tasks`);
+        log.info(`[SOCIAL OVERLORD] Processing batch of ${tasks.length} tasks`);
         await socialOverlord.processQueue(tasks, writer);
     }
     catch (error) {
@@ -2681,7 +2699,7 @@ function createCDPControllerAdapter() {
                     return { data: buffer.toString('base64') };
                 }
                 default:
-                    console.warn(`[CDP Adapter] Unhandled CDP method: ${method}`);
+                    log.warn(`[CDP Adapter] Unhandled CDP method: ${method}`);
                     return { error: `Unsupported CDP method: ${method}` };
             }
         },
@@ -2853,7 +2871,7 @@ class DesktopBrowserAdapter {
         return { success: true };
     }
     async uploadFile(_selector, _filePath) {
-        console.warn('[DesktopBrowserAdapter] uploadFile not fully implemented');
+        log.warn('[DesktopBrowserAdapter] uploadFile not fully implemented');
         return { success: false };
     }
     async screenshot() {
@@ -2922,7 +2940,7 @@ class DesktopBrowserAdapter {
                 return { data };
             }
             default:
-                console.warn(`[DesktopBrowserAdapter] Unhandled CDP method: ${method}`);
+                log.warn(`[DesktopBrowserAdapter] Unhandled CDP method: ${method}`);
                 return { error: `Unsupported CDP method: ${method}` };
         }
     }
@@ -2936,7 +2954,7 @@ async function initializeCortexRouter() {
     try {
         await initializeAgentSystem();
         if (!agentSystem) {
-            console.log('[CHROMADON] ⚠️ CortexRouter skipped: agent system not available');
+            log.info('[CHROMADON] ⚠️ CortexRouter skipped: agent system not available');
             return;
         }
         // Create YouTube bridge if executor is available
@@ -2944,13 +2962,13 @@ async function initializeCortexRouter() {
         if (youtubeExec) {
             youtubeBridge = new youtube_tool_bridge_1.YouTubeToolBridge(youtubeExec);
             agentSystem.setYouTubeBridge(youtubeBridge);
-            console.log('[CHROMADON] ✅ YouTube Tool Bridge connected to agent system');
+            log.info('[CHROMADON] ✅ YouTube Tool Bridge connected to agent system');
         }
         // Create Social Media bridge if SocialOverlord is available
         let socialBridge;
         if (socialOverlord) {
             socialBridge = new social_tool_bridge_1.SocialMediaToolBridge(socialOverlord, trinityIntelligence || undefined);
-            console.log('[CHROMADON] ✅ Social Media Tool Bridge connected' + (trinityIntelligence ? ' (with Trinity Intelligence)' : ''));
+            log.info({ hasTrinity: !!trinityIntelligence }, 'Social Media Tool Bridge connected');
         }
         cortexRouter = new cortex_router_1.CortexRouter({
             cortex: agentSystem.getCortex(),
@@ -2959,42 +2977,42 @@ async function initializeCortexRouter() {
             youtubeBridge,
             socialBridge,
         });
-        console.log('[CHROMADON] ✅ CortexRouter initialized (agent-first routing)');
+        log.info('[CHROMADON] ✅ CortexRouter initialized (agent-first routing)');
     }
     catch (error) {
-        console.error('[CHROMADON] ⚠️ CortexRouter init failed:', error.message);
+        log.error({ err: error }, 'CortexRouter init failed');
     }
 }
 // Initialize agent system (called after browser is ready)
 async function initializeAgentSystem() {
     if (!agentSystem) {
         try {
-            console.log('[CHROMADON] 🔧 Attempting agent system init...');
+            log.info('[CHROMADON] 🔧 Attempting agent system init...');
             // Try Desktop adapter first if PREFER_DESKTOP is set
             if (PREFER_DESKTOP) {
-                console.log('[CHROMADON] 🔧 PREFER_DESKTOP=true, checking Desktop availability...');
+                log.info('[CHROMADON] 🔧 PREFER_DESKTOP=true, checking Desktop availability...');
                 const desktopAdapter = new DesktopBrowserAdapter();
                 const desktopAvailable = await desktopAdapter.healthCheck();
                 if (desktopAvailable) {
-                    console.log('[CHROMADON] ✅ Using Desktop Browser Controller (port 3002)');
+                    log.info('[CHROMADON] ✅ Using Desktop Browser Controller (port 3002)');
                     agentSystem = new agents_1.ChromadonAgentSystem(desktopAdapter);
-                    console.log('[CHROMADON] ✅ 27-Agent System initialized with Desktop adapter');
+                    log.info('[CHROMADON] ✅ 27-Agent System initialized with Desktop adapter');
                     return;
                 }
                 else {
-                    console.log('[CHROMADON] ⚠️ Desktop not available, falling back to CDP...');
+                    log.info('[CHROMADON] ⚠️ Desktop not available, falling back to CDP...');
                 }
             }
             // Fallback to CDP adapter
-            console.log('[CHROMADON] 🔧 Creating CDP adapter...');
+            log.info('[CHROMADON] 🔧 Creating CDP adapter...');
             const cdpAdapter = createCDPControllerAdapter();
-            console.log('[CHROMADON] 🔧 CDP adapter created, instantiating ChromadonAgentSystem...');
+            log.info('[CHROMADON] 🔧 CDP adapter created, instantiating ChromadonAgentSystem...');
             agentSystem = new agents_1.ChromadonAgentSystem(cdpAdapter);
-            console.log('[CHROMADON] ✅ 27-Agent System initialized successfully');
+            log.info('[CHROMADON] ✅ 27-Agent System initialized successfully');
         }
         catch (error) {
-            console.error('[CHROMADON] ❌ Agent System init FAILED:', error);
-            console.error('[CHROMADON] ❌ Stack trace:', error.stack);
+            log.error({ err: error }, '[CHROMADON] ❌ Agent System init FAILED:');
+            log.error({ stack: error.stack }, 'Agent System stack trace');
         }
     }
 }
@@ -3011,7 +3029,7 @@ app.post('/api/agent/execute', async (req, res) => {
             res.status(400).json({ success: false, error: 'Task is required' });
             return;
         }
-        console.log(`[CHROMADON] 🤖 Agent Execute: ${task}`);
+        log.info(`[CHROMADON] 🤖 Agent Execute: ${task}`);
         const result = await agentSystem.execute(task);
         res.json({ success: result.success, data: result });
     }
@@ -3028,7 +3046,7 @@ app.post('/api/agent/social/page', async (req, res) => {
             return;
         }
         const { platform, name, category, description } = req.body;
-        console.log(`[CHROMADON] 🤖 Create ${platform} page: ${name}`);
+        log.info(`[CHROMADON] 🤖 Create ${platform} page: ${name}`);
         const result = await agentSystem.createBusinessPage(platform, name, category, description);
         res.json({ success: result.success, data: result });
     }
@@ -3045,7 +3063,7 @@ app.post('/api/agent/social/post', async (req, res) => {
             return;
         }
         const { platform, content, options } = req.body;
-        console.log(`[CHROMADON] 🤖 Post to ${platform}`);
+        log.info(`[CHROMADON] 🤖 Post to ${platform}`);
         const result = await agentSystem.postToSocial(platform, content, options);
         res.json({ success: result.success, data: result });
     }
@@ -3062,7 +3080,7 @@ app.post('/api/agent/research', async (req, res) => {
             return;
         }
         const { topic, options } = req.body;
-        console.log(`[CHROMADON] 🤖 Research: ${topic}`);
+        log.info(`[CHROMADON] 🤖 Research: ${topic}`);
         const result = await agentSystem.deepResearch(topic, options);
         res.json({ success: result.success, data: result });
     }
@@ -3079,7 +3097,7 @@ app.post('/api/agent/cart/add', async (req, res) => {
             return;
         }
         const { productUrl, quantity, options } = req.body;
-        console.log(`[CHROMADON] 🤖 Add to cart: ${productUrl}`);
+        log.info(`[CHROMADON] 🤖 Add to cart: ${productUrl}`);
         const result = await agentSystem.addToCart(productUrl, quantity || 1, options);
         res.json({ success: result.success, data: result });
     }
@@ -3095,7 +3113,7 @@ app.post('/api/agent/checkout', async (req, res) => {
             res.status(503).json({ success: false, error: 'Agent system not available' });
             return;
         }
-        console.log(`[CHROMADON] 🤖 Checkout`);
+        log.info(`[CHROMADON] 🤖 Checkout`);
         const result = await agentSystem.checkout(req.body);
         res.json({ success: result.success, data: result });
     }
@@ -3112,7 +3130,7 @@ app.post('/api/agent/extract', async (req, res) => {
             return;
         }
         const { url, rules } = req.body;
-        console.log(`[CHROMADON] 🤖 Extract data from: ${url}`);
+        log.info(`[CHROMADON] 🤖 Extract data from: ${url}`);
         const result = await agentSystem.extractData(url, rules);
         res.json({ success: result.success, data: result });
     }
@@ -3129,7 +3147,7 @@ app.post('/api/agent/book', async (req, res) => {
             return;
         }
         const { type, ...details } = req.body;
-        console.log(`[CHROMADON] 🤖 Book ${type}`);
+        log.info(`[CHROMADON] 🤖 Book ${type}`);
         const result = await agentSystem.makeReservation(type, details);
         res.json({ success: result.success, data: result });
     }
@@ -3146,7 +3164,7 @@ app.post('/api/agent/form', async (req, res) => {
             return;
         }
         const { url, formData } = req.body;
-        console.log(`[CHROMADON] 🤖 Fill form: ${url}`);
+        log.info(`[CHROMADON] 🤖 Fill form: ${url}`);
         const result = await agentSystem.fillForm(url, formData);
         res.json({ success: result.success, data: result });
     }
@@ -3163,7 +3181,7 @@ app.post('/api/agent/credentials', async (req, res) => {
             return;
         }
         const { platform, username, password } = req.body;
-        console.log(`[CHROMADON] 🤖 Store credentials: ${platform}`);
+        log.info(`[CHROMADON] 🤖 Store credentials: ${platform}`);
         await agentSystem.storeCredentials(platform, username, password);
         res.json({ success: true });
     }
@@ -3649,7 +3667,7 @@ app.post('/api/client-context/interview/start', async (req, res) => {
         res.end();
     }
     catch (error) {
-        console.error('[Interview] start error:', error.message);
+        log.error({ err: error }, 'Interview start error');
         if (!res.headersSent) {
             res.status(500).json({ success: false, error: error.message });
         }
@@ -3684,7 +3702,7 @@ app.post('/api/client-context/interview/chat', async (req, res) => {
         res.end();
     }
     catch (error) {
-        console.error('[Interview] chat error:', error.message);
+        log.error({ err: error }, 'Interview chat error');
         if (!res.headersSent) {
             res.status(500).json({ success: false, error: error.message });
         }
@@ -4275,24 +4293,24 @@ catch { /* non-critical */ }
 app.use(errorHandler);
 // Cleanup on shutdown
 async function cleanup() {
-    console.log('[CHROMADON] Shutting down...');
+    log.info('[CHROMADON] Shutting down...');
     if (globalBrowser && connectionMode === 'FRESH') {
         try {
             await globalBrowser.close();
-            console.log('[CHROMADON] Browser closed');
+            log.info('[CHROMADON] Browser closed');
         }
         catch (e) {
             // Ignore
         }
     }
     else if (connectionMode === 'CDP') {
-        console.log('[CHROMADON] CDP mode - browser left running');
+        log.info('[CHROMADON] CDP mode - browser left running');
     }
     // Disconnect OBS WebSocket
     if (obsClientInstance) {
         try {
             await obsClientInstance.disconnect();
-            console.log('[CHROMADON] OBS disconnected');
+            log.info('[CHROMADON] OBS disconnected');
         }
         catch (e) {
             // Ignore
@@ -4301,22 +4319,22 @@ async function cleanup() {
     // Stop SessionWarmup
     if (sessionWarmup) {
         sessionWarmup.stop();
-        console.log('[CHROMADON] SessionWarmup stopped');
+        log.info('[CHROMADON] SessionWarmup stopped');
     }
     // Stop PulseBeacon
     if (pulseBeacon) {
         pulseBeacon.stop();
-        console.log('[CHROMADON] PulseBeacon stopped');
+        log.info('[CHROMADON] PulseBeacon stopped');
     }
     // Stop TheScheduler
     if (theScheduler) {
         theScheduler.destroy();
-        console.log('[CHROMADON] TheScheduler stopped');
+        log.info('[CHROMADON] TheScheduler stopped');
     }
     // Stop Social Monitor
     if (socialMonitor) {
         socialMonitor.destroy();
-        console.log('[CHROMADON] Social Monitor stopped');
+        log.info('[CHROMADON] Social Monitor stopped');
     }
     process.exit(0);
 }
@@ -4324,15 +4342,14 @@ process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 // Crash protection - prevent silent process death
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('[CHROMADON] ❌ Unhandled Promise Rejection:', reason);
-    console.error('[CHROMADON] Promise:', promise);
+    log.error({ reason, promise }, 'Unhandled Promise Rejection');
     // Don't exit - keep server running
 });
 process.on('uncaughtException', (error) => {
-    console.error('[CHROMADON] ❌ Uncaught Exception:', error);
+    log.error({ err: error }, '[CHROMADON] ❌ Uncaught Exception:');
     // For truly fatal errors, attempt graceful shutdown
     if (error.message?.includes('EADDRINUSE') || error.message?.includes('out of memory')) {
-        console.error(`[CHROMADON] ❌ Fatal error: ${error.message}`);
+        log.error(`[CHROMADON] ❌ Fatal error: ${error.message}`);
         process.exit(1); // Non-zero so Desktop restarts us
     }
     // Otherwise keep running - most uncaught exceptions are recoverable
@@ -4342,10 +4359,10 @@ async function startServer() {
     // Log version for debugging client issues
     try {
         const pkg = require('../../package.json');
-        console.log(`[CHROMADON] Brain version: ${pkg.version}`);
+        log.info(`[CHROMADON] Brain version: ${pkg.version}`);
     }
     catch {
-        console.log('[CHROMADON] Brain version: unknown');
+        log.info('[CHROMADON] Brain version: unknown');
     }
     // Check Desktop availability FIRST - before any browser launch
     await checkDesktopHealth();
@@ -4363,22 +4380,22 @@ async function startServer() {
         try {
             if (ANTHROPIC_API_KEY) {
                 aiEngine = new core_1.NeuralRAGAIEngine(ANTHROPIC_API_KEY);
-                console.log('[CHROMADON] ✅ Neural RAG AI Engine v3.0 initialized');
-                console.log('[CHROMADON]    - Dual-Process Routing (System 1/System 2)');
-                console.log('[CHROMADON]    - Self-Reflection Tokens [RET][REL][SUP][USE]');
-                console.log('[CHROMADON]    - Hierarchical Memory (L0-L3)');
-                console.log('[CHROMADON]    - Circuit Breaker Protection');
+                log.info('[CHROMADON] ✅ Neural RAG AI Engine v3.0 initialized');
+                log.info('[CHROMADON]    - Dual-Process Routing (System 1/System 2)');
+                log.info('[CHROMADON]    - Self-Reflection Tokens [RET][REL][SUP][USE]');
+                log.info('[CHROMADON]    - Hierarchical Memory (L0-L3)');
+                log.info('[CHROMADON]    - Circuit Breaker Protection');
             }
             else {
-                console.log('[CHROMADON] ⚠️ Neural RAG AI Engine skipped (no Anthropic key — Gemini only)');
+                log.info('[CHROMADON] ⚠️ Neural RAG AI Engine skipped (no Anthropic key — Gemini only)');
             }
             // Initialize Analytics Database
             try {
                 analyticsDb = new database_1.AnalyticsDatabase();
-                console.log('[CHROMADON] ✅ Analytics Database initialized (SQLite)');
+                log.info('[CHROMADON] ✅ Analytics Database initialized (SQLite)');
             }
             catch (dbError) {
-                console.log(`[CHROMADON] ⚠️ Analytics DB init failed: ${dbError.message}`);
+                log.info(`[CHROMADON] ⚠️ Analytics DB init failed: ${dbError.message}`);
             }
             // Initialize MissionRegistry (shares analytics.db path)
             try {
@@ -4386,38 +4403,38 @@ async function startServer() {
                     || path.join(process.env.APPDATA || process.env.HOME || '.', '.chromadon', 'analytics.db');
                 missionRegistry = new mission_1.MissionRegistry(missionDbPath);
                 const zombies = missionRegistry.failZombies();
-                console.log(`[CHROMADON] ✅ MissionRegistry initialized${zombies > 0 ? ` (${zombies} zombies cleaned)` : ''}`);
+                log.info({ zombiesCleaned: zombies }, 'MissionRegistry initialized');
             }
             catch (mrError) {
-                console.log(`[CHROMADON] ⚠️ MissionRegistry init failed: ${mrError.message}`);
+                log.info(`[CHROMADON] ⚠️ MissionRegistry init failed: ${mrError.message}`);
             }
             // Initialize BudgetMonitor (shares analytics.db path)
             try {
                 const budgetDbPath = process.env.CHROMADON_ANALYTICS_DB
                     || path.join(process.env.APPDATA || process.env.HOME || '.', '.chromadon', 'analytics.db');
                 budgetMonitor = new budget_1.BudgetMonitor(budgetDbPath);
-                console.log('[CHROMADON] ✅ BudgetMonitor initialized');
+                log.info('[CHROMADON] ✅ BudgetMonitor initialized');
             }
             catch (bmError) {
-                console.log(`[CHROMADON] ⚠️ BudgetMonitor init failed: ${bmError.message}`);
+                log.info(`[CHROMADON] ⚠️ BudgetMonitor init failed: ${bmError.message}`);
             }
             // Initialize PulseBeacon
             try {
                 pulseBeacon = new monitoring_2.PulseBeacon(missionRegistry, budgetMonitor);
                 pulseBeacon.start();
-                console.log('[CHROMADON] ✅ PulseBeacon started');
+                log.info('[CHROMADON] ✅ PulseBeacon started');
             }
             catch (pbError) {
-                console.log(`[CHROMADON] ⚠️ PulseBeacon init failed: ${pbError.message}`);
+                log.info(`[CHROMADON] ⚠️ PulseBeacon init failed: ${pbError.message}`);
             }
             // Initialize SessionWarmup
             try {
                 sessionWarmup = new session_1.SessionWarmup(missionRegistry);
                 sessionWarmup.start();
-                console.log('[CHROMADON] ✅ SessionWarmup started');
+                log.info('[CHROMADON] ✅ SessionWarmup started');
             }
             catch (swError) {
-                console.log(`[CHROMADON] ⚠️ SessionWarmup init failed: ${swError.message}`);
+                log.info(`[CHROMADON] ⚠️ SessionWarmup init failed: ${swError.message}`);
             }
             // Initialize YouTube Token Manager
             try {
@@ -4428,10 +4445,10 @@ async function startServer() {
                     refreshToken: process.env.YOUTUBE_REFRESH_TOKEN || '',
                     tokenStorePath: process.env.YOUTUBE_TOKEN_STORE || path.join(process.env.USERPROFILE || process.env.HOME || '.', '.chromadon-youtube-tokens.json'),
                 });
-                console.log(`[CHROMADON] ✅ YouTube Token Manager initialized (authorized: ${youtubeTokenManager.isAuthorized()})`);
+                log.info(`[CHROMADON] ✅ YouTube Token Manager initialized (authorized: ${youtubeTokenManager.isAuthorized()})`);
             }
             catch (ytError) {
-                console.log(`[CHROMADON] ⚠️ YouTube init failed: ${ytError.message}`);
+                log.info(`[CHROMADON] ⚠️ YouTube init failed: ${ytError.message}`);
             }
             // Initialize Skill Memory
             // skillMemory declared above (hoisted for retry access)
@@ -4442,10 +4459,10 @@ async function startServer() {
                 const skillDefaultsPath = path.join(process.env.CHROMADON_DATA_DIR || process.cwd(), 'skills.json');
                 skillMemory = new skills_1.SkillMemory(skillDataDir, skillDefaultsPath);
                 skillExec = (0, skills_1.createSkillExecutor)(skillMemory);
-                console.log('[CHROMADON] ✅ Skill Memory initialized');
+                log.info('[CHROMADON] ✅ Skill Memory initialized');
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ Skill Memory init failed: ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ Skill Memory init failed: ${err.message}`);
             }
             // Initialize Agentic Orchestrator with merged tools (browser + analytics + YouTube + skills)
             const toolExecutor = (0, browser_tools_1.createToolExecutor)();
@@ -4463,61 +4480,61 @@ async function startServer() {
                 if (existingClients.length === 0) {
                     const defaultClient = clientStorage.createClient('Default');
                     clientStorage.setActiveClient(defaultClient.id);
-                    console.log(`[CHROMADON] Created default client: ${defaultClient.id}`);
+                    log.info(`[CHROMADON] Created default client: ${defaultClient.id}`);
                 }
                 else if (!clientStorage.getActiveClientId()) {
                     clientStorage.setActiveClient(existingClients[0].id);
-                    console.log(`[CHROMADON] Activated existing client: ${existingClients[0].name}`);
+                    log.info(`[CHROMADON] Activated existing client: ${existingClients[0].name}`);
                 }
-                console.log('[CHROMADON] ✅ Client Context Layer initialized');
+                log.info('[CHROMADON] ✅ Client Context Layer initialized');
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ Client Context Layer init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ Client Context Layer init failed (non-critical): ${err.message}`);
             }
             // v1.13.0 — Initialize Client Experience Engine modules
             try {
                 activityLog = new activity_1.ActivityLog();
                 activityLog.pruneOldFiles();
-                console.log('[CHROMADON] ✅ Activity Log initialized (JSONL, 30-day retention)');
+                log.info('[CHROMADON] ✅ Activity Log initialized (JSONL, 30-day retention)');
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ Activity Log init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ Activity Log init failed (non-critical): ${err.message}`);
             }
             try {
                 onboardingState = new onboarding_1.OnboardingStatePersistence();
                 const complete = onboardingState.isComplete();
-                console.log(`[CHROMADON] ✅ Onboarding State initialized (${complete ? 'complete' : 'in progress'})`);
+                log.info({ complete }, 'Onboarding State initialized');
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ Onboarding State init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ Onboarding State init failed (non-critical): ${err.message}`);
             }
             try {
                 templateLoader = new templates_1.TemplateLoader();
                 templateLoader.ensureDefaults();
                 const count = templateLoader.loadTemplates().length;
-                console.log(`[CHROMADON] ✅ Template Loader initialized (${count} templates from file)`);
+                log.info(`[CHROMADON] ✅ Template Loader initialized (${count} templates from file)`);
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ Template Loader init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ Template Loader init failed (non-critical): ${err.message}`);
             }
             try {
                 proofGenerator = new proof_1.ProofGenerator(CHROMADON_DESKTOP_URL);
                 const pruned = proofGenerator.pruneOldProofs();
-                console.log(`[CHROMADON] ✅ Proof Generator initialized (30-day/1GB retention${pruned.deletedByAge + pruned.deletedBySize > 0 ? `, pruned ${pruned.deletedByAge + pruned.deletedBySize}` : ''})`);
+                log.info({ prunedByAge: pruned.deletedByAge, prunedBySize: pruned.deletedBySize }, "Proof Generator initialized");
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ Proof Generator init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ Proof Generator init failed (non-critical): ${err.message}`);
             }
             // Initialize OBS Studio client (non-blocking — server starts even if OBS is offline)
             let obsExec = null;
             const obsToolNames = new Set(obs_1.OBS_TOOLS.map(t => t.name));
             try {
                 obsClientInstance = new obs_1.OBSClient();
-                obsClientInstance.connect().catch(err => console.log('[CHROMADON] OBS not available:', err.message));
-                obsExec = (0, obs_1.createObsExecutor)(obsClientInstance);
+                obsClientInstance.connect().catch(err => log.info({ detail: err.message }, '[CHROMADON] OBS not available:'));
+                obsExec = (0, obs_1.createObsExecutor)(obsClientInstance, CHROMADON_DESKTOP_URL);
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ OBS init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ OBS init failed (non-critical): ${err.message}`);
             }
             // Trinity Intelligence + Research executor
             if (clientStorage && knowledgeVault) {
@@ -4626,49 +4643,49 @@ async function startServer() {
             orchestratorInitError = null; // Clear any previous error
             if (budgetMonitor)
                 orchestrator.setBudgetMonitor(budgetMonitor);
-            console.log('[CHROMADON] ✅ Agentic Orchestrator initialized (Claude tool-use mode)');
+            log.info('[CHROMADON] ✅ Agentic Orchestrator initialized (Claude tool-use mode)');
             if (analyticsDb)
-                console.log('[CHROMADON]    - 8 Analytics tools registered');
+                log.info('[CHROMADON]    - 8 Analytics tools registered');
             if (youtubeTokenManager)
-                console.log(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube tools registered`);
+                log.info(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube tools registered`);
             if (skillMemory)
-                console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
+                log.info(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
             if (clientContextExec)
-                console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
-            console.log(`[CHROMADON]    - ${autonomy_1.VISUAL_VERIFY_TOOLS.length} Visual Verify + ${autonomy_1.POLICY_TOOLS.length} Policy tools registered`);
-            console.log(`[CHROMADON]    - ${filteredMarketingTools.length} Marketing Queue tools registered`);
-            console.log(`[CHROMADON]    - ${scheduler_1.SCHEDULER_TOOLS.length} Scheduler tools registered`);
+                log.info(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
+            log.info(`[CHROMADON]    - ${autonomy_1.VISUAL_VERIFY_TOOLS.length} Visual Verify + ${autonomy_1.POLICY_TOOLS.length} Policy tools registered`);
+            log.info(`[CHROMADON]    - ${filteredMarketingTools.length} Marketing Queue tools registered`);
+            log.info(`[CHROMADON]    - ${scheduler_1.SCHEDULER_TOOLS.length} Scheduler tools registered`);
             if (obsExec)
-                console.log(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
+                log.info(`[CHROMADON]    - ${obs_1.OBS_TOOLS.length} OBS Studio tools registered`);
             if (trinityExec)
-                console.log(`[CHROMADON]    - ${trinity_1.TRINITY_TOOLS.length + trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} Trinity tools registered (${trinity_1.TRINITY_TOOLS.length} research + ${trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} intelligence)`);
+                log.info(`[CHROMADON]    - ${trinity_1.TRINITY_TOOLS.length + trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} Trinity tools registered (${trinity_1.TRINITY_TOOLS.length} research + ${trinity_1.TRINITY_INTELLIGENCE_TOOLS.length} intelligence)`);
             // v1.13.0 Client Experience Engine tools
             const ceToolCount = (activityLog ? activity_1.ACTIVITY_TOOLS.length : 0) + (onboardingState ? onboarding_1.ONBOARDING_TOOLS.length : 0) + (templateLoader ? templates_1.TEMPLATE_TOOLS.length : 0) + (proofGenerator && activityLog ? proof_1.PROOF_TOOLS.length : 0);
             if (ceToolCount > 0)
-                console.log(`[CHROMADON]    - ${ceToolCount} Client Experience tools (activity: ${activityLog ? activity_1.ACTIVITY_TOOLS.length : 0}, onboarding: ${onboardingState ? onboarding_1.ONBOARDING_TOOLS.length : 0}, templates: ${templateLoader ? templates_1.TEMPLATE_TOOLS.length : 0}, proof: ${proofGenerator && activityLog ? proof_1.PROOF_TOOLS.length : 0})`);
+                log.info(`[CHROMADON]    - ${ceToolCount} Client Experience tools (activity: ${activityLog ? activity_1.ACTIVITY_TOOLS.length : 0}, onboarding: ${onboardingState ? onboarding_1.ONBOARDING_TOOLS.length : 0}, templates: ${templateLoader ? templates_1.TEMPLATE_TOOLS.length : 0}, proof: ${proofGenerator && activityLog ? proof_1.PROOF_TOOLS.length : 0})`);
             // Initialize Social Overlord (queue execution engine)
             try {
                 socialOverlord = new social_overlord_1.SocialOverlord(orchestrator, buildExecutionContext, analyticsDb || undefined);
-                console.log('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');
+                log.info('[CHROMADON] ✅ Social Media Overlord initialized (queue execution)');
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ Social Overlord init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ Social Overlord init failed (non-critical): ${err.message}`);
             }
             // Initialize CortexRouter (agent-first routing for /api/orchestrator/chat)
             try {
                 initializeCortexRouter();
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ CortexRouter init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ CortexRouter init failed (non-critical): ${err.message}`);
             }
             // Initialize Data Collector (analytics scraping)
             if (analyticsDb) {
                 try {
                     dataCollector = new data_collector_1.DataCollector(orchestrator, buildExecutionContext, analyticsDb);
-                    console.log('[CHROMADON] ✅ Analytics Data Collector initialized (6h schedule)');
+                    log.info('[CHROMADON] ✅ Analytics Data Collector initialized (6h schedule)');
                 }
                 catch (err) {
-                    console.log(`[CHROMADON] ⚠️ Data Collector init failed (non-critical): ${err.message}`);
+                    log.info(`[CHROMADON] ⚠️ Data Collector init failed (non-critical): ${err.message}`);
                 }
             }
             // Initialize Social Media Monitor (background comment monitoring)
@@ -4684,14 +4701,14 @@ async function startServer() {
                             maxRepliesPerCycle: savedConfig.max_replies_per_cycle,
                         });
                         socialMonitor.start();
-                        console.log(`[CHROMADON] ✅ Social Monitor initialized + STARTED (${savedConfig.interval_minutes}min interval)`);
+                        log.info(`[CHROMADON] ✅ Social Monitor initialized + STARTED (${savedConfig.interval_minutes}min interval)`);
                     }
                     else {
-                        console.log('[CHROMADON] ✅ Social Monitor initialized (disabled — enable via chat)');
+                        log.info('[CHROMADON] ✅ Social Monitor initialized (disabled — enable via chat)');
                     }
                 }
                 catch (err) {
-                    console.log(`[CHROMADON] ⚠️ Social Monitor init failed (non-critical): ${err.message}`);
+                    log.info(`[CHROMADON] ⚠️ Social Monitor init failed (non-critical): ${err.message}`);
                 }
             }
             // Initialize THE_SCHEDULER (Agent 0.2) — zero-cost when idle
@@ -4724,15 +4741,15 @@ async function startServer() {
                 } : undefined, trinityIntelligence);
                 theScheduler.start();
                 const status = theScheduler.getStatus();
-                console.log(`[CHROMADON] ✅ TheScheduler initialized + STARTED (${status.pendingCount} pending task(s))`);
+                log.info(`[CHROMADON] ✅ TheScheduler initialized + STARTED (${status.pendingCount} pending task(s))`);
                 // Late-bind template executor now that TheScheduler exists
                 if (templateLoader) {
                     templateExec = (0, templates_1.createTemplateExecutor)(templateLoader, theScheduler);
-                    console.log('[CHROMADON]    - Template executor bound to TheScheduler');
+                    log.info('[CHROMADON]    - Template executor bound to TheScheduler');
                 }
             }
             catch (err) {
-                console.log(`[CHROMADON] ⚠️ TheScheduler init failed (non-critical): ${err.message}`);
+                log.info(`[CHROMADON] ⚠️ TheScheduler init failed (non-critical): ${err.message}`);
                 // Template executor still works without scheduler (no scheduling, immediate execution only)
                 if (templateLoader) {
                     templateExec = (0, templates_1.createTemplateExecutor)(templateLoader);
@@ -4741,8 +4758,8 @@ async function startServer() {
         }
         catch (error) {
             orchestratorInitError = error.message;
-            console.error(`[CHROMADON] ❌ Orchestrator init FAILED: ${error.message}`);
-            console.error(`[CHROMADON]    Stack: ${error.stack}`);
+            log.error(`[CHROMADON] ❌ Orchestrator init FAILED: ${error.message}`);
+            log.error(`[CHROMADON]    Stack: ${error.stack}`);
         }
         // Retry orchestrator init if it failed (transient errors, timing issues)
         if (!orchestrator && orchestratorInitError) {
@@ -4750,7 +4767,7 @@ async function startServer() {
             const RETRY_DELAYS = [5000, 10000, 15000, 20000, 25000]; // Progressive backoff
             for (let attempt = 1; attempt <= MAX_INIT_RETRIES; attempt++) {
                 const delay = RETRY_DELAYS[attempt - 1] || 25000;
-                console.log(`[CHROMADON] Retrying orchestrator init in ${delay / 1000}s (attempt ${attempt}/${MAX_INIT_RETRIES})...`);
+                log.info(`[CHROMADON] Retrying orchestrator init in ${delay / 1000}s (attempt ${attempt}/${MAX_INIT_RETRIES})...`);
                 await new Promise(r => setTimeout(r, delay));
                 try {
                     const toolExecutorRetry = (0, browser_tools_1.createToolExecutor)();
@@ -4774,137 +4791,137 @@ async function startServer() {
                         }
                     } : async () => '', onboardingState ? () => onboardingState.getPromptContext() : () => null);
                     orchestratorInitError = null;
-                    console.log(`[CHROMADON] ✅ Orchestrator initialized on retry attempt ${attempt}`);
+                    log.info(`[CHROMADON] ✅ Orchestrator initialized on retry attempt ${attempt}`);
                     break;
                 }
                 catch (retryErr) {
                     orchestratorInitError = retryErr.message;
-                    console.error(`[CHROMADON] ❌ Orchestrator retry ${attempt}/${MAX_INIT_RETRIES} failed: ${retryErr.message}`);
-                    console.error(`[CHROMADON]    Stack: ${retryErr.stack}`);
+                    log.error(`[CHROMADON] ❌ Orchestrator retry ${attempt}/${MAX_INIT_RETRIES} failed: ${retryErr.message}`);
+                    log.error(`[CHROMADON]    Stack: ${retryErr.stack}`);
                     if (attempt === MAX_INIT_RETRIES) {
                         orchestratorInitError = `Failed after ${MAX_INIT_RETRIES + 1} attempts: ${retryErr.message}. Check API keys in Settings.`;
-                        console.error(`[CHROMADON] ❌ All orchestrator init retries exhausted. Brain running without AI.`);
+                        log.error(`[CHROMADON] ❌ All orchestrator init retries exhausted. Brain running without AI.`);
                     }
                 }
             }
         }
     }
     else {
-        console.log('[CHROMADON] ⚠️ No API keys set (ANTHROPIC_API_KEY or GEMINI_API_KEY) — AI features disabled');
+        log.info('[CHROMADON] ⚠️ No API keys set (ANTHROPIC_API_KEY or GEMINI_API_KEY) — AI features disabled');
     }
     return new Promise((resolve, reject) => {
         const server = app.listen(PORT, () => {
             // Prevent Node.js from killing idle SSE connections (default keepAliveTimeout is 5s)
             server.keepAliveTimeout = 120_000; // 2 minutes
             server.headersTimeout = 125_000; // must be > keepAliveTimeout
-            console.log(`\n[CHROMADON] ===========================================`);
-            console.log(`[CHROMADON] 🚀 CHROMADON v4.0.0 - NEURAL RAG BRAIN ENABLED`);
-            console.log(`[CHROMADON] Running on http://localhost:${PORT}`);
-            console.log(`[CHROMADON] Mode: ${desktopAvailable ? 'DESKTOP' : connectionMode}`);
-            console.log(`[CHROMADON] CDP Endpoint: ${CDP_ENDPOINT}`);
-            console.log(`[CHROMADON] Desktop: ${desktopAvailable ? `ACTIVE (${CHROMADON_DESKTOP_URL})` : 'Not available'}`);
-            console.log(`[CHROMADON] AI Engine: ${aiEngine ? 'Active' : 'Disabled'}`);
-            console.log(`[CHROMADON] Pages: ${desktopAvailable ? 'via Desktop' : globalPages.length}`);
-            console.log(`[CHROMADON] ===========================================\n`);
-            console.log('[CHROMADON] Endpoints:');
-            console.log('  GET  /health                - Health check');
-            console.log('  GET  /api/pages             - List all pages');
-            console.log('  POST /api/pages/select      - Select a page');
-            console.log('  POST /api/pages/new         - Create new page');
-            console.log('  POST /api/pages/close       - Close a page');
-            console.log('  POST /api/navigate          - Navigate (url/back/forward/reload)');
-            console.log('  POST /api/click             - Click element');
-            console.log('  POST /api/hover             - Hover element');
-            console.log('  POST /api/fill              - Fill form field');
-            console.log('  POST /api/fill-form         - Fill multiple fields');
-            console.log('  POST /api/type              - Type text');
-            console.log('  POST /api/press             - Press key');
-            console.log('  POST /api/scroll            - Scroll page/element');
-            console.log('  POST /api/drag              - Drag and drop');
-            console.log('  POST /api/upload            - Upload file');
-            console.log('  POST /api/screenshot        - Take screenshot');
-            console.log('  GET  /api/snapshot          - DOM snapshot with UIDs');
-            console.log('  GET  /api/content           - Get page HTML');
-            console.log('  POST /api/pdf               - Generate PDF');
-            console.log('  POST /api/wait              - Wait for element');
-            console.log('  POST /api/wait-for-text     - Wait for text');
-            console.log('  POST /api/wait-for-navigation - Wait for navigation');
-            console.log('  POST /api/dialog            - Handle dialog');
-            console.log('  GET  /api/cookies           - Get cookies');
-            console.log('  POST /api/cookies           - Set cookies');
-            console.log('  DELETE /api/cookies         - Clear cookies');
-            console.log('  GET  /api/console           - Get console messages');
-            console.log('  DELETE /api/console         - Clear console');
-            console.log('  POST /api/emulate           - Emulate settings');
-            console.log('  POST /api/resize            - Resize viewport');
-            console.log('  POST /api/evaluate          - Run JavaScript');
-            console.log('  POST /api/verify            - Verify assertions');
-            console.log('  POST /api/mission           - Execute NL mission');
-            console.log('  POST /api/mission/ai        - AI-powered mission (Neural RAG Brain v3.0)');
-            console.log('  GET  /api/ai/status         - AI Engine status');
-            console.log('  POST /api/ai/reset-circuit  - Reset AI circuit breaker');
-            console.log('  GET  /api/session           - Session status');
-            console.log('  POST /api/session/start     - Start session');
-            console.log('  POST /api/session/end       - End session');
-            console.log('');
-            console.log('[CHROMADON] 27-Agent System Endpoints:');
-            console.log('  POST /api/agent/execute     - Natural language task');
-            console.log('  POST /api/agent/social/page - Create business page');
-            console.log('  POST /api/agent/social/post - Post to social media');
-            console.log('  POST /api/agent/research    - Deep research');
-            console.log('  POST /api/agent/cart/add    - Add to cart');
-            console.log('  POST /api/agent/checkout    - Complete checkout');
-            console.log('  POST /api/agent/extract     - Extract data');
-            console.log('  POST /api/agent/book        - Make reservation');
-            console.log('  POST /api/agent/form        - Fill form');
-            console.log('  POST /api/agent/credentials - Store credentials');
-            console.log('  GET  /api/agent/stats       - Agent statistics');
-            console.log('');
-            console.log('[CHROMADON] RALPH System Endpoints (Never Give Up!):');
-            console.log('  GET  /api/ralph/status      - Get RALPH execution status');
-            console.log('  POST /api/ralph/pause       - Pause RALPH execution');
-            console.log('  POST /api/ralph/resume      - Resume RALPH execution');
-            console.log('  POST /api/ralph/abort       - Abort RALPH execution');
-            console.log('  POST /api/ralph/respond     - Respond to intervention request\n');
-            console.log('[CHROMADON] Social Media Overlord Endpoints:');
-            console.log('  POST /api/social/process        - Process single task (JSON)');
-            console.log('  POST /api/social/process-stream - Process single task (SSE)');
-            console.log('  POST /api/social/process-all    - Process task batch (SSE)\n');
-            console.log('[CHROMADON] Analytics Dashboard Endpoints:');
-            console.log('  GET  /api/analytics/overview          - Cross-platform overview');
-            console.log('  GET  /api/analytics/platform/:plat    - Platform deep dive');
-            console.log('  GET  /api/analytics/content           - Content performance');
-            console.log('  GET  /api/analytics/audience/:plat    - Audience insights');
-            console.log('  GET  /api/analytics/competitors       - Competitor analysis');
-            console.log('  GET  /api/analytics/timing/:plat      - Posting schedule heatmap');
-            console.log('  GET  /api/analytics/roi               - ROI metrics');
-            console.log('  POST /api/analytics/report            - Generate full report');
-            console.log('  POST /api/analytics/collect           - Trigger data collection\n');
-            console.log('[CHROMADON] Client Context Endpoints:');
-            console.log('  GET  /api/client-context/clients           - List all clients');
-            console.log('  GET  /api/client-context/clients/:id       - Get client context');
-            console.log('  POST /api/client-context/clients/active    - Set active client');
-            console.log('  GET  /api/client-context/clients/active    - Get active client');
-            console.log('  DELETE /api/client-context/clients/:id     - Delete client');
-            console.log('  POST /api/client-context/interview/start   - Start interview (SSE)');
-            console.log('  POST /api/client-context/interview/chat    - Interview chat (SSE)');
-            console.log('  POST /api/client-context/interview/skip    - Skip to phase');
-            console.log('  GET  /api/client-context/interview/state   - Get interview state');
-            console.log('  POST /api/client-context/interview/resume  - Resume interview (SSE)');
-            console.log('  POST /api/client-context/documents/upload  - Upload document');
-            console.log('  GET  /api/client-context/documents/list    - List documents');
-            console.log('  GET  /api/client-context/documents/:id/status - Doc status');
-            console.log('  DELETE /api/client-context/documents/:id   - Delete document');
-            console.log('  POST /api/client-context/knowledge/search  - Search knowledge');
-            console.log('  POST /api/client-context/strategy/generate - Generate strategy (SSE)');
-            console.log('  POST /api/client-context/strategy/update   - Update with feedback');
-            console.log('  POST /api/client-context/strategy/calendar - Generate calendar');
-            console.log('  POST /api/client-context/strategy/review   - Weekly review');
-            console.log('  GET  /api/client-context/strategy          - Get strategy\n');
+            log.info(`\n[CHROMADON] ===========================================`);
+            log.info(`[CHROMADON] 🚀 CHROMADON v4.0.0 - NEURAL RAG BRAIN ENABLED`);
+            log.info(`[CHROMADON] Running on http://localhost:${PORT}`);
+            log.info({ mode: desktopAvailable ? 'DESKTOP' : connectionMode }, 'Mode');
+            log.info(`[CHROMADON] CDP Endpoint: ${CDP_ENDPOINT}`);
+            log.info({ desktopAvailable, desktopUrl: CHROMADON_DESKTOP_URL }, 'Desktop status');
+            log.info({ aiEngine: !!aiEngine }, 'AI Engine status');
+            log.info({ pages: desktopAvailable ? 'via Desktop' : globalPages.length }, 'Pages');
+            log.info(`[CHROMADON] ===========================================\n`);
+            log.info('[CHROMADON] Endpoints:');
+            log.info('  GET  /health                - Health check');
+            log.info('  GET  /api/pages             - List all pages');
+            log.info('  POST /api/pages/select      - Select a page');
+            log.info('  POST /api/pages/new         - Create new page');
+            log.info('  POST /api/pages/close       - Close a page');
+            log.info('  POST /api/navigate          - Navigate (url/back/forward/reload)');
+            log.info('  POST /api/click             - Click element');
+            log.info('  POST /api/hover             - Hover element');
+            log.info('  POST /api/fill              - Fill form field');
+            log.info('  POST /api/fill-form         - Fill multiple fields');
+            log.info('  POST /api/type              - Type text');
+            log.info('  POST /api/press             - Press key');
+            log.info('  POST /api/scroll            - Scroll page/element');
+            log.info('  POST /api/drag              - Drag and drop');
+            log.info('  POST /api/upload            - Upload file');
+            log.info('  POST /api/screenshot        - Take screenshot');
+            log.info('  GET  /api/snapshot          - DOM snapshot with UIDs');
+            log.info('  GET  /api/content           - Get page HTML');
+            log.info('  POST /api/pdf               - Generate PDF');
+            log.info('  POST /api/wait              - Wait for element');
+            log.info('  POST /api/wait-for-text     - Wait for text');
+            log.info('  POST /api/wait-for-navigation - Wait for navigation');
+            log.info('  POST /api/dialog            - Handle dialog');
+            log.info('  GET  /api/cookies           - Get cookies');
+            log.info('  POST /api/cookies           - Set cookies');
+            log.info('  DELETE /api/cookies         - Clear cookies');
+            log.info('  GET  /api/console           - Get console messages');
+            log.info('  DELETE /api/console         - Clear console');
+            log.info('  POST /api/emulate           - Emulate settings');
+            log.info('  POST /api/resize            - Resize viewport');
+            log.info('  POST /api/evaluate          - Run JavaScript');
+            log.info('  POST /api/verify            - Verify assertions');
+            log.info('  POST /api/mission           - Execute NL mission');
+            log.info('  POST /api/mission/ai        - AI-powered mission (Neural RAG Brain v3.0)');
+            log.info('  GET  /api/ai/status         - AI Engine status');
+            log.info('  POST /api/ai/reset-circuit  - Reset AI circuit breaker');
+            log.info('  GET  /api/session           - Session status');
+            log.info('  POST /api/session/start     - Start session');
+            log.info('  POST /api/session/end       - End session');
+            log.info('');
+            log.info('[CHROMADON] 27-Agent System Endpoints:');
+            log.info('  POST /api/agent/execute     - Natural language task');
+            log.info('  POST /api/agent/social/page - Create business page');
+            log.info('  POST /api/agent/social/post - Post to social media');
+            log.info('  POST /api/agent/research    - Deep research');
+            log.info('  POST /api/agent/cart/add    - Add to cart');
+            log.info('  POST /api/agent/checkout    - Complete checkout');
+            log.info('  POST /api/agent/extract     - Extract data');
+            log.info('  POST /api/agent/book        - Make reservation');
+            log.info('  POST /api/agent/form        - Fill form');
+            log.info('  POST /api/agent/credentials - Store credentials');
+            log.info('  GET  /api/agent/stats       - Agent statistics');
+            log.info('');
+            log.info('[CHROMADON] RALPH System Endpoints (Never Give Up!):');
+            log.info('  GET  /api/ralph/status      - Get RALPH execution status');
+            log.info('  POST /api/ralph/pause       - Pause RALPH execution');
+            log.info('  POST /api/ralph/resume      - Resume RALPH execution');
+            log.info('  POST /api/ralph/abort       - Abort RALPH execution');
+            log.info('  POST /api/ralph/respond     - Respond to intervention request\n');
+            log.info('[CHROMADON] Social Media Overlord Endpoints:');
+            log.info('  POST /api/social/process        - Process single task (JSON)');
+            log.info('  POST /api/social/process-stream - Process single task (SSE)');
+            log.info('  POST /api/social/process-all    - Process task batch (SSE)\n');
+            log.info('[CHROMADON] Analytics Dashboard Endpoints:');
+            log.info('  GET  /api/analytics/overview          - Cross-platform overview');
+            log.info('  GET  /api/analytics/platform/:plat    - Platform deep dive');
+            log.info('  GET  /api/analytics/content           - Content performance');
+            log.info('  GET  /api/analytics/audience/:plat    - Audience insights');
+            log.info('  GET  /api/analytics/competitors       - Competitor analysis');
+            log.info('  GET  /api/analytics/timing/:plat      - Posting schedule heatmap');
+            log.info('  GET  /api/analytics/roi               - ROI metrics');
+            log.info('  POST /api/analytics/report            - Generate full report');
+            log.info('  POST /api/analytics/collect           - Trigger data collection\n');
+            log.info('[CHROMADON] Client Context Endpoints:');
+            log.info('  GET  /api/client-context/clients           - List all clients');
+            log.info('  GET  /api/client-context/clients/:id       - Get client context');
+            log.info('  POST /api/client-context/clients/active    - Set active client');
+            log.info('  GET  /api/client-context/clients/active    - Get active client');
+            log.info('  DELETE /api/client-context/clients/:id     - Delete client');
+            log.info('  POST /api/client-context/interview/start   - Start interview (SSE)');
+            log.info('  POST /api/client-context/interview/chat    - Interview chat (SSE)');
+            log.info('  POST /api/client-context/interview/skip    - Skip to phase');
+            log.info('  GET  /api/client-context/interview/state   - Get interview state');
+            log.info('  POST /api/client-context/interview/resume  - Resume interview (SSE)');
+            log.info('  POST /api/client-context/documents/upload  - Upload document');
+            log.info('  GET  /api/client-context/documents/list    - List documents');
+            log.info('  GET  /api/client-context/documents/:id/status - Doc status');
+            log.info('  DELETE /api/client-context/documents/:id   - Delete document');
+            log.info('  POST /api/client-context/knowledge/search  - Search knowledge');
+            log.info('  POST /api/client-context/strategy/generate - Generate strategy (SSE)');
+            log.info('  POST /api/client-context/strategy/update   - Update with feedback');
+            log.info('  POST /api/client-context/strategy/calendar - Generate calendar');
+            log.info('  POST /api/client-context/strategy/review   - Weekly review');
+            log.info('  GET  /api/client-context/strategy          - Get strategy\n');
             resolve();
         });
         server.on('error', (err) => {
-            console.error(`[CHROMADON] ❌ Server failed to bind port ${PORT}: ${err.message}`);
+            log.error(`[CHROMADON] ❌ Server failed to bind port ${PORT}: ${err.message}`);
             reject(err);
         });
     });
@@ -4912,7 +4929,7 @@ async function startServer() {
 exports.startServer = startServer;
 // Run if called directly — exit with code 1 on fatal failure so Desktop restarts us
 startServer().catch((err) => {
-    console.error('[CHROMADON] ❌ Fatal: Server failed to start:', err.message);
+    log.error({ err: err.message }, '[CHROMADON] ❌ Fatal: Server failed to start:');
     process.exit(1);
 });
 //# sourceMappingURL=server.js.map

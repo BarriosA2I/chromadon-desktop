@@ -10,17 +10,14 @@
  * - [SUP] Scores how well screenshot supports expected state (0-1)
  * - [USE] Rates usefulness of verification progress (1-5)
  */
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createVisualVerifier = exports.VisualVerifier = void 0;
 const uuid_1 = require("uuid");
-const pino_1 = __importDefault(require("pino"));
 const vision_client_1 = require("../core/vision-client");
 const pixel_diff_1 = require("../core/pixel-diff");
 const visual_memory_1 = require("../core/visual-memory");
-const logger = (0, pino_1.default)({ name: 'visual-verifier' });
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('vision');
 const DEFAULT_CONFIG = {
     visionProvider: 'openai',
     defaultTier: 'balanced',
@@ -83,7 +80,7 @@ class VisualVerifier {
             fullPage: options?.fullPage,
             selector: options?.selector,
         });
-        logger.debug({ id, url, size: screenshot.length }, 'Captured screenshot');
+        log.debug({ id, url, size: screenshot.length }, 'Captured screenshot');
         return screenshot;
     }
     async captureStable(options) {
@@ -133,7 +130,7 @@ class VisualVerifier {
         if (response.boundingBox) {
             assertion.boundingBox = response.boundingBox;
         }
-        logger.debug({
+        log.debug({
             description,
             passed: assertion.passed,
             confidence: assertion.confidence,
@@ -229,7 +226,7 @@ class VisualVerifier {
             url: this.page.url(),
             savedAt: new Date(),
         });
-        logger.info({ name }, 'Saved baseline');
+        log.info({ name }, 'Saved baseline');
     }
     async getBaseline(name) {
         const baseline = this.memory.getBaseline(name);
@@ -407,7 +404,7 @@ The screenshot shows ${diff.changePercentage.toFixed(2)}% visual change.`;
             metadata: metadata ?? {},
         };
         this.memory.saveCheckpoint(checkpoint);
-        logger.info({ id: checkpoint.id, name }, 'Created checkpoint');
+        log.info({ id: checkpoint.id, name }, 'Created checkpoint');
         return checkpoint;
     }
     async listCheckpoints() {
@@ -441,7 +438,7 @@ The screenshot shows ${diff.changePercentage.toFixed(2)}% visual change.`;
             isSupported,
             isUseful,
         };
-        logger.debug({
+        log.debug({
             reflection,
             passed: result.passed,
             confidence: result.confidence,

@@ -17,6 +17,8 @@ const healing_orchestrator_1 = require("../core/healing-orchestrator");
 const drift_detector_1 = require("../core/drift-detector");
 const procedural_memory_1 = require("../core/procedural-memory");
 const retry_strategy_1 = require("../core/retry-strategy");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('healer');
 // =============================================================================
 // DEFAULT CONFIGURATION
 // =============================================================================
@@ -368,7 +370,7 @@ class SelfHealer {
     async triggerProactiveHealing(event) {
         // In a real implementation, this would proactively heal the selector
         // before it fails completely
-        console.log(`Proactive healing triggered for: ${event.selector}`);
+        log.info(`Proactive healing triggered for: ${event.selector}`);
     }
     /**
      * Get selectors that need proactive healing.

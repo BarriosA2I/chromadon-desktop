@@ -13,6 +13,8 @@ exports.InterviewEngine = void 0;
 const llm_helper_1 = require("./llm-helper");
 const types_1 = require("./types");
 const interview_prompts_1 = require("./interview-prompts");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('client');
 // ============================================================================
 // INTERVIEW ENGINE
 // ============================================================================
@@ -53,7 +55,7 @@ class InterviewEngine {
             timestamp: new Date().toISOString(),
         });
         this.storage.saveInterviewState(clientId, state);
-        console.log(`[InterviewEngine] Started interview for client: ${clientId}`);
+        log.info(`[InterviewEngine] Started interview for client: ${clientId}`);
         return { state, greeting };
     }
     async resumeInterview(clientId) {
@@ -79,7 +81,7 @@ class InterviewEngine {
             timestamp: new Date().toISOString(),
         });
         this.storage.saveInterviewState(clientId, state);
-        console.log(`[InterviewEngine] Resumed interview for client: ${clientId} at phase: ${state.currentPhase}`);
+        log.info(`[InterviewEngine] Resumed interview for client: ${clientId} at phase: ${state.currentPhase}`);
         return { state, greeting: resumeMsg };
     }
     // =========================================================================
@@ -167,7 +169,7 @@ class InterviewEngine {
             await this.finalizeProfile(state);
         }
         this.storage.saveInterviewState(clientId, state);
-        console.log(`[InterviewEngine] Skipped to phase: ${targetPhase} for client: ${clientId}`);
+        log.info(`[InterviewEngine] Skipped to phase: ${targetPhase} for client: ${clientId}`);
         return state;
     }
     getProgress(clientId) {
@@ -190,7 +192,7 @@ class InterviewEngine {
         const targetIndex = types_1.INTERVIEW_PHASES.indexOf(targetPhase);
         // Only allow forward transitions (backward requires explicit skipToPhase with backtrack flag)
         if (targetIndex <= currentIndex) {
-            console.warn(`[InterviewEngine] Blocked invalid transition: ${state.currentPhase} → ${targetPhase} (backward)`);
+            log.warn(`[InterviewEngine] Blocked invalid transition: ${state.currentPhase} → ${targetPhase} (backward)`);
             return false;
         }
         const transition = {
@@ -203,7 +205,7 @@ class InterviewEngine {
         state.currentPhase = targetPhase;
         state.stateVersion = (state.stateVersion || 0) + 1;
         state.transitionLog = [...(state.transitionLog || []), transition];
-        console.log(`[InterviewEngine] Phase transition v${state.stateVersion}: ${transition.from} → ${transition.to} (${type})`);
+        log.info(`[InterviewEngine] Phase transition v${state.stateVersion}: ${transition.from} → ${transition.to} (${type})`);
         return true;
     }
     // =========================================================================
@@ -223,7 +225,7 @@ class InterviewEngine {
             return await (0, llm_helper_1.callLLMConversation)(systemPrompt, messages, 500);
         }
         catch (err) {
-            console.error('[InterviewEngine] generateResponse failed:', err.message);
+            log.error('[InterviewEngine] generateResponse failed:', err.message);
             return `I'm having a brief connection issue. Could you repeat that? (Error: ${err.message})`;
         }
     }
@@ -262,7 +264,7 @@ class InterviewEngine {
             return (answer?.trim().toUpperCase() || 'NO').startsWith('YES');
         }
         catch (err) {
-            console.error('[InterviewEngine] shouldTransitionPhase failed:', err.message);
+            log.error('[InterviewEngine] shouldTransitionPhase failed:', err.message);
             return false;
         }
     }
@@ -292,10 +294,10 @@ class InterviewEngine {
                 ...state.extractedData,
                 ...extracted,
             };
-            console.log(`[InterviewEngine] Extracted entities for phase: ${state.currentPhase}`, Object.keys(extracted));
+            log.info({ entities: Object.keys(extracted), phase: state.currentPhase }, 'Extracted entities for phase');
         }
         catch (error) {
-            console.error(`[InterviewEngine] Entity extraction failed for phase ${state.currentPhase}:`, error);
+            log.error({ err: error }, `[InterviewEngine] Entity extraction failed for phase ${state.currentPhase}:`);
         }
     }
     // =========================================================================
@@ -367,7 +369,7 @@ class InterviewEngine {
                 });
             }
         }
-        console.log(`[InterviewEngine] Finalized profile for client: ${clientId}`);
+        log.info(`[InterviewEngine] Finalized profile for client: ${clientId}`);
     }
 }
 exports.InterviewEngine = InterviewEngine;

@@ -9,6 +9,8 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createToolExecutor = exports.BROWSER_TOOLS = exports.attemptSessionRestore = exports.detectPlatformFromUrl = void 0;
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('browser');
 // ============================================================================
 // SESSION RESTORE UTILITIES
 // ============================================================================
@@ -43,7 +45,7 @@ exports.detectPlatformFromUrl = detectPlatformFromUrl;
 async function attemptSessionRestore(platform, desktopUrl) {
     const password = process.env.SESSION_BACKUP_PASSWORD;
     if (!password) {
-        console.log(`[SESSION RESTORE] No SESSION_BACKUP_PASSWORD set — skipping restore for ${platform}`);
+        log.info(`[SESSION RESTORE] No SESSION_BACKUP_PASSWORD set — skipping restore for ${platform}`);
         return false;
     }
     try {
@@ -58,18 +60,45 @@ async function attemptSessionRestore(platform, desktopUrl) {
         clearTimeout(timeout);
         const data = await resp.json();
         if (data.success) {
-            console.log(`[SESSION RESTORE] ✅ Restored ${platform} session (${data.cookiesRestored || '?'} cookies)`);
+            log.info(`[SESSION RESTORE] ✅ Restored ${platform} session (${data.cookiesRestored || '?'} cookies)`);
             return true;
         }
-        console.log(`[SESSION RESTORE] ❌ Restore failed for ${platform}: ${data.error || 'unknown'}`);
+        log.info(`[SESSION RESTORE] ❌ Restore failed for ${platform}: ${data.error || 'unknown'}`);
         return false;
     }
     catch (err) {
-        console.log(`[SESSION RESTORE] ❌ Restore request failed for ${platform}: ${err.message}`);
+        log.info(`[SESSION RESTORE] ❌ Restore request failed for ${platform}: ${err.message}`);
         return false;
     }
 }
 exports.attemptSessionRestore = attemptSessionRestore;
+/**
+ * Sanitize a navigation URL from LLM output.
+ * Strips natural language prefixes/suffixes, adds protocol if missing, validates.
+ */
+function sanitizeNavigationUrl(raw) {
+    let url = raw.trim();
+    // Strip NL prefixes the LLM might embed
+    url = url.replace(/^(go\s+to|open|navigate\s+to|visit|head\s+to|browse\s+to)\s+/i, '');
+    // Strip compound tails ("and search for...", "then click...", "and post about...")
+    url = url.replace(/\s+(and|then|&)\s+.*/i, '');
+    // Remove surrounding quotes
+    url = url.replace(/^["'`]+|["'`]+$/g, '');
+    url = url.trim();
+    // Add protocol if missing
+    if (url && !/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+    }
+    // Validate
+    try {
+        new URL(url);
+    }
+    catch {
+        // If invalid, return original — let the browser handle the error
+        return raw.trim();
+    }
+    return url;
+}
 // ============================================================================
 // TOOL DEFINITIONS (Anthropic Tool[] format)
 // ============================================================================
@@ -639,7 +668,7 @@ async function executeDesktop(toolName, input, tabId, desktopUrl, context) {
     }
     switch (toolName) {
         case 'navigate': {
-            const url = input.url;
+            const url = sanitizeNavigationUrl(input.url);
             await fetch(`${desktopUrl}/tabs/navigate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -678,7 +707,7 @@ async function executeDesktop(toolName, input, tabId, desktopUrl, context) {
                     const platform = detectPlatformFromUrl(url);
                     if (platform && context?.sessionRestoreAttempted && !context.sessionRestoreAttempted.has(platform)) {
                         context.sessionRestoreAttempted.add(platform);
-                        console.log(`[SESSION RESTORE] Login wall detected on ${platform} — attempting restore...`);
+                        log.info(`[SESSION RESTORE] Login wall detected on ${platform} — attempting restore...`);
                         const restored = await attemptSessionRestore(platform, desktopUrl);
                         if (restored) {
                             // Re-navigate after restore

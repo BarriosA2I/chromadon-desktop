@@ -36,6 +36,8 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const uuid_1 = require("uuid");
 const trinity_intelligence_1 = require("./trinity-intelligence");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('trinity');
 // ============================================================================
 // HTML TEXT EXTRACTION
 // ============================================================================
@@ -125,7 +127,7 @@ async function fetchPage(url, timeoutMs = 15000) {
         return { html, status: resp.status };
     }
     catch (err) {
-        console.warn(`[Trinity] Failed to fetch ${url}: ${err.message}`);
+        log.warn(`[Trinity] Failed to fetch ${url}: ${err.message}`);
         return null;
     }
 }
@@ -147,7 +149,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
                 const url = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
                 const followLinks = input.follow_links === true;
                 const maxPages = Math.min(input.max_pages || 10, 25);
-                console.log(`[Trinity] Researching: ${url} (follow_links: ${followLinks}, max_pages: ${maxPages})`);
+                log.info(`[Trinity] Researching: ${url} (follow_links: ${followLinks}, max_pages: ${maxPages})`);
                 // Fetch main page
                 const mainResult = await fetchPage(url);
                 if (!mainResult || !mainResult.html) {
@@ -187,7 +189,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
                     .map(p => `=== ${p.title} ===\nSource: ${p.url}\n\n${p.content}`)
                     .join('\n\n---\n\n');
                 const wordCount = combinedContent.split(/\s+/).length;
-                console.log(`[Trinity] Extracted ${pages.length} page(s), ${wordCount} words from ${url}`);
+                log.info(`[Trinity] Extracted ${pages.length} page(s), ${wordCount} words from ${url}`);
                 // Auto-save to vault if requested
                 const saveToVault = input.save_to_vault === true;
                 let vaultResult = null;
@@ -205,10 +207,10 @@ function createTrinityExecutor(storage, vault, intelligence) {
                         try {
                             const result = await vault.uploadDocument(clientId, tempPath, `${vaultTitle}.txt`, 'text/plain', { sourceUrl: url });
                             vaultResult = { document_id: result.document.id, chunks_created: result.chunksCreated };
-                            console.log(`[Trinity] Saved to vault: "${vaultTitle}" (${result.chunksCreated} chunks)`);
+                            log.info(`[Trinity] Saved to vault: "${vaultTitle}" (${result.chunksCreated} chunks)`);
                         }
                         catch (err) {
-                            console.error(`[Trinity] Vault save failed: ${err.message}`);
+                            log.error(`[Trinity] Vault save failed: ${err.message}`);
                         }
                         finally {
                             try {
@@ -270,7 +272,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
                 fs.writeFileSync(tempPath, fullContent, 'utf-8');
                 try {
                     const result = await vault.uploadDocument(clientId, tempPath, `${title}.txt`, 'text/plain', sourceUrl ? { sourceUrl } : undefined);
-                    console.log(`[Trinity] Added to knowledge vault: "${title}" (${result.chunksCreated} chunks)`);
+                    log.info(`[Trinity] Added to knowledge vault: "${title}" (${result.chunksCreated} chunks)`);
                     return JSON.stringify({
                         status: 'success',
                         document_id: result.document.id,
@@ -280,7 +282,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
                     });
                 }
                 catch (err) {
-                    console.error(`[Trinity] Failed to add knowledge: ${err.message}`);
+                    log.error(`[Trinity] Failed to add knowledge: ${err.message}`);
                     return JSON.stringify({
                         error: `Failed to save to vault: ${err.message}`,
                     });
@@ -301,7 +303,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
                 if (!topic)
                     return JSON.stringify({ error: 'Missing required parameter: topic' });
                 const platform = input.platform || 'linkedin';
-                console.log(`[Trinity] Analyzing competitors: "${topic}" on ${platform}`);
+                log.info(`[Trinity] Analyzing competitors: "${topic}" on ${platform}`);
                 const competitors = await trinity.getCompetitorContent(platform, topic);
                 return JSON.stringify({
                     topic,
@@ -318,7 +320,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
             // ====================================================================
             case 'get_trending_topics': {
                 const platform = input.platform || 'linkedin';
-                console.log(`[Trinity] Getting trending topics for ${platform}`);
+                log.info(`[Trinity] Getting trending topics for ${platform}`);
                 const trends = await trinity.getTrendingTopics(platform);
                 const clientId = storage.getActiveClientId();
                 const profile = clientId ? storage.getProfile(clientId) : null;
@@ -338,7 +340,7 @@ function createTrinityExecutor(storage, vault, intelligence) {
             // ====================================================================
             case 'get_audience_insights': {
                 const platform = input.platform || 'linkedin';
-                console.log(`[Trinity] Getting audience insights for ${platform}`);
+                log.info(`[Trinity] Getting audience insights for ${platform}`);
                 const insights = await trinity.getAudienceInsights(platform);
                 return JSON.stringify({
                     platform,

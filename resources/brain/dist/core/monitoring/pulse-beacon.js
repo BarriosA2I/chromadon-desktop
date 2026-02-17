@@ -9,6 +9,8 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PulseBeacon = void 0;
+const logger_1 = require("../../lib/logger");
+const log = (0, logger_1.createChildLogger)('monitoring');
 class PulseBeacon {
     missionRegistry;
     budgetMonitor;
@@ -31,10 +33,10 @@ class PulseBeacon {
             return;
         this.running = true;
         if (!this.endpoint) {
-            console.log('[PulseBeacon] Local mode (no PULSE_ENDPOINT configured)');
+            log.info('[PulseBeacon] Local mode (no PULSE_ENDPOINT configured)');
         }
         else {
-            console.log(`[PulseBeacon] Sending heartbeats to ${this.endpoint} every ${this.intervalMs / 1000}s`);
+            log.info(`[PulseBeacon] Sending heartbeats to ${this.endpoint} every ${this.intervalMs / 1000}s`);
         }
         // Initial send after 5s delay
         setTimeout(() => this.send(), 5000);
@@ -100,7 +102,7 @@ class PulseBeacon {
         catch {
             this.consecutiveFailures++;
             if (this.consecutiveFailures <= 3) {
-                console.log(`[PulseBeacon] Send failed (attempt ${this.consecutiveFailures}/3)`);
+                log.info(`[PulseBeacon] Send failed (attempt ${this.consecutiveFailures}/3)`);
             }
             // Silently swallow after 3 warnings
         }

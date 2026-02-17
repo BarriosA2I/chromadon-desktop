@@ -10,6 +10,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MissionRegistry = void 0;
 const uuid_1 = require("uuid");
+const logger_1 = require("../../lib/logger");
+const log = (0, logger_1.createChildLogger)('mission');
 // Lazy-load better-sqlite3 (same pattern as analytics/database.ts)
 let Database = null;
 function getDatabase() {
@@ -53,7 +55,7 @@ class MissionRegistry {
       INSERT INTO missions (id, type, status, client_id, context, created_at, updated_at)
       VALUES (?, ?, 'QUEUED', ?, ?, ?, ?)
     `).run(id, type, context.clientId, JSON.stringify(context), now, now);
-        console.log(`[MissionRegistry] Created ${type} mission ${id} for client ${context.clientId}`);
+        log.info(`[MissionRegistry] Created ${type} mission ${id} for client ${context.clientId}`);
         return id;
     }
     updateStatus(id, status, error) {
@@ -109,7 +111,7 @@ class MissionRegistry {
       WHERE status IN ('EXECUTING', 'CHECKPOINT')
     `).run(now, now);
         if (info.changes > 0) {
-            console.log(`[MissionRegistry] Cleaned up ${info.changes} zombie mission(s)`);
+            log.info(`[MissionRegistry] Cleaned up ${info.changes} zombie mission(s)`);
         }
         return info.changes;
     }

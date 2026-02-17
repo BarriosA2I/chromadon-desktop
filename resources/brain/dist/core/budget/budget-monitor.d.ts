@@ -1,11 +1,3 @@
-/**
- * LLM Budget Monitor — Per-client Cost Tracking
- *
- * Tracks token usage and costs across Gemini/Anthropic models.
- * SQLite-backed for persistence. Shares analytics.db path.
- *
- * @author Barrios A2I
- */
 export interface CostEntry {
     clientId: string;
     missionId?: string;

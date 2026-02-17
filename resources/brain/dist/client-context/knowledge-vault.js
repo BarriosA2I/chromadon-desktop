@@ -39,6 +39,8 @@ const uuid_1 = require("uuid");
 const document_processor_1 = require("./document-processor");
 const document_chunker_1 = require("./document-chunker");
 const vector_store_1 = require("./vector-store");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('client');
 // ============================================================================
 // KNOWLEDGE VAULT
 // ============================================================================
@@ -117,7 +119,7 @@ class KnowledgeVault {
             doc.processedAt = new Date().toISOString();
             this.storage.updateDocument(clientId, docId, doc);
             const processingTimeMs = Date.now() - startTime;
-            console.log(`[KnowledgeVault] Indexed ${originalFilename}: ${chunks.length} chunks in ${processingTimeMs}ms`);
+            log.info(`[KnowledgeVault] Indexed ${originalFilename}: ${chunks.length} chunks in ${processingTimeMs}ms`);
             return { document: doc, chunksCreated: chunks.length, processingTimeMs };
         }
         catch (error) {
@@ -157,7 +159,7 @@ class KnowledgeVault {
         }
         // Remove from document tracking
         this.storage.removeDocument(clientId, documentId);
-        console.log(`[KnowledgeVault] Deleted document: ${doc.originalFilename} (${documentId})`);
+        log.info(`[KnowledgeVault] Deleted document: ${doc.originalFilename} (${documentId})`);
         return true;
     }
     // =========================================================================

@@ -11,6 +11,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SocialMonitor = void 0;
 const monitor_prompts_1 = require("./monitor-prompts");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('monitoring');
 // ============================================================================
 // COLLECTOR WRITER (captures orchestrator output silently)
 // ============================================================================
@@ -68,13 +70,13 @@ class SocialMonitor {
             return;
         const ms = intervalMs || this.config.intervalMinutes * 60 * 1000;
         this.config.enabled = true;
-        console.log(`[SocialMonitor] Started (${(ms / 60000).toFixed(0)}min interval, platforms: ${this.config.platforms.join(', ')})`);
+        log.info(`[SocialMonitor] Started (${(ms / 60000).toFixed(0)}min interval, platforms: ${this.config.platforms.join(', ')})`);
         this.monitorInterval = setInterval(() => {
-            this.runCycle().catch(err => console.error('[SocialMonitor] Cycle error:', err.message));
+            this.runCycle().catch(err => log.error('[SocialMonitor] Cycle error:', err.message));
         }, ms);
         // Run first cycle after 30s delay (let things settle)
         setTimeout(() => {
-            this.runCycle().catch(err => console.error('[SocialMonitor] Initial cycle error:', err.message));
+            this.runCycle().catch(err => log.error('[SocialMonitor] Initial cycle error:', err.message));
         }, 30000);
     }
     stop() {
@@ -83,7 +85,7 @@ class SocialMonitor {
             this.monitorInterval = null;
         }
         this.config.enabled = false;
-        console.log('[SocialMonitor] Stopped');
+        log.info('[SocialMonitor] Stopped');
     }
     configure(updates) {
         const wasEnabled = this.config.enabled;
@@ -116,25 +118,25 @@ class SocialMonitor {
     // =========================================================================
     async runCycle() {
         if (this.isMonitoring) {
-            console.log('[SocialMonitor] Already monitoring, skipping cycle');
+            log.info('[SocialMonitor] Already monitoring, skipping cycle');
             return;
         }
         // Check if user is idle
         const idle = await this.checkUserIdle();
         if (!idle) {
-            console.log('[SocialMonitor] User is active, skipping cycle');
+            log.info('[SocialMonitor] User is active, skipping cycle');
             return;
         }
         this.isMonitoring = true;
         this.totalCycles++;
         this.lastRunAt = new Date().toISOString();
-        console.log(`[SocialMonitor] Cycle #${this.totalCycles} starting (${this.config.platforms.length} platforms)`);
+        log.info(`[SocialMonitor] Cycle #${this.totalCycles} starting (${this.config.platforms.length} platforms)`);
         for (const platform of this.config.platforms) {
             try {
                 // Re-check idle before each platform (abort if user became active)
                 const stillIdle = await this.checkUserIdle();
                 if (!stillIdle) {
-                    console.log(`[SocialMonitor] User became active, aborting cycle at ${platform}`);
+                    log.info(`[SocialMonitor] User became active, aborting cycle at ${platform}`);
                     break;
                 }
                 await this.monitorPlatform(platform);
@@ -142,14 +144,14 @@ class SocialMonitor {
                 await new Promise(r => setTimeout(r, 10000));
             }
             catch (error) {
-                console.error(`[SocialMonitor] ${platform} monitoring failed:`, error.message);
+                log.error(`[SocialMonitor] ${platform} monitoring failed:`, error.message);
             }
         }
         this.isMonitoring = false;
-        console.log(`[SocialMonitor] Cycle #${this.totalCycles} complete (total replies: ${this.totalReplies})`);
+        log.info(`[SocialMonitor] Cycle #${this.totalCycles} complete (total replies: ${this.totalReplies})`);
     }
     async monitorPlatform(platform) {
-        console.log(`[SocialMonitor] Checking ${platform}...`);
+        log.info(`[SocialMonitor] Checking ${platform}...`);
         // Get auto-reply rules for this platform
         let rulesText = 'No rules configured.';
         try {
@@ -171,14 +173,14 @@ class SocialMonitor {
             this.parseAndLog(platform, responseText);
         }
         catch (error) {
-            console.error(`[SocialMonitor] ${platform} orchestrator call failed:`, error.message);
+            log.error(`[SocialMonitor] ${platform} orchestrator call failed:`, error.message);
         }
     }
     parseAndLog(platform, responseText) {
         // Try to extract JSON from response
         const jsonMatch = responseText.match(/```json\s*([\s\S]*?)```/) || responseText.match(/(\{[\s\S]*\})/);
         if (!jsonMatch) {
-            console.log(`[SocialMonitor] ${platform}: No structured response, raw text: ${responseText.slice(0, 200)}`);
+            log.info(`[SocialMonitor] ${platform}: No structured response, raw text: ${responseText.slice(0, 200)}`);
             return;
         }
         try {
@@ -203,10 +205,10 @@ class SocialMonitor {
                 }
                 catch { /* monitoring_log table might not exist yet */ }
             }
-            console.log(`[SocialMonitor] ${platform}: ${data.comments_found || 0} comments found, ${repliesThisPlatform} replies sent`);
+            log.info(`[SocialMonitor] ${platform}: ${data.comments_found || 0} comments found, ${repliesThisPlatform} replies sent`);
         }
         catch {
-            console.log(`[SocialMonitor] ${platform}: Could not parse response JSON`);
+            log.info(`[SocialMonitor] ${platform}: Could not parse response JSON`);
         }
     }
     // =========================================================================

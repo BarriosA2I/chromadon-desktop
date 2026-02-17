@@ -37,6 +37,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.YouTubeTokenManager = void 0;
 const fs = __importStar(require("fs"));
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('youtube');
 // Quota costs per tool (YouTube Data API v3 documentation)
 const QUOTA_COSTS = {
     youtube_search: 100,
@@ -78,11 +80,11 @@ class YouTubeTokenManager {
             if (fs.existsSync(this.config.tokenStorePath)) {
                 const data = JSON.parse(fs.readFileSync(this.config.tokenStorePath, 'utf-8'));
                 this.tokens = data;
-                console.log('[YOUTUBE] Tokens loaded from disk');
+                log.info('[YOUTUBE] Tokens loaded from disk');
             }
         }
         catch (error) {
-            console.warn('[YOUTUBE] Failed to load tokens from disk:', error.message);
+            log.warn({ err: error.message }, 'Failed to load tokens from disk');
         }
         // Load refresh token from config if not yet stored
         if (!this.tokens?.refreshToken && this.config.refreshToken) {
@@ -98,7 +100,7 @@ class YouTubeTokenManager {
             fs.writeFileSync(this.config.tokenStorePath, JSON.stringify(this.tokens, null, 2), 'utf-8');
         }
         catch (error) {
-            console.error('[YOUTUBE] Failed to save tokens:', error.message);
+            log.error('[YOUTUBE] Failed to save tokens:', error.message);
         }
     }
     getApiKey() {
@@ -147,7 +149,7 @@ class YouTubeTokenManager {
             expiresAt: Date.now() + (data.expires_in - 60) * 1000,
         };
         this.saveToDisk();
-        console.log('[YOUTUBE] OAuth tokens exchanged and stored');
+        log.info('[YOUTUBE] OAuth tokens exchanged and stored');
     }
     async getAccessToken() {
         if (!this.tokens?.refreshToken) {

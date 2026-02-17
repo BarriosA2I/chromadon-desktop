@@ -24,6 +24,8 @@ const browser_tools_1 = require("./browser-tools");
 const orchestrator_system_prompt_1 = require("./orchestrator-system-prompt");
 const gemini_provider_1 = require("../providers/gemini-provider");
 const cost_router_1 = require("../routing/cost-router");
+const logger_1 = require("../lib/logger");
+const log = (0, logger_1.createChildLogger)('orchestrator');
 const DEFAULT_CONFIG = {
     model: 'claude-haiku-4-5-20251001',
     maxTokens: 1024,
@@ -78,12 +80,12 @@ class AgenticOrchestrator {
         if (geminiKey) {
             this.geminiProvider = new gemini_provider_1.GeminiProvider(geminiKey);
             this.useGemini = true;
-            console.log(`[PROVIDER] Gemini enabled as primary provider${this.hasAnthropicKey ? ' (Anthropic fallback ready)' : ' (no Anthropic fallback)'}`);
+            log.info(`[PROVIDER] Gemini enabled as primary provider${this.hasAnthropicKey ? ' (Anthropic fallback ready)' : ' (no Anthropic fallback)'}`);
         }
         else {
             this.geminiProvider = null;
             this.useGemini = false;
-            console.log('[PROVIDER] No GEMINI_API_KEY — using Anthropic only');
+            log.info('[PROVIDER] No GEMINI_API_KEY — using Anthropic only');
         }
         this.toolExecutor = toolExecutor;
         this.config = { ...DEFAULT_CONFIG, ...config };
@@ -152,7 +154,7 @@ class AgenticOrchestrator {
         if (isMultiStep) {
             session.multiStepTask = true;
             session.multiStepInstruction = userMessage;
-            console.log(`[CHROMADON Orchestrator] Multi-step task detected — auto-continue enabled`);
+            log.info(`[CHROMADON Orchestrator] Multi-step task detected — auto-continue enabled`);
         }
         // 3. Build system prompt with current page context + skill memory + client knowledge + linked platforms
         const skillsJson = this.getSkillsForPrompt ? this.getSkillsForPrompt() : '';
@@ -214,7 +216,7 @@ class AgenticOrchestrator {
                 const sanitizedMessages = this.sanitizeHistory(session.messages);
                 // Guard: prevent 400 "at least one message is required"
                 if (sanitizedMessages.length === 0) {
-                    console.warn('[CHROMADON Orchestrator] sanitizeHistory produced empty messages — injecting recovery');
+                    log.warn('[CHROMADON Orchestrator] sanitizeHistory produced empty messages — injecting recovery');
                     sanitizedMessages.push({ role: 'user', content: 'Continue with the current task. Resume where you left off.' });
                 }
                 // 6. Call LLM API with streaming (browser tools + any additional tools)
@@ -244,12 +246,12 @@ class AgenticOrchestrator {
                         });
                         usingGemini = true;
                         if (loopCount === 1) {
-                            console.log(`[PROVIDER] Gemini ${selectedModel} | prompt: ${effectiveSystemPrompt.length < 2000 ? 'compact' : 'full'}`);
+                            log.info(`[PROVIDER] Gemini ${selectedModel} | prompt: ${effectiveSystemPrompt.length < 2000 ? 'compact' : 'full'}`);
                         }
                     }
                     catch (geminiInitErr) {
                         if (this.hasAnthropicKey) {
-                            console.warn(`[PROVIDER] Gemini init failed, falling back to Anthropic: ${geminiInitErr.message}`);
+                            log.warn(`[PROVIDER] Gemini init failed, falling back to Anthropic: ${geminiInitErr.message}`);
                             stream = this.client.messages.stream({
                                 model: currentModel,
                                 max_tokens: this.config.maxTokens,
@@ -305,7 +307,7 @@ class AgenticOrchestrator {
                     // Ignore abort errors — they're expected when user stops
                     if (context.abortSignal?.aborted)
                         return;
-                    console.error(`[CHROMADON Orchestrator] Stream error event:`, error.message || error);
+                    log.error(`[CHROMADON Orchestrator] Stream error event:`, error.message || error);
                 });
                 // Wait for the full message (with safety timeout to prevent infinite hangs)
                 let finalMessage;
@@ -345,14 +347,14 @@ class AgenticOrchestrator {
                     const callCost = (inTok / 1_000_000) * inputCostPerM + (outTok / 1_000_000) * outputCostPerM;
                     const sessionCost = (sessionInputTokens / 1_000_000) * inputCostPerM + (sessionOutputTokens / 1_000_000) * outputCostPerM;
                     const providerTag = usingGemini ? `Gemini/${selectedModel}` : `Anthropic/${currentModel}`;
-                    console.log(`[COST] Call ${loopCount} (${providerTag}): ${inTok}in/${outTok}out ($${callCost.toFixed(4)}) | Session: ${sessionInputTokens}in/${sessionOutputTokens}out ($${sessionCost.toFixed(4)})`);
+                    log.info(`[COST] Call ${loopCount} (${providerTag}): ${inTok}in/${outTok}out ($${callCost.toFixed(4)}) | Session: ${sessionInputTokens}in/${sessionOutputTokens}out ($${sessionCost.toFixed(4)})`);
                 }
                 // 6b. Retry if Gemini returned 0 output tokens (empty response)
                 const emptyOutTok = finalMessage.usage?.output_tokens || 0;
                 const hasAnyText = finalMessage.content.some((b) => b.type === 'text' && b.text?.trim());
                 if (usingGemini && emptyOutTok === 0 && !hasAnyText && emptyRetries < 2) {
                     emptyRetries++;
-                    console.warn(`[Orchestrator] Empty Gemini response (attempt ${emptyRetries}/2) — injecting continuation`);
+                    log.warn(`[Orchestrator] Empty Gemini response (attempt ${emptyRetries}/2) — injecting continuation`);
                     session.messages.push({ role: 'assistant', content: [{ type: 'text', text: 'Let me check that for you.' }] });
                     session.messages.push({ role: 'user', content: 'Present the results to the user. Do not call any tools. Just summarize what you found.' });
                     continue;
@@ -420,7 +422,7 @@ class AgenticOrchestrator {
                                 tracker.failedIds = [];
                                 tracker.currentVideoId = '';
                                 tracker.claimsErased = 0;
-                                console.log(`[VIDEO TRACKER] Loaded ${ids.length} video IDs`);
+                                log.info(`[VIDEO TRACKER] Loaded ${ids.length} video IDs`);
                             }
                         }
                         if (toolName === 'navigate' && result.success && tracker.allVideoIds.length > 0) {
@@ -431,11 +433,11 @@ class AgenticOrchestrator {
                                 // REACTIVE: if AI navigates to a video already processed, warn it
                                 if (tracker.processedIds.includes(videoId)) {
                                     result = { ...result, result: `ALREADY PROCESSED: Video ${videoId} was already handled. Do NOT re-process. Navigate to the next unprocessed video.` };
-                                    console.log(`[VIDEO TRACKER] Blocked re-visit to ${videoId}`);
+                                    log.info(`[VIDEO TRACKER] Blocked re-visit to ${videoId}`);
                                 }
                                 else if (tracker.skippedIds.includes(videoId)) {
                                     result = { ...result, result: `ALREADY SKIPPED (editing in progress): Video ${videoId}. Navigate to the next unprocessed video.` };
-                                    console.log(`[VIDEO TRACKER] Blocked re-visit to skipped ${videoId}`);
+                                    log.info(`[VIDEO TRACKER] Blocked re-visit to skipped ${videoId}`);
                                 }
                                 else {
                                     // New video — mark previous as processed (it navigated AWAY, so it's done)
@@ -444,7 +446,7 @@ class AgenticOrchestrator {
                                         !tracker.skippedIds.includes(tracker.currentVideoId) &&
                                         !tracker.failedIds.includes(tracker.currentVideoId)) {
                                         tracker.processedIds.push(tracker.currentVideoId);
-                                        console.log(`[VIDEO TRACKER] Completed: ${tracker.currentVideoId} (${tracker.processedIds.length}/${tracker.allVideoIds.length})`);
+                                        log.info(`[VIDEO TRACKER] Completed: ${tracker.currentVideoId} (${tracker.processedIds.length}/${tracker.allVideoIds.length})`);
                                     }
                                     tracker.currentVideoId = videoId;
                                 }
@@ -453,7 +455,7 @@ class AgenticOrchestrator {
                         if (result.success && /\[PAGE DEAD\]/i.test(result.result) && tracker.currentVideoId) {
                             if (!tracker.failedIds.includes(tracker.currentVideoId)) {
                                 tracker.failedIds.push(tracker.currentVideoId);
-                                console.log(`[VIDEO TRACKER] Failed (page dead): ${tracker.currentVideoId}`);
+                                log.info(`[VIDEO TRACKER] Failed (page dead): ${tracker.currentVideoId}`);
                             }
                         }
                         // URL retry counter — detect infinite loops on broken URLs
@@ -461,7 +463,7 @@ class AgenticOrchestrator {
                             const navUrlKey = toolInput.url;
                             urlAttemptCounts[navUrlKey] = (urlAttemptCounts[navUrlKey] || 0) + 1;
                             if (urlAttemptCounts[navUrlKey] >= 3) {
-                                console.log(`[LOOP GUARD] URL attempted ${urlAttemptCounts[navUrlKey]} times: ${navUrlKey}`);
+                                log.info(`[LOOP GUARD] URL attempted ${urlAttemptCounts[navUrlKey]} times: ${navUrlKey}`);
                                 result = { ...result, result: `LOOP DETECTED: You have tried this URL ${urlAttemptCounts[navUrlKey]} times. It will NEVER work. Navigate to https://studio.youtube.com directly and go to Content > Live manually. DO NOT use filter URLs. Try a completely different approach.` };
                             }
                         }
@@ -479,7 +481,7 @@ class AgenticOrchestrator {
                             // Error page detection — permission denied, YouTube error, rate limited
                             const pageError = await this.isPageErrored(context);
                             if (pageError) {
-                                console.log(`[PAGE HEALTH] Error page detected: ${pageError}`);
+                                log.info(`[PAGE HEALTH] Error page detected: ${pageError}`);
                                 if (pageError === 'PERMISSION_DENIED') {
                                     result = { ...result, result: 'PERMISSION DENIED — this URL has the wrong channel ID or session expired. DO NOT retry this URL. Navigate to https://studio.youtube.com and go to Content > Live manually.' };
                                 }
@@ -499,7 +501,7 @@ class AgenticOrchestrator {
                                     const platform = (0, browser_tools_1.detectPlatformFromUrl)(currentUrl);
                                     if (platform && context.sessionRestoreAttempted && !context.sessionRestoreAttempted.has(platform)) {
                                         context.sessionRestoreAttempted.add(platform);
-                                        console.log(`[PAGE HEALTH] Auth wall on ${platform} — attempting session restore...`);
+                                        log.info(`[PAGE HEALTH] Auth wall on ${platform} — attempting session restore...`);
                                         const desktopUrl = context.desktopUrl || 'http://127.0.0.1:3002';
                                         const restored = await (0, browser_tools_1.attemptSessionRestore)(platform, desktopUrl);
                                         if (restored && currentUrl) {
@@ -547,13 +549,13 @@ class AgenticOrchestrator {
                                         // Editing in progress with NO actionable buttons → auto-defer
                                         if (!tracker.skippedIds.includes(tracker.currentVideoId)) {
                                             tracker.skippedIds.push(tracker.currentVideoId);
-                                            console.log(`[VIDEO TRACKER] Auto-skipped (editing, no buttons): ${tracker.currentVideoId}`);
+                                            log.info(`[VIDEO TRACKER] Auto-skipped (editing, no buttons): ${tracker.currentVideoId}`);
                                         }
                                         result = { ...result, result: 'EDITING IN PROGRESS with no actionable claims. Auto-deferred. Navigate to the next unprocessed video.' };
                                     }
                                     else if (hasEditing && hasTakeAction) {
                                         // Editing in progress BUT Take action buttons exist → tell AI to keep clicking
-                                        console.log(`[VIDEO TRACKER] Editing in progress but ${tracker.currentVideoId} has Take action buttons — NOT skipping`);
+                                        log.info(`[VIDEO TRACKER] Editing in progress but ${tracker.currentVideoId} has Take action buttons — NOT skipping`);
                                         result = { ...result, result: result.result + '\n\n[NOTE] "Editing in progress" banner is visible but "Take action" buttons are still present. Process ALL remaining claims. Do NOT skip this video.' };
                                     }
                                 }
@@ -731,7 +733,7 @@ class AgenticOrchestrator {
                 const lastText = responseText.trim().substring(0, 100);
                 const repeatCount = recentTexts.filter((t) => t.trim().substring(0, 100) === lastText).length;
                 if (repeatCount >= 2 && !hasToolCall) {
-                    console.log(`[CHROMADON Orchestrator] Stuck loop detected (${repeatCount} repeats) — breaking`);
+                    log.info(`[CHROMADON Orchestrator] Stuck loop detected (${repeatCount} repeats) — breaking`);
                     session.multiStepTask = false;
                     break;
                 }
@@ -791,8 +793,8 @@ class AgenticOrchestrator {
             }
             catch (error) {
                 const errorMsg = error.message || 'Unknown error';
-                console.error(`[CHROMADON Orchestrator] Error in loop ${loopCount}:`, errorMsg);
-                console.error(`[CHROMADON Orchestrator] Error details — status: ${error?.status}, type: ${error?.error?.type}, constructor: ${error?.constructor?.name}`);
+                log.error({ err: errorMsg }, `[CHROMADON Orchestrator] Error in loop ${loopCount}:`);
+                log.error(`[CHROMADON Orchestrator] Error details — status: ${error?.status}, type: ${error?.error?.type}, constructor: ${error?.constructor?.name}`);
                 // Recovery: Gemini failure → try different model, then fall back to Anthropic
                 if (usingGemini && this.useGemini) {
                     const isGemini429 = error?.status === 429 || (errorMsg.includes('429') && errorMsg.includes('Too Many Requests'));
@@ -802,26 +804,26 @@ class AgenticOrchestrator {
                             const fallbackModel = this.getGeminiFallbackModel(selectedModel);
                             if (fallbackModel) {
                                 geminiModelFallbackUsed = true;
-                                console.warn(`[PROVIDER] Gemini 429 on ${selectedModel} — trying ${fallbackModel} (different rate bucket)`);
+                                log.warn(`[PROVIDER] Gemini 429 on ${selectedModel} — trying ${fallbackModel} (different rate bucket)`);
                                 // Override the cost router's model selection for next iteration
                                 geminiModelOverride = fallbackModel;
                                 continue;
                             }
                         }
                         // All Gemini models exhausted — fall through to Anthropic or graceful error
-                        console.warn(`[PROVIDER] Gemini 429 — all models exhausted`);
+                        log.warn(`[PROVIDER] Gemini 429 — all models exhausted`);
                     }
                     // Try Anthropic fallback (only if it's not already known-dead)
                     if (this.hasAnthropicKey && !this.anthropicDead) {
                         providerBounceCount++;
-                        console.warn(`[PROVIDER] Gemini error — falling back to Anthropic (bounce ${providerBounceCount})`);
+                        log.warn(`[PROVIDER] Gemini error — falling back to Anthropic (bounce ${providerBounceCount})`);
                         this.useGemini = false;
                         usingGemini = false;
                         continue;
                     }
                     else {
                         // No viable fallback — graceful error (never expose provider details to clients)
-                        console.error(`[PROVIDER] Gemini failed, no viable fallback (hasAnthropicKey=${this.hasAnthropicKey}, anthropicDead=${this.anthropicDead})`);
+                        log.error(`[PROVIDER] Gemini failed, no viable fallback (hasAnthropicKey=${this.hasAnthropicKey}, anthropicDead=${this.anthropicDead})`);
                         if (!writer.isClosed()) {
                             writer.writeEvent('error', { message: "I'm temporarily unavailable. Please try again in about 30 seconds." });
                         }
@@ -830,7 +832,7 @@ class AgenticOrchestrator {
                 }
                 // Recovery: if 400 with tool_use_id mismatch, purge tool messages and retry once
                 if (error?.status === 400 && errorMsg.includes('tool_use_id')) {
-                    console.warn('[CHROMADON Orchestrator] Tool history corruption detected — purging tool blocks and retrying');
+                    log.warn('[CHROMADON Orchestrator] Tool history corruption detected — purging tool blocks and retrying');
                     // Strip tool_use and tool_result blocks, keep text AND image blocks
                     session.messages = session.messages.map(msg => {
                         if (Array.isArray(msg.content)) {
@@ -849,7 +851,7 @@ class AgenticOrchestrator {
                 }
                 // Recovery: 400 "at least one message" — messages were empty/malformed
                 if (error?.status === 400 && errorMsg.includes('at least one message')) {
-                    console.warn('[CHROMADON Orchestrator] Empty messages detected — recovering');
+                    log.warn('[CHROMADON Orchestrator] Empty messages detected — recovering');
                     session.messages.push({ role: 'user', content: 'Continue with the current task. Resume where you left off.' });
                     continue;
                 }
@@ -861,7 +863,7 @@ class AgenticOrchestrator {
                         const retryAfterMs = retryAfterHeader
                             ? Math.min(parseInt(String(retryAfterHeader), 10) * 1000, 15000)
                             : Math.min(2000 * Math.pow(2, rateLimitRetryCount - 1), 15000);
-                        console.warn(`[CHROMADON Orchestrator] Rate limited (429) — retry ${rateLimitRetryCount}/3, waiting ${retryAfterMs}ms`);
+                        log.warn(`[CHROMADON Orchestrator] Rate limited (429) — retry ${rateLimitRetryCount}/3, waiting ${retryAfterMs}ms`);
                         await new Promise(resolve => setTimeout(resolve, retryAfterMs));
                         continue;
                     }
@@ -872,11 +874,11 @@ class AgenticOrchestrator {
                         currentModel = currentModel.includes('haiku')
                             ? 'claude-haiku-4-5-20251001'
                             : 'claude-haiku-4-5-20251001';
-                        console.warn(`[CHROMADON Orchestrator] Rate limit retries exhausted — switching to ${currentModel}`);
+                        log.warn(`[CHROMADON Orchestrator] Rate limit retries exhausted — switching to ${currentModel}`);
                         continue;
                     }
                     // Both models rate limited — give up
-                    console.error(`[CHROMADON Orchestrator] Both models rate limited — giving up`);
+                    log.error(`[CHROMADON Orchestrator] Both models rate limited — giving up`);
                     if (!writer.isClosed()) {
                         writer.writeEvent('error', { message: "I'm a bit busy right now. Please try again in about 30 seconds." });
                     }
@@ -890,7 +892,7 @@ class AgenticOrchestrator {
                 if (isOverloaded && overloadedRetryCount < 1) {
                     overloadedRetryCount++;
                     const waitMs = 3000;
-                    console.warn(`[CHROMADON Orchestrator] API overloaded — retrying in ${waitMs}ms`);
+                    log.warn(`[CHROMADON Orchestrator] API overloaded — retrying in ${waitMs}ms`);
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
@@ -902,11 +904,11 @@ class AgenticOrchestrator {
                         currentModel = currentModel.includes('haiku')
                             ? 'claude-haiku-4-5-20251001'
                             : 'claude-haiku-4-5-20251001';
-                        console.warn(`[CHROMADON Orchestrator] Primary model overloaded — switching to ${currentModel}`);
+                        log.warn(`[CHROMADON Orchestrator] Primary model overloaded — switching to ${currentModel}`);
                         continue;
                     }
                     // Both models failed — give up
-                    console.error(`[CHROMADON Orchestrator] Both models overloaded after retries — giving up`);
+                    log.error(`[CHROMADON Orchestrator] Both models overloaded after retries — giving up`);
                     if (!writer.isClosed()) {
                         writer.writeEvent('error', { message: "I'm a bit busy right now. Please try again in a few minutes." });
                     }
@@ -924,7 +926,7 @@ class AgenticOrchestrator {
                 if (isTransient && transientRetryCount < 3) {
                     transientRetryCount++;
                     const waitMs = Math.min(3000 * Math.pow(2, transientRetryCount - 1), 15000);
-                    console.warn(`[CHROMADON Orchestrator] Transient error (attempt ${transientRetryCount}/3) — waiting ${waitMs}ms: ${errorMsg}`);
+                    log.warn(`[CHROMADON Orchestrator] Transient error (attempt ${transientRetryCount}/3) — waiting ${waitMs}ms: ${errorMsg}`);
                     await new Promise(resolve => setTimeout(resolve, waitMs));
                     continue;
                 }
@@ -933,13 +935,13 @@ class AgenticOrchestrator {
                     (errorMsg.includes('credit balance') || errorMsg.includes('billing') || errorMsg.includes('API_KEY_INVALID'))) {
                     this.anthropicDead = true;
                     if (providerBounceCount < 1) {
-                        console.warn(`[PROVIDER] Anthropic billing/auth error — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
+                        log.warn(`[PROVIDER] Anthropic billing/auth error — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;
                         providerBounceCount++;
                         continue;
                     }
                     // Already bounced once — both providers are dead, stop immediately
-                    console.error(`[PROVIDER] Both providers dead (Gemini 429 + Anthropic billing) — giving up`);
+                    log.error(`[PROVIDER] Both providers dead (Gemini 429 + Anthropic billing) — giving up`);
                     if (!writer.isClosed()) {
                         writer.writeEvent('error', { message: "I'm temporarily unavailable. Please try again in about 30 seconds." });
                     }
@@ -949,19 +951,19 @@ class AgenticOrchestrator {
                 if (!usingGemini && this.geminiProvider && error?.status === 401) {
                     this.anthropicDead = true;
                     if (providerBounceCount < 1) {
-                        console.warn(`[PROVIDER] Anthropic auth failed — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
+                        log.warn(`[PROVIDER] Anthropic auth failed — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;
                         providerBounceCount++;
                         continue;
                     }
-                    console.error(`[PROVIDER] Both providers dead (Gemini error + Anthropic auth) — giving up`);
+                    log.error(`[PROVIDER] Both providers dead (Gemini error + Anthropic auth) — giving up`);
                     if (!writer.isClosed()) {
                         writer.writeEvent('error', { message: "I'm temporarily unavailable. Please try again in about 30 seconds." });
                     }
                     break;
                 }
                 // User-friendly error messages (raw error preserved in console.error above)
-                console.error(`[CHROMADON Orchestrator] Unrecoverable error — status: ${error?.status}, message: ${errorMsg}, transientRetries: ${transientRetryCount}`);
+                log.error(`[CHROMADON Orchestrator] Unrecoverable error — status: ${error?.status}, message: ${errorMsg}, transientRetries: ${transientRetryCount}`);
                 let userMsg;
                 if (error?.status === 401) {
                     userMsg = "I'm temporarily unavailable. Please try again in about 30 seconds.";
@@ -991,7 +993,7 @@ class AgenticOrchestrator {
         const finalOutputCostPerM = usingGemini ? 0.40 : 4.00;
         const totalCostUSD = (sessionInputTokens / 1_000_000) * finalInputCostPerM + (sessionOutputTokens / 1_000_000) * finalOutputCostPerM;
         const providerLabel = usingGemini ? 'Gemini' : 'Anthropic';
-        console.log(`[COST] Session complete (${providerLabel}): ${loopCount} API calls, ${sessionInputTokens}in/${sessionOutputTokens}out, $${totalCostUSD.toFixed(4)}`);
+        log.info(`[COST] Session complete (${providerLabel}): ${loopCount} API calls, ${sessionInputTokens}in/${sessionOutputTokens}out, $${totalCostUSD.toFixed(4)}`);
         // Record to BudgetMonitor
         if (this._budgetMonitor) {
             try {
@@ -1003,10 +1005,10 @@ class AgenticOrchestrator {
                     outputTokens: sessionOutputTokens,
                     costUsd: totalCostUSD,
                 });
-                console.log(`[BudgetMonitor] Recorded: ${currentModel} ${sessionInputTokens}in/${sessionOutputTokens}out $${totalCostUSD.toFixed(4)}`);
+                log.info(`[BudgetMonitor] Recorded: ${currentModel} ${sessionInputTokens}in/${sessionOutputTokens}out $${totalCostUSD.toFixed(4)}`);
             }
             catch (budgetErr) {
-                console.log(`[BudgetMonitor] recordUsage failed: ${budgetErr.message}`);
+                log.info(`[BudgetMonitor] recordUsage failed: ${budgetErr.message}`);
             }
         }
         if (!writer.isClosed()) {
@@ -1290,7 +1292,7 @@ class AgenticOrchestrator {
             const blank = await this.isPageBlank(context);
             if (!blank)
                 return null; // Page loaded fine
-            console.log(`[PAGE HEALTH] Blank page detected (attempt ${attempt}/3). Re-navigating: ${url}`);
+            log.info(`[PAGE HEALTH] Blank page detected (attempt ${attempt}/3). Re-navigating: ${url}`);
             try {
                 const desktopUrl = context.desktopUrl || 'http://127.0.0.1:3002';
                 await fetch(`${desktopUrl}/tabs/navigate`, {
@@ -1331,7 +1333,7 @@ class AgenticOrchestrator {
         for (const [id, session] of this.sessions) {
             if (now - session.lastActivityAt > this.config.sessionTimeoutMs) {
                 this.sessions.delete(id);
-                console.log(`[CHROMADON Orchestrator] Pruned expired session: ${id}`);
+                log.info(`[CHROMADON Orchestrator] Pruned expired session: ${id}`);
             }
         }
     }
