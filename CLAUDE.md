@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.29.5 — 2026-02-17)
+## Recent Changes (v1.29.6 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: OBS Launch — OBS died immediately after spawn (ghost tray icon). Root causes: `--minimize-to-tray` conflicted with first-run wizard, no `cwd` set, no PID verification, Electron env vars leaked into OBS. Now: removed minimize-to-tray, added cwd to OBS bin dir, clean env (no ELECTRON_* vars), already-running check, 5s PID alive verification. Brain v1.14.6: WebSocket reconnect after launch | `electron/main.ts`, `resources/brain/` |
+
+## Changes (v1.29.5 — 2026-02-17)
 
 | Change | File |
 |--------|------|

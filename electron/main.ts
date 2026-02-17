@@ -629,6 +629,18 @@ function startControlServer() {
   // ==================== OBS LAUNCH ENDPOINT ====================
 
   server.post('/obs/launch', async (_req: Request, res: Response) => {
+    const { execSync } = require('child_process')
+
+    // Check if OBS is already running
+    try {
+      const taskOutput = execSync('tasklist /FI "IMAGENAME eq obs64.exe" /NH', { encoding: 'utf-8' })
+      if (taskOutput.includes('obs64.exe')) {
+        console.log('[OBS] OBS Studio is already running')
+        res.json({ success: true, message: 'OBS Studio is already running.', alreadyRunning: true })
+        return
+      }
+    } catch { /* ignore tasklist errors */ }
+
     const OBS_PATHS = [
       'C:\\Program Files\\obs-studio\\bin\\64bit\\obs64.exe',
       'C:\\Program Files (x86)\\obs-studio\\bin\\64bit\\obs64.exe',
@@ -653,17 +665,41 @@ function startControlServer() {
     }
 
     try {
-      const child = spawn(obsPath, ['--minimize-to-tray'], {
+      // Spawn OBS with correct working directory, no --minimize-to-tray
+      // (minimize-to-tray conflicts with first-run wizard and hides OBS from user)
+      const obsDir = path.dirname(obsPath)
+      const cleanEnv = Object.fromEntries(
+        Object.entries(process.env).filter(([k]) => !k.startsWith('ELECTRON'))
+      )
+
+      const child = spawn(obsPath, [], {
         detached: true,
         stdio: 'ignore',
-        windowsHide: true,
+        cwd: obsDir,
+        env: cleanEnv,
       })
       child.unref()
 
-      console.log(`[OBS] Launched OBS Studio from ${obsPath} (PID: ${child.pid})`)
+      console.log(`[OBS] Spawned OBS Studio from ${obsPath} (PID: ${child.pid}), verifying...`)
+
+      // Wait 5 seconds and verify OBS is still alive
+      await new Promise(r => setTimeout(r, 5000))
+      try {
+        const check = execSync(`tasklist /FI "PID eq ${child.pid}" /NH`, { encoding: 'utf-8' })
+        if (!check.includes('obs64.exe')) {
+          console.error('[OBS] OBS died within 5 seconds of launch')
+          res.json({
+            success: false,
+            message: 'OBS launched but exited immediately. Try launching OBS manually first to complete any setup wizards.',
+          })
+          return
+        }
+      } catch { /* assume alive if tasklist fails */ }
+
+      console.log(`[OBS] OBS Studio verified running (PID: ${child.pid})`)
       res.json({
         success: true,
-        message: `OBS Studio launched (PID: ${child.pid}). WebSocket connection will be available in a few seconds.`,
+        message: `OBS Studio launched and verified running (PID: ${child.pid}).`,
         pid: child.pid,
       })
     } catch (error) {

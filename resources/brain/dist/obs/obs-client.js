@@ -601,6 +601,23 @@ class OBSClient {
     isConnected() {
         return this.connected;
     }
+    /**
+     * Trigger immediate reconnection (e.g. after obs_launch).
+     * Resets retry state and tries up to 3 times.
+     */
+    async reconnectNow() {
+        this.connected = false;
+        this.connecting = false;
+        this.retryCount = 0;
+        const savedMax = this.maxRetries;
+        this.maxRetries = 3;
+        try {
+            await this.connect();
+        }
+        finally {
+            this.maxRetries = savedMax;
+        }
+    }
     async disconnect() {
         if (this.connected) {
             await this.obs.disconnect();

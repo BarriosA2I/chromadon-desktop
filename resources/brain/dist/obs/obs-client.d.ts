@@ -108,6 +108,11 @@ export declare class OBSClient {
         settings?: Record<string, unknown>;
     }>;
     isConnected(): boolean;
+    /**
+     * Trigger immediate reconnection (e.g. after obs_launch).
+     * Resets retry state and tries up to 3 times.
+     */
+    reconnectNow(): Promise<void>;
     disconnect(): Promise<void>;
     private sleep;
 }

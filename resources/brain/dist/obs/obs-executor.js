@@ -179,15 +179,26 @@ function createObsExecutor(obsClient, desktopUrl) {
                         return 'Error: Desktop URL not configured. Cannot launch OBS.';
                     }
                     try {
+                        // Desktop verifies OBS stays alive for 5s before returning
                         const response = await fetch(`${desktopUrl}/obs/launch`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            signal: AbortSignal.timeout(10000),
+                            signal: AbortSignal.timeout(30000), // 30s — Desktop waits 5s internally
                         });
                         const data = await response.json();
-                        return data.success
-                            ? data.message
-                            : `Error: ${data.message}`;
+                        if (!data.success) {
+                            return `Error: ${data.message}`;
+                        }
+                        // Wait for OBS WebSocket server to initialize, then connect
+                        log.info('OBS launched, waiting 5s for WebSocket server...');
+                        await new Promise(r => setTimeout(r, 5000));
+                        try {
+                            await obsClient.reconnectNow();
+                            return data.message + ' WebSocket connected.';
+                        }
+                        catch {
+                            return data.message + ' WebSocket not yet connected — OBS may still be loading. Try again in a few seconds.';
+                        }
                     }
                     catch (err) {
                         const msg = err instanceof Error ? err.message : String(err);
