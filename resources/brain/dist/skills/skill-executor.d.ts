@@ -2,7 +2,7 @@
  * Skill Memory Executor
  *
  * Async executor factory for skill memory tools.
- * Follows the createYouTubeExecutor() / createAnalyticsExecutor() pattern.
+ * v2.1: Enhanced with drift warnings, reliability info, drift report, stats, rollback.
  *
  * @author Barrios A2I
  */

@@ -2,8 +2,8 @@
 /**
  * Skill Memory Tool Definitions
  *
- * 4 tools in Anthropic ToolDefinition format for the Agentic Orchestrator.
- * Follows the same pattern as YOUTUBE_TOOLS and ANALYTICS_TOOLS.
+ * 7 tools in Anthropic ToolDefinition format for the Agentic Orchestrator.
+ * v2.1: Added drift report, stats, rollback tools + extended existing schemas.
  *
  * @author Barrios A2I
  */
@@ -12,7 +12,7 @@ exports.SKILL_TOOLS = void 0;
 exports.SKILL_TOOLS = [
     {
         name: 'skills_lookup',
-        description: 'Look up known skills for a website domain. Call this BEFORE attempting any task on a website to get proven action sequences and selectors. Returns the full skill including steps, selectors, and rules.',
+        description: 'Look up known skills for a website domain. Call this BEFORE attempting any task on a website to get proven action sequences and selectors. Returns the full skill including steps, selectors, rules, and reliability info.',
         input_schema: {
             type: 'object',
             properties: {
@@ -59,13 +59,17 @@ exports.SKILL_TOOLS = [
                     items: { type: 'string' },
                     description: 'Important rules learned about this task',
                 },
+                durationMs: {
+                    type: 'number',
+                    description: 'How long the task took in milliseconds (for performance tracking)',
+                },
             },
             required: ['domain', 'taskName', 'steps'],
         },
     },
     {
         name: 'skills_record_failure',
-        description: 'Record that a task step failed. Helps track which selectors are breaking.',
+        description: 'Record that a task step failed. Helps track which selectors are breaking and detect website drift.',
         input_schema: {
             type: 'object',
             properties: {
@@ -73,6 +77,7 @@ exports.SKILL_TOOLS = [
                 taskName: { type: 'string', description: 'Task that failed' },
                 failedStep: { type: 'number', description: 'Which step number failed' },
                 error: { type: 'string', description: 'What went wrong' },
+                failedSelector: { type: 'string', description: 'The CSS selector that failed to find an element (for drift tracking)' },
             },
             required: ['domain', 'taskName', 'failedStep', 'error'],
         },
@@ -88,6 +93,39 @@ exports.SKILL_TOOLS = [
                 notes: { type: 'string', description: 'Client preferences and instructions for this task' },
             },
             required: ['domain', 'taskName', 'notes'],
+        },
+    },
+    {
+        name: 'skills_get_drift_report',
+        description: 'Get a report of skills with drifted selectors that may need re-verification. Shows which selectors have broken and whether replacements were found.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                domain: { type: 'string', description: 'Filter by domain (optional — omit for all domains)' },
+            },
+        },
+    },
+    {
+        name: 'skills_get_stats',
+        description: 'Get execution statistics and reliability metrics for skills. Shows success rates, attempt counts, average duration, and recent execution history.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                domain: { type: 'string', description: 'Filter by domain (optional)' },
+                taskName: { type: 'string', description: 'Specific task name (optional — requires domain)' },
+            },
+        },
+    },
+    {
+        name: 'skills_rollback',
+        description: 'Rollback a skill to its previous version. Use when a recently updated skill has a poor success rate and you want to restore the version that was working before.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                domain: { type: 'string', description: 'Website domain' },
+                taskName: { type: 'string', description: 'Task to rollback' },
+            },
+            required: ['domain', 'taskName'],
         },
     },
 ];

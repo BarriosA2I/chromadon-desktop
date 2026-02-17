@@ -1,8 +1,8 @@
 /**
  * Skill Memory Tool Definitions
  *
- * 4 tools in Anthropic ToolDefinition format for the Agentic Orchestrator.
- * Follows the same pattern as YOUTUBE_TOOLS and ANALYTICS_TOOLS.
+ * 7 tools in Anthropic ToolDefinition format for the Agentic Orchestrator.
+ * v2.1: Added drift report, stats, rollback tools + extended existing schemas.
  *
  * @author Barrios A2I
  */

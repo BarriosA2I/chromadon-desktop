@@ -77,6 +77,37 @@ class ClientContextExecutor {
                     total: assets.length,
                 });
             }
+            case 'client_save_info': {
+                const field = input.field;
+                const value = input.value;
+                if (!field || !value)
+                    return JSON.stringify({ error: 'Missing required parameter: field and value' });
+                // Use existing active client, or auto-create default if none exists
+                let activeId = clientId;
+                if (!activeId) {
+                    const newClient = this.storage.createClient('Default');
+                    this.storage.setActiveClient(newClient.id);
+                    activeId = newClient.id;
+                }
+                // Array fields: append. Scalar fields: overwrite.
+                const arrayFields = ['products', 'services', 'goals'];
+                if (arrayFields.includes(field)) {
+                    const existing = this.storage.getProfile(activeId);
+                    const currentArr = existing?.[field] || [];
+                    // Don't add duplicates
+                    if (!currentArr.includes(value)) {
+                        this.storage.updateProfile(activeId, { [field]: [...currentArr, value] });
+                    }
+                }
+                else {
+                    this.storage.updateProfile(activeId, { [field]: value });
+                }
+                return JSON.stringify({
+                    success: true,
+                    message: `Saved ${field}: ${value}`,
+                    clientId: activeId,
+                });
+            }
             default:
                 return JSON.stringify({ error: `Unknown client context tool: ${toolName}` });
         }

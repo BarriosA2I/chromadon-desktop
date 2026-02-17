@@ -67,5 +67,24 @@ exports.CLIENT_CONTEXT_TOOLS = [
             required: [],
         },
     },
+    {
+        name: 'client_save_info',
+        description: 'Save business information mentioned by the user in conversation. Call this when the user mentions their business name, industry, products, services, target audience, or any other business detail. This persists the information so it is available in future sessions.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                field: {
+                    type: 'string',
+                    enum: ['businessName', 'industry', 'products', 'services', 'goals', 'location', 'website', 'missionStatement'],
+                    description: 'Which profile field to update',
+                },
+                value: {
+                    type: 'string',
+                    description: 'The value to save',
+                },
+            },
+            required: ['field', 'value'],
+        },
+    },
 ];
 //# sourceMappingURL=context-tools.js.map

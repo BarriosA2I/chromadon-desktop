@@ -68,6 +68,8 @@ const multer_1 = __importDefault(require("multer"));
 const document_processor_1 = require("../client-context/document-processor");
 // Skill Memory imports
 const skills_1 = require("../skills");
+// Autonomy Engine imports (visual verification + policy gate)
+const autonomy_1 = require("../autonomy");
 // Marketing Queue imports
 const marketing_tools_1 = require("../marketing/marketing-tools");
 const marketing_executor_1 = require("../marketing/marketing-executor");
@@ -169,6 +171,8 @@ let missionRegistry = null;
 let budgetMonitor = null;
 let pulseBeacon = null;
 let sessionWarmup = null;
+// Skill Memory (hoisted for diagnostics access)
+let skillMemory = null;
 // Page registry for tab reuse by domain
 const pageRegistry = new Map(); // domain -> pageIndex
 // Abort controller tracking for stop functionality
@@ -177,6 +181,7 @@ const activeAbortControllers = new Map();
 let desktopAvailable = false;
 let desktopTabIds = []; // Maps index -> Desktop tab ID
 let desktopActiveTabId = null;
+const activeTabRef = { tabId: null }; // Shared ref for visual_verify executor
 // Circuit breaker for Desktop Control Server calls (prevents cascade failures when Desktop is restarting)
 const desktopCircuitBreaker = new circuit_breaker_1.CircuitBreaker({
     failureThreshold: 3,
@@ -2149,6 +2154,9 @@ app.post('/api/orchestrator/chat', async (req, res) => {
         }
         catch { /* non-fatal */ }
     }
+    // Sync active tab for visual_verify executor
+    if (activeTabRef)
+        activeTabRef.tabId = desktopActiveTabId;
     // Create abort controller for this execution
     const abortController = new AbortController();
     const trackingId = sessionId || `req-${Date.now()}`;
@@ -4143,6 +4151,10 @@ app.get('/api/system/diagnostics', (_req, res) => {
         providers: orchestrator?.getProviderHealth() || null,
         routing: cortexRouter?.lastRouteDecision || null,
         activeClient,
+        skills: skillMemory ? {
+            ...skillMemory.getStats(),
+            driftedTasks: skillMemory.getDriftedTasks().length,
+        } : null,
         missions: missionRegistry?.getStats() || null,
         budget: budgetMonitor?.getGlobalStats() || null,
         sessions: sessionWarmup?.getStatuses() || null,
@@ -4325,7 +4337,7 @@ async function startServer() {
     // Hoist variables so orchestrator retry logic can access them
     let additionalTools = [];
     let combinedExecutor = null;
-    let skillMemory = null;
+    // skillMemory is now module-level (hoisted for diagnostics)
     let clientStorage = null;
     let knowledgeVault = null;
     if (ANTHROPIC_API_KEY || GEMINI_API_KEY) {
@@ -4427,6 +4439,17 @@ async function startServer() {
                 const interviewEngine = new client_context_1.InterviewEngine(clientStorage);
                 const strategyEngine = new client_context_1.StrategyEngine(clientStorage, knowledgeVault);
                 clientContextExec = new client_context_1.ClientContextExecutor(clientStorage, knowledgeVault);
+                // Ensure a default client exists so the knowledge pipeline is always active
+                const existingClients = clientStorage.listClients();
+                if (existingClients.length === 0) {
+                    const defaultClient = clientStorage.createClient('Default');
+                    clientStorage.setActiveClient(defaultClient.id);
+                    console.log(`[CHROMADON] Created default client: ${defaultClient.id}`);
+                }
+                else if (!clientStorage.getActiveClientId()) {
+                    clientStorage.setActiveClient(existingClients[0].id);
+                    console.log(`[CHROMADON] Activated existing client: ${existingClients[0].name}`);
+                }
                 console.log('[CHROMADON] ✅ Client Context Layer initialized');
             }
             catch (err) {
@@ -4464,6 +4487,8 @@ async function startServer() {
                 ...monitoring_1.MONITORING_TOOLS,
                 ...scheduler_1.SCHEDULER_TOOLS,
                 ...(trinityExec ? [...trinity_1.TRINITY_TOOLS, ...trinity_1.TRINITY_INTELLIGENCE_TOOLS] : []),
+                ...autonomy_1.VISUAL_VERIFY_TOOLS,
+                ...autonomy_1.POLICY_TOOLS,
             ];
             // Create combined executor that routes to the right handler
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
@@ -4472,6 +4497,9 @@ async function startServer() {
             const marketingExec = (0, marketing_executor_1.createMarketingExecutor)(CHROMADON_DESKTOP_URL, analyticsDb);
             const marketingToolNames = new Set(filteredMarketingTools.map(t => t.name));
             const monitoringToolNames = new Set(monitoring_1.MONITORING_TOOLS.map(t => t.name));
+            // Autonomy Engine executors (visual verify + policy gate)
+            const policyExec = (0, autonomy_1.createPolicyExecutor)();
+            const visualVerifyExec = (0, autonomy_1.createVisualVerifyExecutor)(CHROMADON_DESKTOP_URL, activeTabRef);
             // Scheduler executor — initialized after TheScheduler (see below). Uses a late-binding ref.
             let schedulerExec = null;
             combinedExecutor = async (toolName, input) => {
@@ -4488,6 +4516,10 @@ async function startServer() {
                 }
                 if ((trinity_1.TRINITY_TOOL_NAMES.has(toolName) || trinity_1.TRINITY_INTELLIGENCE_TOOL_NAMES.has(toolName)) && trinityExec)
                     return trinityExec(toolName, input);
+                if (autonomy_1.POLICY_TOOL_NAMES.has(toolName))
+                    return policyExec(toolName, input);
+                if (autonomy_1.VISUAL_VERIFY_TOOL_NAMES.has(toolName))
+                    return visualVerifyExec(toolName, input);
                 if (clientContextExec?.canHandle(toolName))
                     return clientContextExec.execute(toolName, input);
                 if (skillExec && skillToolNames.has(toolName))
@@ -4498,7 +4530,7 @@ async function startServer() {
                     return analyticsExec(toolName, input);
                 return `Unknown additional tool: ${toolName}`;
             };
-            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutor, undefined, additionalTools, combinedExecutor, skillMemory ? () => skillMemory.getSkillsJson() : () => '{}', clientStorage && knowledgeVault ? () => {
+            orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutor, undefined, additionalTools, combinedExecutor, skillMemory ? () => skillMemory.getSkillsSummary() : () => '{}', clientStorage && knowledgeVault ? () => {
                 const activeId = clientStorage.getActiveClientId();
                 if (!activeId)
                     return null;
@@ -4531,6 +4563,7 @@ async function startServer() {
                 console.log(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
             if (clientContextExec)
                 console.log(`[CHROMADON]    - ${client_context_1.CLIENT_CONTEXT_TOOLS.length} Client Context tools registered`);
+            console.log(`[CHROMADON]    - ${autonomy_1.VISUAL_VERIFY_TOOLS.length} Visual Verify + ${autonomy_1.POLICY_TOOLS.length} Policy tools registered`);
             console.log(`[CHROMADON]    - ${filteredMarketingTools.length} Marketing Queue tools registered`);
             console.log(`[CHROMADON]    - ${scheduler_1.SCHEDULER_TOOLS.length} Scheduler tools registered`);
             if (obsExec)
@@ -4635,7 +4668,7 @@ async function startServer() {
                 await new Promise(r => setTimeout(r, delay));
                 try {
                     const toolExecutorRetry = (0, browser_tools_1.createToolExecutor)();
-                    orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutorRetry, undefined, additionalTools || [], combinedExecutor || (async () => 'Tool not available during retry'), skillMemory ? () => skillMemory.getSkillsJson() : () => '{}', clientStorage && knowledgeVault ? () => {
+                    orchestrator = new agentic_orchestrator_1.AgenticOrchestrator(ANTHROPIC_API_KEY || 'gemini-only-no-anthropic-fallback', toolExecutorRetry, undefined, additionalTools || [], combinedExecutor || (async () => 'Tool not available during retry'), skillMemory ? () => skillMemory.getSkillsSummary() : () => '{}', clientStorage && knowledgeVault ? () => {
                         const activeId = clientStorage.getActiveClientId();
                         if (!activeId)
                             return null;

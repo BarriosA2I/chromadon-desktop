@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.26.8 — 2026-02-16)
+## Recent Changes (v1.27.0 — 2026-02-16)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.12.0 — AUTONOMY ENGINE: visual_verify tool (AI vision post-action verification), policy_check tool (regex risk gate SAFE/RISKY/FORBIDDEN), Skill Memory v2.1 (drift detection, per-task stats, versioning, rollback, compact summary), client_save_info tool (auto-persist business context), default client auto-creation, system prompt RULE #1B-#1E, skill diagnostics in /api/system/diagnostics | `resources/brain/dist/` |
+
+## Changes (v1.26.8 — 2026-02-16)
 
 | Change | File |
 |--------|------|
