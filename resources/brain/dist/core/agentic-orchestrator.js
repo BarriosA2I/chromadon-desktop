@@ -205,6 +205,7 @@ class AgenticOrchestrator {
                 break;
             }
             loopCount++;
+            let selectedModel = currentModel;
             try {
                 // 5. Prune history before API call to limit context cost
                 if (session.messages.length > this.config.maxSessionMessages) {
@@ -226,7 +227,7 @@ class AgenticOrchestrator {
                     ? session.messages[session.messages.length - 1].content
                     : userMessage;
                 const modelTier = this.useGemini ? (0, cost_router_1.selectModelForTask)(lastUserMsg, lastExecutedToolName) : null;
-                const selectedModel = geminiModelOverride || (modelTier ? (0, cost_router_1.resolveModel)(modelTier) : currentModel);
+                selectedModel = geminiModelOverride || (modelTier ? (0, cost_router_1.resolveModel)(modelTier) : currentModel);
                 // Select system prompt: override if provided, compact for FAST tier, full for everything else
                 const effectiveSystemPrompt = options?.systemPromptOverride
                     ? options.systemPromptOverride

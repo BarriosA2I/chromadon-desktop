@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.2 — 2026-02-17)
+## Recent Changes (v1.30.3 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.3 — "selectedModel is not defined" crash when Gemini 429 triggers catch block before selectedModel was assigned. Variable hoisted out of try block scope | `resources/brain/dist/` |
+
+## Changes (v1.30.2 — 2026-02-17)
 
 | Change | File |
 |--------|------|
