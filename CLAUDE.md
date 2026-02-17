@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.4 — 2026-02-17)
+## Recent Changes (v1.30.5 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.5 — `obs_stream_start` falsely reported success when OBS failed (missing stream key, encoder error). Now pre-checks stream key, waits 2.5s, verifies stream is actually active. Same pattern for `startRecording()` | `resources/brain/dist/` |
+
+## Changes (v1.30.4 — 2026-02-17)
 
 | Change | File |
 |--------|------|

@@ -134,9 +134,42 @@ class OBSClient {
             if (status.outputActive) {
                 return { success: true, message: 'Stream already active' };
             }
-            await this.obs.call('StartStream');
-            log.info('Stream started');
-            return { success: true, message: 'Stream started' };
+            // Pre-check: verify a stream key is configured
+            try {
+                const svc = await this.obs.call('GetStreamServiceSettings');
+                const settings = svc.streamServiceSettings;
+                if (!settings?.key) {
+                    return {
+                        success: false,
+                        message: 'No stream key configured. Set your stream key in OBS Settings > Stream (or use obs_configure_stream) before starting.',
+                    };
+                }
+            }
+            catch {
+                // GetStreamServiceSettings may fail on some OBS versions — continue anyway
+            }
+            try {
+                await this.obs.call('StartStream');
+            }
+            catch (err) {
+                return {
+                    success: false,
+                    message: `Failed to start stream: ${err.message || err}. Check OBS stream settings (stream key, server URL, encoder).`,
+                };
+            }
+            // Wait for OBS to initialize encoder and connect
+            await new Promise(r => setTimeout(r, 2500));
+            // Verify stream actually started
+            const postCheck = await this.obs.call('GetStreamStatus');
+            if (!postCheck.outputActive) {
+                log.warn('Stream start command sent but stream is not active after 2.5s');
+                return {
+                    success: false,
+                    message: 'OBS stream start failed. The start command was sent but OBS failed to begin streaming. Common causes: invalid stream key, encoder error (NVENC/AMD not available), or streaming server unreachable.',
+                };
+            }
+            log.info('Stream started and verified active');
+            return { success: true, message: 'Stream started and verified active' };
         });
     }
     async stopStream() {
@@ -159,9 +192,28 @@ class OBSClient {
             if (status.outputActive) {
                 return { success: true, message: 'Recording already active' };
             }
-            await this.obs.call('StartRecord');
-            log.info('Recording started');
-            return { success: true, message: 'Recording started' };
+            try {
+                await this.obs.call('StartRecord');
+            }
+            catch (err) {
+                return {
+                    success: false,
+                    message: `Failed to start recording: ${err.message || err}. Check OBS recording settings (output path, encoder).`,
+                };
+            }
+            // Wait for OBS to initialize recording encoder
+            await new Promise(r => setTimeout(r, 2500));
+            // Verify recording actually started
+            const postCheck = await this.obs.call('GetRecordStatus');
+            if (!postCheck.outputActive) {
+                log.warn('Record start command sent but recording is not active after 2.5s');
+                return {
+                    success: false,
+                    message: 'OBS recording start failed. The start command was sent but OBS failed to begin recording. Common causes: invalid output path, disk full, or encoder error.',
+                };
+            }
+            log.info('Recording started and verified active');
+            return { success: true, message: 'Recording started and verified active' };
         });
     }
     async stopRecording() {
