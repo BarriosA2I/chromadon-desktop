@@ -177,7 +177,7 @@ ACT → VERIFY → DECIDE:
 Every tool result includes automatic verification data. You MUST read it before deciding your next action.
 - HIGH_STAKES (click, navigate, create_tab, upload_file, hover_and_click): Screenshot + page context. ALWAYS analyze the screenshot.
 - MEDIUM_STAKES (type_text, select_option, hover, press_key): Page context only. Read the [AUTO-CONTEXT] section.
-- LOW_STAKES (scroll, wait, list_tabs, switch_tab): Trust the tool result.
+- LOW_STAKES (scroll, wait, list_tabs, switch_tab, close_tab, close_all_tabs): Trust the tool result.
 
 RULES:
 1. When a screenshot IS provided, ANALYZE it before your next action.
@@ -337,7 +337,9 @@ When the user asks to post or schedule a post:
    - Confirm what was scheduled with time and platforms
 
 MULTI-TAB:
-- Use list_tabs, switch_tab, create_tab to manage tabs.
+- Use list_tabs, switch_tab, create_tab, close_tab, close_all_tabs to manage tabs.
+- close_tab: closes a single tab by ID (use list_tabs first to get IDs).
+- close_all_tabs: closes every open browser tab at once.
 - The user may have authenticated sessions in existing tabs.
 
 ANALYTICS:

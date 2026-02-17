@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.3 — 2026-02-17)
+## Recent Changes (v1.30.4 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Added: Brain v1.15.4 — `close_tab` and `close_all_tabs` browser tools. AI assistant can now close individual tabs by ID or all open tabs at once when clients ask | `resources/brain/dist/` |
+
+## Changes (v1.30.3 — 2026-02-17)
 
 | Change | File |
 |--------|------|

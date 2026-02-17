@@ -77,7 +77,7 @@ function selectModelForTask(userMessage, lastToolName) {
         'click', 'navigate', 'scroll', 'type_text', 'wait', 'extract_text',
         'get_page_context', 'get_interactive_elements', 'hover', 'press_key',
         'hover_and_click', 'click_table_row', 'create_tab', 'switch_tab',
-        'list_tabs', 'close_tab', 'upload_file', 'select_option',
+        'list_tabs', 'close_tab', 'close_all_tabs', 'upload_file', 'select_option',
         'get_video_ids', 'check_page_health', 'wait_for_result',
         // Scheduler tools — result presentation only
         'schedule_task', 'schedule_post', 'get_scheduled_tasks', 'cancel_scheduled_task', 'reschedule_task',

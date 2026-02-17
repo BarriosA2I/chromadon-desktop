@@ -268,6 +268,25 @@ exports.BROWSER_TOOLS = [
         },
     },
     {
+        name: 'close_tab',
+        description: 'Close a browser tab by its ID. Use list_tabs first to get tab IDs.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                tabId: { type: 'number', description: 'The ID of the tab to close (from list_tabs)' },
+            },
+            required: ['tabId'],
+        },
+    },
+    {
+        name: 'close_all_tabs',
+        description: 'Close all open browser tabs at once.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+        },
+    },
+    {
         name: 'upload_file',
         description: 'Upload a file to a file input. Provide absolute filePath.',
         input_schema: {
@@ -884,6 +903,36 @@ async function executeDesktop(toolName, input, tabId, desktopUrl, context) {
             await desktopFocusTab(tabIdToFocus, desktopUrl);
             return { success: true, result: `Switched to tab ${tabIdToFocus}` };
         }
+        case 'close_tab': {
+            const tabIdToClose = input.tabId;
+            const closeResp = await fetch(`${desktopUrl}/tabs/close`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: tabIdToClose }),
+            });
+            const closeData = await closeResp.json();
+            if (!closeData.success)
+                throw new Error(closeData.error || 'Failed to close tab');
+            return { success: true, result: `Closed tab ${tabIdToClose}` };
+        }
+        case 'close_all_tabs': {
+            const tabs = await desktopListTabs(desktopUrl);
+            if (tabs.length === 0) {
+                return { success: true, result: 'No tabs open to close.' };
+            }
+            let closed = 0;
+            for (const tab of tabs) {
+                const resp = await fetch(`${desktopUrl}/tabs/close`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: tab.id }),
+                });
+                const data = await resp.json();
+                if (data.success)
+                    closed++;
+            }
+            return { success: true, result: `Closed ${closed} of ${tabs.length} tab(s).` };
+        }
         case 'upload_file': {
             const selector = input.selector;
             const filePath = input.filePath;
@@ -1083,6 +1132,12 @@ async function executeCDP(toolName, input, page) {
                 await newPage.goto(input.url, { timeout: 30000, waitUntil: 'domcontentloaded' });
             }
             return { success: true, result: `Created new tab: ${input.url || 'about:blank'}` };
+        }
+        case 'close_tab': {
+            return { success: false, result: '', error: 'close_tab is not supported in CDP mode. Use Desktop mode.' };
+        }
+        case 'close_all_tabs': {
+            return { success: false, result: '', error: 'close_all_tabs is not supported in CDP mode. Use Desktop mode.' };
         }
         default:
             return { success: false, result: '', error: `Unknown tool: ${toolName}` };
