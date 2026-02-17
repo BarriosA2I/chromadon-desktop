@@ -82,6 +82,19 @@ export default function SettingsModal({
     }
   }, [isOpen])
 
+  // Listen for brain-status events (real-time lifecycle updates)
+  useEffect(() => {
+    if (!isOpen) return
+    if (!window.electronAPI?.onBrainStatus) return
+    const cleanup = window.electronAPI.onBrainStatus((status) => {
+      setBrainStatus({
+        isRunning: status.running,
+        pid: brainStatus.pid, // pid comes from poll, not event
+      })
+    })
+    return cleanup
+  }, [isOpen])
+
   // Listen for updater events while modal is open
   useEffect(() => {
     if (!isOpen) return

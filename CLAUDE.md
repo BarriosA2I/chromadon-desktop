@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.28.0 — 2026-02-16)
+## Recent Changes (v1.28.1 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: CRIT-1 — `brain-status` IPC event now wired through preload context bridge. Added `onBrainStatus(callback)` listener in preload.ts + type declaration. SettingsModal.tsx now receives real-time Brain lifecycle updates via event instead of polling only | `electron/preload.ts`, `src/components/SettingsModal.tsx` |
+| Updated: Brain dist v1.13.1 — CRIT-2 fix: 28 Playwright-era endpoints guarded with `requirePlaywright` middleware, return 400 in DESKTOP mode instead of 500 | `resources/brain/dist/` |
+
+## Changes (v1.28.0 — 2026-02-16)
 
 | Change | File |
 |--------|------|

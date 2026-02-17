@@ -320,6 +320,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsRemoveApiKey: () => ipcRenderer.invoke('settings:removeApiKey'),
   settingsGetBrainStatus: () => ipcRenderer.invoke('settings:getBrainStatus'),
 
+  // Brain status event listener (real-time lifecycle updates from main process)
+  onBrainStatus: (callback: (status: any) => void) => {
+    const handler = (_event: any, status: any) => callback(status)
+    ipcRenderer.on('brain-status', handler)
+    return () => { ipcRenderer.removeListener('brain-status', handler) }
+  },
+
   // Gemini Settings API
   settingsGetGeminiKeyStatus: () => ipcRenderer.invoke('settings:getGeminiKeyStatus'),
   settingsSetGeminiKey: (apiKey: string) => ipcRenderer.invoke('settings:setGeminiKey', apiKey),
@@ -483,6 +490,7 @@ declare global {
       settingsValidateApiKey: (apiKey: string) => Promise<{ success: boolean; valid?: boolean; error?: string }>
       settingsRemoveApiKey: () => Promise<{ success: boolean; error?: string }>
       settingsGetBrainStatus: () => Promise<{ isRunning: boolean; pid: number | null }>
+      onBrainStatus: (callback: (status: { running: boolean; stage?: string; message?: string; error?: string | null; restarting?: boolean; attempt?: number; maxAttempts?: number }) => void) => (() => void)
 
       // Gemini Settings API
       settingsGetGeminiKeyStatus: () => Promise<{ hasKey: boolean; keyPreview: string | null }>
