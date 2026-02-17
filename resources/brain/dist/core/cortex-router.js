@@ -25,6 +25,7 @@ const event_bus_1 = require("../agents/event-bus");
 const uuid_1 = require("uuid");
 const logger_1 = require("../lib/logger");
 const obs_tools_1 = require("../obs/obs-tools");
+const youtube_studio_tools_1 = require("../youtube/youtube-studio-tools");
 const log = (0, logger_1.createChildLogger)('orchestrator');
 // ============================================================================
 // URL RESOLUTION
@@ -115,6 +116,19 @@ class CortexRouter {
                     const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
                     writer.writeEvent('session_id', { sessionId: sid });
                     return this.executeSocialMedia(socialTask, sid, writer);
+                },
+            },
+            {
+                name: 'youtube_studio',
+                priority: 78, // Above OBS (76), below YouTube API (80) — Studio browser automation
+                match: (msg) => this.isYouTubeStudioIntent(msg),
+                execute: async (_m, sessionId, message, writer, context, pageContext) => {
+                    log.info('[CortexRouter] YouTube Studio intent → monolithic orchestrator (forceToolCall + Studio tools)');
+                    const studioToolNames = youtube_studio_tools_1.YOUTUBE_STUDIO_TOOLS.map(t => t.name);
+                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext, {
+                        forceToolCall: true,
+                        allowedToolNames: studioToolNames,
+                    });
                 },
             },
             {
@@ -247,6 +261,21 @@ class CortexRouter {
         if (/\b(?:post|tweet|share|publish|comment|reply|like|follow|dm|message)\b/i.test(msg))
             return false;
         return true;
+    }
+    isYouTubeStudioIntent(msg) {
+        // YouTube Studio browser automation — priority 78 (above OBS at 76)
+        // Catches Studio-specific tasks that need browser interaction (not API)
+        if (/youtube\s*studio/i.test(msg))
+            return true;
+        if (/\bstudio\s+(?:dashboard|content|analytics|comments|copyright|monetization|customization)\b/i.test(msg))
+            return true;
+        if (/\b(?:copyright\s+claim|erase\s+song|dispute\s+claim)\b/i.test(msg) && /\b(?:youtube|video|studio|claim)\b/i.test(msg))
+            return true;
+        if (/\bcheck\s+(?:my\s+)?(?:youtube\s+)?session\b/i.test(msg))
+            return true;
+        if (/\b(?:video\s+list|list\s+videos)\b/i.test(msg) && /studio/i.test(msg))
+            return true;
+        return false;
     }
     isOBSIntent(msg) {
         // OBS Studio actions → monolithic orchestrator (has all 19 obs_* tools)

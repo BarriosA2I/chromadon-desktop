@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.29.6 — 2026-02-17)
+## Recent Changes (v1.30.0 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.15.0 — YOUTUBE STUDIO AUTOMATION: 5 new Shadow DOM-piercing tools (yt_studio_navigate, yt_studio_video_list, yt_studio_copyright_check, yt_studio_erase_song, yt_studio_session_check). OBS STREAMING PRESETS: 4 new tools (obs_apply_preset, obs_list_presets, obs_get_current_preset, obs_create_custom_preset) with YouTube VP9 1440p hack, Twitch/Kick/Facebook presets. CortexRouter: YouTube Studio intent route at priority 78. Total tools: 114+ | `resources/brain/dist/` |
+
+## Changes (v1.29.6 — 2026-02-17)
 
 | Change | File |
 |--------|------|

@@ -72,6 +72,7 @@ export declare class CortexRouter {
     private isConversational;
     private isSchedulingIntent;
     private isBrowserNavigation;
+    private isYouTubeStudioIntent;
     private isOBSIntent;
     private isClientContextQuery;
     private parseSimpleCommand;

@@ -289,5 +289,62 @@ exports.OBS_TOOLS = [
             properties: {},
         },
     },
+    // ─── Streaming Preset Tools ────────────────────────────
+    {
+        name: 'obs_apply_preset',
+        description: 'Apply a streaming preset that configures OBS video settings optimized for a specific platform. YouTube preset uses the 1440p VP9 hack for better quality. Will refuse if a stream or recording is active. Use obs_list_presets to see available options.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                preset_name: {
+                    type: 'string',
+                    description: 'Preset name: youtube_vp9_1440p, twitch_1080p60, kick_1080p60, facebook_1080p30, or a custom preset name',
+                },
+                stream_key: {
+                    type: 'string',
+                    description: 'Stream key for the platform (optional — only set if you have the key)',
+                },
+            },
+            required: ['preset_name'],
+        },
+    },
+    {
+        name: 'obs_list_presets',
+        description: 'List all available OBS streaming presets (built-in and custom) with their platform, resolution, FPS, and description.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+        },
+    },
+    {
+        name: 'obs_get_current_preset',
+        description: 'Detect which streaming preset best matches the current OBS video settings. Returns the matching preset name or "custom" if no match.',
+        input_schema: {
+            type: 'object',
+            properties: {},
+        },
+    },
+    {
+        name: 'obs_create_custom_preset',
+        description: 'Save the current OBS video and stream settings as a named custom preset for future use.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                name: {
+                    type: 'string',
+                    description: 'Custom preset name (lowercase, no spaces, use underscores)',
+                },
+                platform: {
+                    type: 'string',
+                    description: 'Target platform name (e.g. youtube, twitch, custom)',
+                },
+                description: {
+                    type: 'string',
+                    description: 'Description of what this preset is for',
+                },
+            },
+            required: ['name', 'platform'],
+        },
+    },
 ];
 //# sourceMappingURL=obs-tools.js.map

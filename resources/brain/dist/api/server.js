@@ -60,6 +60,8 @@ const data_collector_1 = require("../analytics/data-collector");
 const youtube_token_manager_1 = require("../youtube/youtube-token-manager");
 const youtube_tools_1 = require("../youtube/youtube-tools");
 const youtube_executor_1 = require("../youtube/youtube-executor");
+const youtube_studio_tools_1 = require("../youtube/youtube-studio-tools");
+const youtube_studio_executor_1 = require("../youtube/youtube-studio-executor");
 const youtube_tool_bridge_1 = require("../agents/youtube-tool-bridge");
 const social_tool_bridge_1 = require("../agents/social-tool-bridge");
 // Client Context imports
@@ -4550,6 +4552,7 @@ async function startServer() {
             additionalTools = [
                 ...(analyticsDb ? analytics_tools_1.ANALYTICS_TOOLS : []),
                 ...(youtubeTokenManager ? youtube_tools_1.YOUTUBE_TOOLS : []),
+                ...youtube_studio_tools_1.YOUTUBE_STUDIO_TOOLS,
                 ...(skillMemory ? skills_1.SKILL_TOOLS : []),
                 ...(clientContextExec ? client_context_1.CLIENT_CONTEXT_TOOLS : []),
                 ...filteredMarketingTools,
@@ -4568,6 +4571,8 @@ async function startServer() {
             const analyticsExec = analyticsDb ? (0, analytics_executor_1.createAnalyticsExecutor)(analyticsDb) : null;
             youtubeExec = youtubeTokenManager ? (0, youtube_executor_1.createYouTubeExecutor)(youtubeTokenManager) : null;
             const youtubeToolNames = new Set(youtube_tools_1.YOUTUBE_TOOLS.map(t => t.name));
+            const ytStudioExec = (0, youtube_studio_executor_1.createYouTubeStudioExecutor)(CHROMADON_DESKTOP_URL);
+            const ytStudioToolNames = new Set(youtube_studio_tools_1.YOUTUBE_STUDIO_TOOLS.map(t => t.name));
             const marketingExec = (0, marketing_executor_1.createMarketingExecutor)(CHROMADON_DESKTOP_URL, analyticsDb);
             const marketingToolNames = new Set(filteredMarketingTools.map(t => t.name));
             const monitoringToolNames = new Set(monitoring_1.MONITORING_TOOLS.map(t => t.name));
@@ -4611,6 +4616,8 @@ async function startServer() {
                     return clientContextExec.execute(toolName, input);
                 if (skillExec && skillToolNames.has(toolName))
                     return skillExec(toolName, input);
+                if (ytStudioToolNames.has(toolName))
+                    return ytStudioExec(toolName, input);
                 if (youtubeExec && youtubeToolNames.has(toolName))
                     return youtubeExec(toolName, input);
                 if (analyticsExec)
@@ -4647,7 +4654,8 @@ async function startServer() {
             if (analyticsDb)
                 log.info('[CHROMADON]    - 8 Analytics tools registered');
             if (youtubeTokenManager)
-                log.info(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube tools registered`);
+                log.info(`[CHROMADON]    - ${youtube_tools_1.YOUTUBE_TOOLS.length} YouTube API tools registered`);
+            log.info(`[CHROMADON]    - ${youtube_studio_tools_1.YOUTUBE_STUDIO_TOOLS.length} YouTube Studio tools registered`);
             if (skillMemory)
                 log.info(`[CHROMADON]    - ${skills_1.SKILL_TOOLS.length} Skill Memory tools registered`);
             if (clientContextExec)
