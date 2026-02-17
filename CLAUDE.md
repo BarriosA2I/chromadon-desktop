@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.29.4 — 2026-02-17)
+## Recent Changes (v1.29.5 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — Brain crashed on startup: `ReferenceError: Cannot access 'log' before initialization` in tier3-specialists. otplib ESM catch block used pino logger before it was defined (temporal dead zone). Changed to console.warn. Brain v1.14.5 | `resources/brain/` |
+
+## Changes (v1.29.4 — 2026-02-17)
 
 | Change | File |
 |--------|------|

@@ -25,7 +25,8 @@ try {
     authenticator = require('otplib').authenticator;
 }
 catch {
-    log.warn('[Tier3] otplib not available — TOTP 2FA disabled');
+    // Use console.warn here because pino `log` is defined below (temporal dead zone)
+    console.warn('[Tier3] otplib not available — TOTP 2FA disabled');
 }
 const tier0_orchestration_1 = require("./tier0-orchestration");
 const event_bus_1 = require("./event-bus");
