@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.0 — 2026-02-17)
+## Recent Changes (v1.30.1 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.1 — `yt_studio_session_check` always reported "No Google session" even when signed in. Executor now correctly parses `/sessions` array response, uses `isAuthenticated` field, shows account name/email, and forces fresh cookie verification before checking | `resources/brain/dist/` |
+
+## Changes (v1.30.0 — 2026-02-17)
 
 | Change | File |
 |--------|------|
