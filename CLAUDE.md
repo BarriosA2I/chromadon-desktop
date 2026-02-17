@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.28.1 — 2026-02-17)
+## Recent Changes (v1.29.0 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Updated: Brain dist v1.14.0 — STRUCTURED LOGGING: All 544 console.log instances replaced with pino structured JSON logging (domain-scoped children, redaction, correlation IDs, pino-http middleware). URL sanitization for navigate tool. Compound instruction decomposition. Stronger onboarding greeting. Contextual personalization rules | `resources/brain/dist/` |
+
+## Changes (v1.28.1 — 2026-02-17)
 
 | Change | File |
 |--------|------|
