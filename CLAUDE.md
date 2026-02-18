@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.10 — 2026-02-17)
+## Recent Changes (v1.30.11 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.11 — "I'm temporarily unavailable" after few messages: `anthropicDead` flag never reset after Anthropic billing error. Added 5-min cooldown + Gemini retry for non-429 errors. Scheduler falsely marked tasks COMPLETED on provider failure: now validates error events and empty results before marking complete. maxRetries increased to 3 | `resources/brain/dist/` |
+
+## Changes (v1.30.10 — 2026-02-17)
 
 | Change | File |
 |--------|------|

@@ -71,6 +71,7 @@ class AgenticOrchestrator {
     getOnboardingContext;
     hasAnthropicKey;
     anthropicDead = false; // Set true when Anthropic returns billing/auth errors — prevents futile bounce loops
+    anthropicDeadSince = 0; // Timestamp when anthropicDead was set — enables cooldown-based retry
     _budgetMonitor = null;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge, getLinkedPlatforms, getOnboardingContext) {
         this.hasAnthropicKey = apiKey !== 'gemini-only-no-anthropic-fallback';
@@ -109,9 +110,23 @@ class AgenticOrchestrator {
             gemini: !!this.geminiProvider,
             anthropic: this.hasAnthropicKey,
             anthropicDead: this.anthropicDead,
+            anthropicDeadSince: this.anthropicDeadSince,
             useGemini: this.useGemini,
             activeSessions: this.sessions.size,
         };
+    }
+    /** Check if Anthropic is still dead, respecting 5-minute cooldown. Resets flag if cooldown expired. */
+    isAnthropicDead() {
+        if (!this.anthropicDead)
+            return false;
+        const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+        if (Date.now() - this.anthropicDeadSince > COOLDOWN_MS) {
+            log.info('[PROVIDER] Anthropic cooldown expired (5min) — allowing retry');
+            this.anthropicDead = false;
+            this.anthropicDeadSince = 0;
+            return false;
+        }
+        return true;
     }
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
@@ -833,8 +848,8 @@ class AgenticOrchestrator {
                         // All Gemini models exhausted — fall through to Anthropic or graceful error
                         log.warn(`[PROVIDER] Gemini 429 — all models exhausted`);
                     }
-                    // Try Anthropic fallback (only if it's not already known-dead)
-                    if (this.hasAnthropicKey && !this.anthropicDead) {
+                    // Try Anthropic fallback (only if it's not already known-dead or cooldown expired)
+                    if (this.hasAnthropicKey && !this.isAnthropicDead()) {
                         providerBounceCount++;
                         log.warn(`[PROVIDER] Gemini error — falling back to Anthropic (bounce ${providerBounceCount})`);
                         this.useGemini = false;
@@ -842,6 +857,14 @@ class AgenticOrchestrator {
                         continue;
                     }
                     else {
+                        // No viable Anthropic fallback — retry Gemini once for non-429 errors before giving up
+                        const isGemini429 = error?.status === 429 || (errorMsg.includes('429') && errorMsg.includes('Too Many Requests'));
+                        if (!isGemini429 && transientRetryCount < 1) {
+                            transientRetryCount++;
+                            log.warn(`[PROVIDER] Gemini non-429 error, no Anthropic fallback — retrying Gemini in 3s (attempt ${transientRetryCount})`);
+                            await new Promise(resolve => setTimeout(resolve, 3000));
+                            continue;
+                        }
                         // No viable fallback — graceful error (never expose provider details to clients)
                         log.error(`[PROVIDER] Gemini failed, no viable fallback (hasAnthropicKey=${this.hasAnthropicKey}, anthropicDead=${this.anthropicDead})`);
                         if (!writer.isClosed()) {
@@ -954,6 +977,7 @@ class AgenticOrchestrator {
                 if (!usingGemini && this.geminiProvider && error?.status === 400 &&
                     (errorMsg.includes('credit balance') || errorMsg.includes('billing') || errorMsg.includes('API_KEY_INVALID'))) {
                     this.anthropicDead = true;
+                    this.anthropicDeadSince = Date.now();
                     if (providerBounceCount < 1) {
                         log.warn(`[PROVIDER] Anthropic billing/auth error — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;
@@ -970,6 +994,7 @@ class AgenticOrchestrator {
                 // Recovery: Anthropic 401 unauthorized — mark dead, bounce to Gemini once
                 if (!usingGemini && this.geminiProvider && error?.status === 401) {
                     this.anthropicDead = true;
+                    this.anthropicDeadSince = Date.now();
                     if (providerBounceCount < 1) {
                         log.warn(`[PROVIDER] Anthropic auth failed — marking dead, re-enabling Gemini (bounce ${providerBounceCount + 1})`);
                         this.useGemini = true;

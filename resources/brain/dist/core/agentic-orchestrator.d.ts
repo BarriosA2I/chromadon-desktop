@@ -61,6 +61,7 @@ export declare class AgenticOrchestrator {
     private getOnboardingContext;
     private hasAnthropicKey;
     private anthropicDead;
+    private anthropicDeadSince;
     private _budgetMonitor;
     constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string, getClientKnowledge?: () => string | null, getLinkedPlatforms?: () => Promise<string> | string, getOnboardingContext?: () => string | null);
     /** Inject BudgetMonitor for cost tracking (optional, set after construction) */
@@ -72,9 +73,12 @@ export declare class AgenticOrchestrator {
         gemini: boolean;
         anthropic: boolean;
         anthropicDead: boolean;
+        anthropicDeadSince: number;
         useGemini: boolean;
         activeSessions: number;
     };
+    /** Check if Anthropic is still dead, respecting 5-minute cooldown. Resets flag if cooldown expired. */
+    private isAnthropicDead;
     /**
      * Main entry point - runs the full agentic loop with SSE streaming.
      */

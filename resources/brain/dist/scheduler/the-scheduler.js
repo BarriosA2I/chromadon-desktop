@@ -20,25 +20,30 @@ const logger_1 = require("../lib/logger");
 const log = (0, logger_1.createChildLogger)('scheduler');
 /**
  * Silent writer that captures orchestrator output without sending to user chat.
- * Same pattern as SocialMonitor's MonitorWriter.
+ * Tracks text, errors, and tool results for post-execution validation.
  */
 class CollectorWriter {
     chunks = [];
     closed = false;
+    errors = [];
+    toolResultCount = 0;
     writeEvent(event, data) {
         if (event === 'text_delta' && data.text) {
             this.chunks.push(data.text);
         }
+        else if (event === 'error' && data.message) {
+            this.errors.push(data.message);
+        }
+        else if (event === 'tool_result') {
+            this.toolResultCount++;
+        }
     }
-    close() {
-        this.closed = true;
-    }
-    isClosed() {
-        return this.closed;
-    }
-    getText() {
-        return this.chunks.join('');
-    }
+    close() { this.closed = true; }
+    isClosed() { return this.closed; }
+    getText() { return this.chunks.join(''); }
+    hasErrors() { return this.errors.length > 0; }
+    getErrors() { return this.errors; }
+    getToolResultCount() { return this.toolResultCount; }
 }
 const DEFAULT_CONFIG = {
     tickIntervalMs: 10_000,
@@ -187,8 +192,21 @@ class TheScheduler {
             await this.orchestrator.chat(undefined, // fresh session
             task.instruction, // the NL instruction (now with pre-generated content)
             writer, context, pageContext, { systemPromptOverride: undefined });
-            // 4. Capture result
-            task.resultSummary = writer.getText().slice(0, 500);
+            // 4. Validate result — detect orchestrator failures before marking complete
+            const collectedText = writer.getText();
+            if (writer.hasErrors()) {
+                const errorSummary = writer.getErrors().join('; ');
+                log.warn(`[TheScheduler] Task ${task.id} — orchestrator error: ${errorSummary}`);
+                this.failTask(task, `Orchestrator error: ${errorSummary}`);
+                return;
+            }
+            if (collectedText.trim().length === 0 && writer.getToolResultCount() === 0) {
+                log.warn(`[TheScheduler] Task ${task.id} — empty result (0 text, 0 tools)`);
+                this.failTask(task, 'Empty orchestrator response — no text or tool results');
+                return;
+            }
+            // Success — capture result
+            task.resultSummary = collectedText.slice(0, 500);
             task.status = scheduler_types_1.TaskStatus.COMPLETED;
             task.completedAt = new Date().toISOString();
             task.executionDurationMs = Date.now() - new Date(task.executedAt).getTime();
@@ -323,7 +341,7 @@ class TheScheduler {
             recurrenceEndDate: params.recurrenceEndDate,
             status: scheduler_types_1.TaskStatus.SCHEDULED,
             retryCount: 0,
-            maxRetries: 2,
+            maxRetries: 3,
             createdAt: new Date().toISOString(),
             batchId: params.batchId,
             batchSequence: params.batchSequence,
