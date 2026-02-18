@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.13 — 2026-02-18)
+## Recent Changes (v1.30.14 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.14 — Scheduler zombie recovery (stuck `executing` tasks reset to `pending` on startup), 5-min execution timeout prevents hanging, task pruning cleans 236→50 accumulated tasks, heartbeat diagnostics every 60s | `resources/brain/dist/` |
+
+## Changes (v1.30.13 — 2026-02-18)
 
 | Change | File |
 |--------|------|

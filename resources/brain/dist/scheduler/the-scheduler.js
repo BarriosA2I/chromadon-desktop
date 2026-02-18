@@ -63,6 +63,7 @@ class TheScheduler {
     tickInterval = null;
     isExecuting = false;
     destroyed = false;
+    tickCount = 0;
     /** External busy-check callback — returns true if orchestrator is processing a user chat (Fix #1: Busy Lock) */
     isBusy;
     constructor(orchestrator, contextFactory, desktopUrl, socialMonitor, config, isBusy) {
@@ -84,6 +85,33 @@ class TheScheduler {
             log.info(`[TheScheduler] ${missedRuns.length} missed run(s) detected — marking PENDING for immediate execution`);
             for (const t of missedRuns)
                 t.status = scheduler_types_1.TaskStatus.PENDING;
+            this.persist();
+        }
+        // Zombie recovery: tasks stuck in 'executing' after crash/restart → reset to 'pending' for retry
+        const zombies = this.state.tasks.filter(t => t.status === scheduler_types_1.TaskStatus.EXECUTING);
+        if (zombies.length > 0) {
+            log.warn(`[TheScheduler] ${zombies.length} zombie task(s) stuck in EXECUTING — resetting to PENDING`);
+            for (const t of zombies) {
+                t.status = scheduler_types_1.TaskStatus.PENDING;
+                t.executedAt = undefined;
+            }
+            this.persist();
+        }
+        // Task pruning: keep active + last 50 terminal tasks, remove the rest
+        const PRUNE_KEEP = 50;
+        const activeTasks = this.state.tasks.filter(t => t.status === scheduler_types_1.TaskStatus.SCHEDULED ||
+            t.status === scheduler_types_1.TaskStatus.PENDING ||
+            t.status === scheduler_types_1.TaskStatus.EXECUTING);
+        const terminalTasks = this.state.tasks
+            .filter(t => t.status === scheduler_types_1.TaskStatus.COMPLETED ||
+            t.status === scheduler_types_1.TaskStatus.FAILED ||
+            t.status === scheduler_types_1.TaskStatus.CANCELLED)
+            .sort((a, b) => (b.completedAt || b.createdAt).localeCompare(a.completedAt || a.createdAt));
+        const keepTerminal = terminalTasks.slice(0, PRUNE_KEEP);
+        const pruned = this.state.tasks.length - activeTasks.length - keepTerminal.length;
+        if (pruned > 0) {
+            this.state.tasks = [...activeTasks, ...keepTerminal];
+            log.info(`[TheScheduler] Pruned ${pruned} old terminal task(s) — ${this.state.tasks.length} remaining`);
             this.persist();
         }
         log.info(`[TheScheduler] Initialized with ${this.state.tasks.length} persisted task(s)`);
@@ -120,6 +148,14 @@ class TheScheduler {
      * Only starts spending credits when a task is actually due.
      */
     tick() {
+        this.tickCount++;
+        // Heartbeat log every 60s when tasks are pending or executing (zero noise when idle)
+        if (this.tickCount % 6 === 0) {
+            const scheduled = this.state.tasks.filter(t => t.status === scheduler_types_1.TaskStatus.SCHEDULED || t.status === scheduler_types_1.TaskStatus.PENDING).length;
+            if (scheduled > 0 || this.isExecuting) {
+                log.info(`[TheScheduler] heartbeat — ${scheduled} pending, executing=${this.isExecuting}, busy=${!!this.isBusy?.()}`);
+            }
+        }
         if (this.isExecuting || this.destroyed)
             return;
         // Fix #1: Busy Lock — defer if user is chatting (browser collision prevention)
@@ -186,12 +222,17 @@ class TheScheduler {
                     log.warn({ err: err.message }, 'Content pre-generation failed, using original instruction');
                 }
             }
-            // 4. Execute via orchestrator.chat() — THIS is where credits are spent
+            // 4. Execute via orchestrator.chat() — with 5min timeout to prevent hanging
             const writer = new CollectorWriter();
             const { context, pageContext } = await this.contextFactory();
-            await this.orchestrator.chat(undefined, // fresh session
-            task.instruction, // the NL instruction (now with pre-generated content)
-            writer, context, pageContext, { systemPromptOverride: undefined });
+            const EXECUTION_TIMEOUT_MS = 5 * 60_000; // 5 minutes
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Execution timeout (5 min)')), EXECUTION_TIMEOUT_MS));
+            await Promise.race([
+                this.orchestrator.chat(undefined, // fresh session
+                task.instruction, // the NL instruction (now with pre-generated content)
+                writer, context, pageContext, { systemPromptOverride: undefined }),
+                timeoutPromise,
+            ]);
             // 4. Validate result — detect orchestrator failures before marking complete
             const collectedText = writer.getText();
             if (writer.hasErrors()) {

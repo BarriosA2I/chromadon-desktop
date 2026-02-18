@@ -44,6 +44,7 @@ export declare class TheScheduler {
     private tickInterval;
     private isExecuting;
     private destroyed;
+    private tickCount;
     /** External busy-check callback — returns true if orchestrator is processing a user chat (Fix #1: Busy Lock) */
     private readonly isBusy?;
     constructor(orchestrator: AgenticOrchestrator, contextFactory: () => Promise<{
