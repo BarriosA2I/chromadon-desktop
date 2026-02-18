@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.23 — 2026-02-18)
+## Recent Changes (v1.30.24 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Added: `container` parameter to `/tabs/click` and `/tabs/type` endpoints. When provided, all 4 click strategies (css_deep, text_deep, testid, partial_text) and type focus targeting are scoped to that container element via `container.querySelector()` instead of `document.querySelector()`. Eliminates feed noise: "Post" text matches only within composer dialog, textbox targeting only finds composer's textbox. Brain v1.15.24: scheduler passes `container=div[role="dialog"]` for all post-compose actions, polls for container instead of fixed delays, clicks media button before upload per platform | `electron/main.ts`, `resources/brain/dist/` |
+
+## Changes (v1.30.23 — 2026-02-18)
 
 | Change | File |
 |--------|------|

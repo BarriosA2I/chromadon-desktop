@@ -23,27 +23,34 @@ const PLATFORM_POST_CONFIGS = {
         url: 'https://www.facebook.com',
         domainMatch: ['facebook.com'],
         composeText: "What's on your mind",
+        composerContainer: 'div[role="dialog"]',
         textboxSelector: "div[contenteditable='true'][role='textbox']",
         postText: 'Post',
         postFallbackSelector: 'div[aria-label="Post"]',
+        mediaButtonText: 'Photo/video',
     },
     linkedin: {
         url: 'https://www.linkedin.com',
         domainMatch: ['linkedin.com'],
         composeText: 'Start a post',
         composeFallbackSelector: 'button.share-box-feed-entry__trigger',
+        composerContainer: 'div[role="dialog"]',
         textboxSelector: "div[contenteditable='true'][role='textbox']",
         postText: 'Post',
         postFallbackSelector: 'button.share-actions__primary-action',
+        mediaButtonText: 'Add a photo',
+        mediaButtonSelector: 'button[aria-label="Add media"]',
     },
     twitter: {
         url: 'https://x.com',
         domainMatch: ['twitter.com', 'x.com'],
         composeText: "What is happening",
         composeFallbackSelector: '[data-testid="tweetTextarea_0"]',
+        composerContainer: 'div[data-testid="tweetTextarea_0"]',
         textboxSelector: "div[contenteditable='true'][role='textbox']",
         postText: 'Post',
         postFallbackSelector: '[data-testid="tweetButton"]',
+        mediaButtonSelector: 'input[data-testid="fileInput"]',
     },
 };
 /**
@@ -446,6 +453,7 @@ class TheScheduler {
     }
     // ===========================================================================
     // DIRECT POST — Zero-LLM browser automation via Desktop HTTP endpoints
+    // All click/type calls scoped to composerContainer to avoid feed noise
     // ===========================================================================
     delay(ms) {
         return new Promise(r => setTimeout(r, ms));
@@ -468,19 +476,25 @@ class TheScheduler {
             throw err;
         }
     }
-    async directClick(tabId, text, fallbackSelector) {
-        // Attempt 1: text-based click
+    /**
+     * Click by text with optional CSS fallback, scoped to container.
+     * Retries once on failure (2s delay between attempts).
+     */
+    async directClick(tabId, text, fallbackSelector, container) {
+        // Attempt 1: text-based click (scoped to container)
         try {
-            const res = await this.fetchDesktop('/tabs/click', { id: tabId, text });
-            if (res.success)
+            const res = await this.fetchDesktop('/tabs/click', { id: tabId, text, container });
+            if (res.success) {
+                log.debug({ candidates: res.candidates, strategy: res.strategy }, `[DirectPost] Click "${text}" OK`);
                 return true;
+            }
         }
         catch { /* fall through */ }
         // If text click failed and we have a CSS fallback, try that
         if (fallbackSelector) {
             await this.delay(1000);
             try {
-                const res = await this.fetchDesktop('/tabs/click', { id: tabId, selector: fallbackSelector });
+                const res = await this.fetchDesktop('/tabs/click', { id: tabId, selector: fallbackSelector, container });
                 if (res.success)
                     return true;
             }
@@ -489,23 +503,50 @@ class TheScheduler {
         // Retry text click once after 2s
         await this.delay(2000);
         try {
-            const res = await this.fetchDesktop('/tabs/click', { id: tabId, text });
+            const res = await this.fetchDesktop('/tabs/click', { id: tabId, text, container });
             return res.success === true;
         }
         catch {
             return false;
         }
     }
-    async directType(tabId, selector, text) {
+    /**
+     * Type text into element, scoped to container.
+     */
+    async directType(tabId, selector, text, container) {
         try {
-            const res = await this.fetchDesktop('/tabs/type', { id: tabId, selector, text });
+            const res = await this.fetchDesktop('/tabs/type', { id: tabId, selector, text, container });
             return res.success === true;
         }
         catch {
             return false;
         }
     }
-    async directUpload(tabId, filePath) {
+    /**
+     * Upload file. Optionally click a media button first (within container) to make input[type="file"] appear.
+     */
+    async directUpload(tabId, filePath, mediaButtonText, mediaButtonSelector, container) {
+        // Some platforms need a media button click to inject input[type="file"] into DOM
+        if (mediaButtonText || mediaButtonSelector) {
+            try {
+                const clickBody = { id: tabId, container };
+                if (mediaButtonText)
+                    clickBody.text = mediaButtonText;
+                else if (mediaButtonSelector)
+                    clickBody.selector = mediaButtonSelector;
+                const clickRes = await this.fetchDesktop('/tabs/click', clickBody);
+                if (clickRes.success) {
+                    log.info(`[DirectPost] Media button click OK`);
+                    await this.delay(1000); // Wait for file input to appear
+                }
+                else {
+                    log.warn(`[DirectPost] Media button click failed — trying upload anyway`);
+                }
+            }
+            catch {
+                log.warn(`[DirectPost] Media button click error — trying upload anyway`);
+            }
+        }
         try {
             const res = await this.fetchDesktop('/tabs/upload', { id: tabId, filePath });
             return res.success === true;
@@ -513,6 +554,30 @@ class TheScheduler {
         catch {
             return false;
         }
+    }
+    /**
+     * Poll for an element to appear in the DOM. Replaces fixed delays.
+     * Returns true if found within maxWaitMs, false otherwise.
+     */
+    async waitForElement(tabId, selector, maxWaitMs = 5000) {
+        const pollInterval = 500;
+        const maxAttempts = Math.ceil(maxWaitMs / pollInterval);
+        for (let i = 0; i < maxAttempts; i++) {
+            try {
+                const res = await this.fetchDesktop('/tabs/execute', {
+                    id: tabId,
+                    script: `!!document.querySelector(${JSON.stringify(selector)})`,
+                });
+                if (res.result === true) {
+                    log.debug(`[DirectPost] waitForElement("${selector}") found after ${(i + 1) * pollInterval}ms`);
+                    return true;
+                }
+            }
+            catch { /* ignore */ }
+            await this.delay(pollInterval);
+        }
+        log.warn(`[DirectPost] waitForElement("${selector}") timed out after ${maxWaitMs}ms`);
+        return false;
     }
     async findOrCreatePlatformTab(config) {
         try {
@@ -524,7 +589,6 @@ class TheScheduler {
                     for (const domain of config.domainMatch) {
                         if (tabUrl.includes(domain)) {
                             log.info(`[DirectPost] Found existing tab ${tab.id} for ${domain}`);
-                            // Focus it + navigate to ensure we're on the main feed
                             await this.fetchDesktop('/tabs/focus', { id: tab.id });
                             await this.fetchDesktop('/tabs/navigate', { id: tab.id, url: config.url });
                             return tab.id;
@@ -552,6 +616,7 @@ class TheScheduler {
     /**
      * Execute a social post by calling Desktop HTTP endpoints directly.
      * Zero LLM involvement — pure HTTP calls to Desktop control server.
+     * All actions after compose click are scoped to the composer container.
      *
      * Returns true if the post was successfully executed, false otherwise.
      */
@@ -563,7 +628,8 @@ class TheScheduler {
             return false;
         }
         const startMs = Date.now();
-        log.info(`[TheScheduler] Attempting DIRECT POST for task ${task.id} (${platform})`);
+        const ctr = config.composerContainer; // Container for scoped operations
+        log.info(`[TheScheduler] Attempting DIRECT POST for task ${task.id} (${platform}, container=${ctr})`);
         try {
             // Step 1: Find or create platform tab
             const tabId = await this.findOrCreatePlatformTab(config);
@@ -572,30 +638,35 @@ class TheScheduler {
                 return false;
             }
             log.info(`[DirectPost] Using tab ${tabId} for ${platform}`);
-            // Step 2: Wait for page load
+            // Step 2: Wait for page load (poll for body to be ready)
             await this.delay(3000);
-            // Step 3: Click compose button
+            // Step 3: Click compose button (NOT scoped — compose button is in the feed)
             const composeOk = await this.directClick(tabId, config.composeText, config.composeFallbackSelector);
             if (!composeOk) {
                 log.warn('[DirectPost] Compose click FAILED');
                 return false;
             }
             log.info('[DirectPost] Compose click OK');
-            // Step 4: Wait for composer to open
-            await this.delay(1500);
-            // Step 5: Type content
-            const typeOk = await this.directType(tabId, config.textboxSelector, content);
+            // Step 4: Poll for composer container to appear (replaces fixed 1.5s delay)
+            const containerFound = await this.waitForElement(tabId, ctr, 6000);
+            if (!containerFound) {
+                log.warn(`[DirectPost] Composer container "${ctr}" never appeared`);
+                return false;
+            }
+            log.info(`[DirectPost] Composer container found: ${ctr}`);
+            // Step 5: Type content (SCOPED to composer container)
+            const typeOk = await this.directType(tabId, config.textboxSelector, content, ctr);
             if (!typeOk) {
                 log.warn('[DirectPost] Type FAILED');
                 return false;
             }
             log.info(`[DirectPost] Type OK (${content.length} chars)`);
-            // Step 6: Wait for text to render
-            await this.delay(2000);
-            // Step 7: Upload media (if present) — non-fatal if fails
+            // Step 6: Wait for text to render in React
+            await this.delay(1500);
+            // Step 7: Upload media (if present) — click media button first, then upload
             const mediaPath = task.mediaUrls?.[0];
             if (mediaPath) {
-                const uploadOk = await this.directUpload(tabId, mediaPath);
+                const uploadOk = await this.directUpload(tabId, mediaPath, config.mediaButtonText, config.mediaButtonSelector, ctr);
                 if (uploadOk) {
                     log.info(`[DirectPost] Upload OK: ${mediaPath}`);
                 }
@@ -605,13 +676,25 @@ class TheScheduler {
                 // Step 8: Wait for upload preview
                 await this.delay(3000);
             }
-            // Step 9: Click Post button
-            const postOk = await this.directClick(tabId, config.postText, config.postFallbackSelector);
+            // Step 9: Click Post button (SCOPED to composer container)
+            const postOk = await this.directClick(tabId, config.postText, config.postFallbackSelector, ctr);
             if (!postOk) {
                 log.warn('[DirectPost] Post click FAILED');
                 return false;
             }
             log.info('[DirectPost] Post click OK');
+            // Step 10: Verify composer dismissed (post accepted)
+            await this.delay(2000);
+            const composerGone = await this.fetchDesktop('/tabs/execute', {
+                id: tabId,
+                script: `!document.querySelector(${JSON.stringify(ctr)})`,
+            }).catch(() => ({ result: null }));
+            if (composerGone.result === true) {
+                log.info('[DirectPost] Composer dismissed — post accepted');
+            }
+            else {
+                log.warn('[DirectPost] Composer still visible — post may not have submitted');
+            }
             const elapsed = Date.now() - startMs;
             log.info(`[TheScheduler] Task ${task.id} DIRECT POST completed in ${elapsed}ms`);
             return true;

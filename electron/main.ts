@@ -838,7 +838,7 @@ function startControlServer() {
   // Works with contenteditable (LinkedIn, Twitter), inputs, textareas, Shadow DOM, etc.
   server.post('/tabs/type', async (req: Request, res: Response) => {
     try {
-      const { id, selector, text, clearFirst } = req.body
+      const { id, selector, text, clearFirst, container } = req.body
       if (id === undefined || !text) {
         res.status(400).json({ success: false, error: 'id and text are required' })
         return
@@ -850,24 +850,30 @@ function startControlServer() {
         return
       }
 
-      // Step 1: Focus the target element
+      // Step 1: Focus the target element (scoped to container if provided)
+      const containerJs = container ? JSON.stringify(container) : 'null'
+      const selectorJs = selector ? JSON.stringify(selector) : 'null'
       const focusResult = await view.webContents.executeJavaScript(`
         (function() {
-          var el = ${selector ? `document.querySelector('${selector.replace(/'/g, "\\'")}')` : 'null'};
+          var containerSel = ${containerJs};
+          var sel = ${selectorJs};
+          var scope = containerSel ? document.querySelector(containerSel) : document;
+          if (!scope) scope = document;
+          var el = sel ? scope.querySelector(sel) : null;
           if (el) {
             el.scrollIntoView({block: 'center'});
             el.focus();
             el.click();
             return 'focused:' + el.tagName;
           }
-          // Fallback: find contenteditable elements
-          var editables = document.querySelectorAll('[contenteditable="true"]');
+          // Fallback: find contenteditable elements within scope
+          var editables = scope.querySelectorAll('[contenteditable="true"]');
           if (editables.length > 0) {
             var target = editables[editables.length - 1];
             target.scrollIntoView({block: 'center'});
             target.focus();
             target.click();
-            return 'focused:contenteditable';
+            return 'focused:contenteditable(' + editables.length + ')';
           }
           return 'not_found';
         })()
@@ -1038,7 +1044,7 @@ function startControlServer() {
   // ════════════════════════════════════════════════════════════
   server.post('/tabs/click', async (req: Request, res: Response) => {
     try {
-      const { id, selector, text } = req.body
+      const { id, selector, text, container } = req.body
       if (id === undefined || (!selector && !text)) {
         res.status(400).json({ success: false, error: 'click requires either selector or text' })
         return
@@ -1054,6 +1060,9 @@ function startControlServer() {
       await view.webContents.executeJavaScript(DEEP_SEARCH_SCRIPT).catch((e: any) => {
         console.error('[CHROMADON] DEEP_SEARCH_SCRIPT injection failed:', e?.message || e)
       })
+
+      // Optional container scoping — all searches restricted to this element
+      const containerSelector = container ? JSON.stringify(container) : 'null'
 
       // Helper: executeJavaScript with 5s timeout to prevent hanging
       const execWithTimeout = (script: string, label: string) =>
@@ -1073,7 +1082,9 @@ function startControlServer() {
         const result = await execWithTimeout(`
           (function() {
             var sel = ${JSON.stringify(selector)};
-            var el = document.querySelector(sel) || window.deepQuerySelector(sel);
+            var scope = ${containerSelector} ? document.querySelector(${containerSelector}) : null;
+            var root = scope || document;
+            var el = root.querySelector(sel) || window.deepQuerySelector(sel, scope || undefined);
             if (!el) return null;
             el.scrollIntoView({block:'center'});
             var rect = el.getBoundingClientRect();
@@ -1094,7 +1105,8 @@ function startControlServer() {
         const result = await execWithTimeout(`
           (function() {
             if (typeof window.deepFindByText !== 'function') return { error: 'deepFindByText not injected' };
-            var matches = window.deepFindByText(${JSON.stringify(text)});
+            var scope = ${containerSelector} ? document.querySelector(${containerSelector}) : null;
+            var matches = window.deepFindByText(${JSON.stringify(text)}, scope || undefined);
             if (matches.length === 0) return null;
             matches.sort(function(a,b) {
               if (a.exact && !b.exact) return -1;
@@ -1134,9 +1146,11 @@ function startControlServer() {
         if (testIdSelector) {
           const result = await execWithTimeout(`
             (function() {
+              var scope = ${containerSelector} ? document.querySelector(${containerSelector}) : null;
+              var root = scope || document;
               var selectors = ${JSON.stringify(testIdSelector)}.split(', ');
               for (var i = 0; i < selectors.length; i++) {
-                var el = document.querySelector(selectors[i]) || window.deepQuerySelector(selectors[i]);
+                var el = root.querySelector(selectors[i]) || window.deepQuerySelector(selectors[i], scope || undefined);
                 if (el) {
                   el.scrollIntoView({block:'center'});
                   var rect = el.getBoundingClientRect();
@@ -1191,7 +1205,8 @@ function startControlServer() {
               }
               return null;
             }
-            return searchPartial(document);
+            var scope = ${containerSelector} ? document.querySelector(${containerSelector}) : null;
+            return searchPartial(scope || document);
           })()
         `, 'Strategy4:partial_text')
 
@@ -1202,10 +1217,10 @@ function startControlServer() {
         }
       }
 
-      console.log(`[CHROMADON] Click FAILED: "${selector || text}" — all 4 strategies exhausted (css_deep, text_deep, testid, partial_text)`)
+      console.log(`[CHROMADON] Click FAILED: "${selector || text}"${container ? ` within "${container}"` : ''} — all 4 strategies exhausted (css_deep, text_deep, testid, partial_text)`)
       res.status(404).json({
         success: false,
-        error: `Element not found (searched light DOM + shadow DOM): ${text || selector}`,
+        error: `Element not found (searched light DOM + shadow DOM): ${text || selector}${container ? ` within ${container}` : ''}`,
         hint: 'Try using get_interactive_elements to see what elements are actually on the page'
       })
     } catch (error) {

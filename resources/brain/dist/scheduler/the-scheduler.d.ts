@@ -67,13 +67,29 @@ export declare class TheScheduler {
     private coordinateWithMonitor;
     private delay;
     private fetchDesktop;
+    /**
+     * Click by text with optional CSS fallback, scoped to container.
+     * Retries once on failure (2s delay between attempts).
+     */
     private directClick;
+    /**
+     * Type text into element, scoped to container.
+     */
     private directType;
+    /**
+     * Upload file. Optionally click a media button first (within container) to make input[type="file"] appear.
+     */
     private directUpload;
+    /**
+     * Poll for an element to appear in the DOM. Replaces fixed delays.
+     * Returns true if found within maxWaitMs, false otherwise.
+     */
+    private waitForElement;
     private findOrCreatePlatformTab;
     /**
      * Execute a social post by calling Desktop HTTP endpoints directly.
      * Zero LLM involvement — pure HTTP calls to Desktop control server.
+     * All actions after compose click are scoped to the composer container.
      *
      * Returns true if the post was successfully executed, false otherwise.
      */
