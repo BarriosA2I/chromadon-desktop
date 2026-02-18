@@ -208,30 +208,51 @@ function convertGeminiResponseToAnthropic(parts) {
  * function name and arguments. Gemini sometimes emits Python code instead
  * of proper JSON function calls, especially for datetime computations.
  *
+ * Handles truncated messages (no closing paren) and triple-quoted strings.
+ *
  * Example finishMessage:
- *   "from datetime import datetime, timedelta\nnow = datetime.now()\n..."
- *   "print(default_api.schedule_post(platforms=['twitter'], content='Hello'))"
+ *   "print(default_api.schedule_post(platforms=['facebook'], content='''We're thrilled..."
  */
 function parseMalformedFunctionCall(finishMessage) {
     if (!finishMessage)
         return null;
     try {
-        // Extract function call: default_api.FUNC_NAME(ARGS)
-        const callMatch = finishMessage.match(/default_api\.(\w+)\(([^)]*)\)/s);
+        // Extract function call: default_api.FUNC_NAME(ARGS...)
+        // The closing paren may be missing if finishMessage was truncated.
+        // Try with closing paren first, then fall back to end-of-string.
+        let callMatch = finishMessage.match(/default_api\.(\w+)\((.+)\)\s*\)?/s);
+        if (!callMatch) {
+            // Truncated — no closing paren, grab everything after the opening paren
+            callMatch = finishMessage.match(/default_api\.(\w+)\((.+)/s);
+        }
         if (!callMatch)
             return null;
         const funcName = callMatch[1];
         const argsStr = callMatch[2];
         // Parse Python-style keyword arguments into a JS object
         const args = {};
-        // Match keyword=value pairs (handles strings, lists, numbers, variables)
-        const kwargPattern = /(\w+)\s*=\s*(\[.*?\]|'[^']*'|"[^"]*"|\w+)/g;
+        // Match keyword=value pairs:
+        //   - Lists: platforms=['twitter', 'linkedin']
+        //   - Triple-quoted strings: content='''Hello world'''
+        //   - Single/double quoted strings: content='Hello'
+        //   - Numbers: delay=30
+        //   - Variable references: scheduled_time=future_time
+        const kwargPattern = /(\w+)\s*=\s*('''[\s\S]*?(?:'''|$)|"""[\s\S]*?(?:"""|$)|\[.*?\]|'[^']*'|"[^"]*"|\w+)/g;
         let match;
         while ((match = kwargPattern.exec(argsStr)) !== null) {
             const key = match[1];
             let value = match[2];
             // Convert Python values to JS
-            if (value.startsWith('[') && value.endsWith(']')) {
+            if (value.startsWith("'''") || value.startsWith('"""')) {
+                // Triple-quoted string (may be truncated — strip quotes from both ends if present)
+                const quote = value.substring(0, 3);
+                value = value.substring(3);
+                if (value.endsWith(quote)) {
+                    value = value.slice(0, -3);
+                }
+                // value is now the raw string content (possibly truncated)
+            }
+            else if (value.startsWith('[') && value.endsWith(']')) {
                 // Python list → JS array: ['twitter', 'linkedin'] → ["twitter", "linkedin"]
                 const items = value.slice(1, -1).split(',').map((s) => {
                     s = s.trim();
@@ -276,7 +297,9 @@ function parseMalformedFunctionCall(finishMessage) {
             }
             args[key] = value;
         }
-        // Validate we got something useful
+        // Validate we got something useful — at minimum need the function name
+        // and at least one arg (even if content was truncated, platforms alone is enough
+        // for schedule_post — the executor generates content via LLM if missing)
         if (!funcName || Object.keys(args).length === 0)
             return null;
         return { name: funcName, args };

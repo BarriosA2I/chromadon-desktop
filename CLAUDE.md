@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.21 — 2026-02-18)
+## Recent Changes (v1.30.22 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.22 — Gemini MALFORMED_FUNCTION_CALL: outputting Python code instead of proper function calls for scheduling. CortexRouter scheduling route now uses `forceToolCall: true` + `allowedToolNames` (7 scheduler tools only), preventing Gemini from emitting Python code. Improved `parseMalformedFunctionCall()` recovery for truncated messages. Fixed contradictory media upload instructions in system prompt (now text-first, no button clicking) | `resources/brain/dist/` |
+
+## Changes (v1.30.21 — 2026-02-18)
 
 | Change | File |
 |--------|------|

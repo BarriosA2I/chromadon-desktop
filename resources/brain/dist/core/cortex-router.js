@@ -26,6 +26,7 @@ const uuid_1 = require("uuid");
 const logger_1 = require("../lib/logger");
 const obs_tools_1 = require("../obs/obs-tools");
 const youtube_studio_tools_1 = require("../youtube/youtube-studio-tools");
+const scheduler_tools_1 = require("../scheduler/scheduler-tools");
 const log = (0, logger_1.createChildLogger)('orchestrator');
 // ============================================================================
 // URL RESOLUTION
@@ -167,8 +168,12 @@ class CortexRouter {
                 priority: 55,
                 match: (msg) => this.isSchedulingIntent(msg),
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    log.info('[CortexRouter] Scheduling intent → monolithic orchestrator');
-                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+                    log.info('[CortexRouter] Scheduling intent → monolithic orchestrator (forceToolCall + scheduler tools)');
+                    const schedulerToolNames = scheduler_tools_1.SCHEDULER_TOOLS.map(t => t.name);
+                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext, {
+                        forceToolCall: true,
+                        allowedToolNames: schedulerToolNames,
+                    });
                 },
             },
             {
