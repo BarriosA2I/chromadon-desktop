@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.31.0 — 2026-02-18)
+## Recent Changes (v1.31.1 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.16.1 — AI Assistant reported wrong connected platforms. Onboarding system prompt no longer says "Connected platforms" (stale file data), now says "Platforms user mentioned" with pointer to live auth. `onboarding_get_state` tool now includes `liveAuth` array from Desktop `/sessions` endpoint | `resources/brain/dist/` |
+
+## Changes (v1.31.0 — 2026-02-18)
 
 | Change | File |
 |--------|------|

@@ -6,5 +6,5 @@
  * @author Barrios A2I
  */
 import { OnboardingStatePersistence } from './onboarding-state';
-export declare function createOnboardingExecutor(onboardingState: OnboardingStatePersistence): (toolName: string, input: Record<string, unknown>) => Promise<string>;
+export declare function createOnboardingExecutor(onboardingState: OnboardingStatePersistence, desktopUrl?: string): (toolName: string, input: Record<string, unknown>) => Promise<string>;
 //# sourceMappingURL=onboarding-executor.d.ts.map

@@ -4595,7 +4595,7 @@ async function startServer() {
             let schedulerExec = null;
             // v1.13.0 — Client Experience Engine executors
             const activityExec = activityLog ? (0, activity_1.createActivityExecutor)(activityLog) : null;
-            const onboardingExec = onboardingState ? (0, onboarding_1.createOnboardingExecutor)(onboardingState) : null;
+            const onboardingExec = onboardingState ? (0, onboarding_1.createOnboardingExecutor)(onboardingState, CHROMADON_DESKTOP_URL) : null;
             let templateExec = null; // Late-bound after TheScheduler
             const proofExec = (proofGenerator && activityLog) ? (0, proof_1.createProofExecutor)(proofGenerator, activityLog) : null;
             combinedExecutor = async (toolName, input) => {

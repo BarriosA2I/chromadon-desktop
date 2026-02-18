@@ -70,7 +70,7 @@ class OnboardingStatePersistence {
         let ctx = `ONBOARDING (${completed.length}/${onboarding_types_1.STEP_ORDER.length} complete):`;
         ctx += `\nRemaining: ${remaining.map(id => onboarding_types_1.STEP_LABELS[id]).join(', ')}`;
         if (platforms.length > 0) {
-            ctx += `\nConnected platforms: ${platforms.join(', ')}`;
+            ctx += `\nPlatforms user mentioned: ${platforms.join(', ')} (see LINKED SOCIAL MEDIA PLATFORMS section for actual auth status)`;
         }
         if (isFirstInteraction) {
             ctx += '\n\nFIRST INTERACTION — GREET WARMLY:';

@@ -8,13 +8,27 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createOnboardingExecutor = void 0;
-function createOnboardingExecutor(onboardingState) {
+function createOnboardingExecutor(onboardingState, desktopUrl) {
     return async (toolName, input) => {
         try {
             switch (toolName) {
                 case 'onboarding_get_state': {
                     const state = onboardingState.load();
-                    return JSON.stringify(state);
+                    // Merge live platform auth from Desktop /sessions
+                    let liveAuth = [];
+                    if (desktopUrl) {
+                        try {
+                            const resp = await fetch(`${desktopUrl}/sessions`, { signal: AbortSignal.timeout(2000) });
+                            const data = await resp.json();
+                            liveAuth = (data.sessions || []).map((s) => ({
+                                platform: s.platform,
+                                isAuthenticated: !!s.isAuthenticated,
+                                accountName: s.accountName,
+                            }));
+                        }
+                        catch { /* Desktop not available */ }
+                    }
+                    return JSON.stringify({ ...state, liveAuth });
                 }
                 case 'onboarding_complete_step': {
                     const stepId = input.step_id;
