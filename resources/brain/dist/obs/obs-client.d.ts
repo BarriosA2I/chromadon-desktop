@@ -69,10 +69,10 @@ export declare class OBSClient {
     }>;
     getStatus(): Promise<OBSStatus>;
     /**
-     * Known OBS built-in service names that require rtmp_common.
-     * Using rtmp_common lets OBS handle RTMPS and correct server URLs automatically.
+     * Services that require OBS built-in rtmp_common (handles RTMPS internally).
+     * rtmp_custom does NOT support rtmps:// reliably — use rtmp_common for TLS platforms.
      */
-    private static readonly KNOWN_OBS_SERVICES;
+    private static readonly RTMP_COMMON_SERVICES;
     configureStream(service: string, server: string, key: string): Promise<{
         success: boolean;
         message: string;

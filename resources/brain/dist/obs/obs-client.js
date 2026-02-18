@@ -383,49 +383,47 @@ class OBSClient {
     }
     // ─── Stream Configuration ────────────────────────────────
     /**
-     * Known OBS built-in service names that require rtmp_common.
-     * Using rtmp_common lets OBS handle RTMPS and correct server URLs automatically.
+     * Services that require OBS built-in rtmp_common (handles RTMPS internally).
+     * rtmp_custom does NOT support rtmps:// reliably — use rtmp_common for TLS platforms.
      */
-    static KNOWN_OBS_SERVICES = {
+    static RTMP_COMMON_SERVICES = {
         'facebook live': 'Facebook Live',
-        'youtube - rtmps': 'YouTube - RTMPS',
-        'twitch': 'Twitch',
     };
     async configureStream(service, server, key) {
         return this.serialize(async () => {
             this.ensureConnected();
             try {
-                const knownService = OBSClient.KNOWN_OBS_SERVICES[service.toLowerCase()];
-                if (knownService) {
-                    // Use OBS built-in service — handles RTMPS and correct server URLs
+                const commonService = OBSClient.RTMP_COMMON_SERVICES[service.toLowerCase()];
+                if (commonService) {
+                    // Use OBS built-in service for platforms that need RTMPS
+                    // rtmp_common handles TLS internally — rtmp_custom does NOT support rtmps://
                     await this.obs.call('SetStreamServiceSettings', {
                         streamServiceType: 'rtmp_common',
                         streamServiceSettings: {
-                            service: knownService,
-                            key,
-                        },
-                    });
-                    log.info({ service: knownService }, 'Stream configured via OBS built-in service (rtmp_common)');
-                    return {
-                        success: true,
-                        message: `Stream configured: service=${knownService} (OBS built-in, RTMPS enabled)`,
-                    };
-                }
-                else {
-                    // Custom RTMP/RTMPS service
-                    await this.obs.call('SetStreamServiceSettings', {
-                        streamServiceType: 'rtmp_custom',
-                        streamServiceSettings: {
+                            service: commonService,
                             server,
                             key,
                         },
                     });
-                    log.info({ service, server: server.replace(/\/\/.+@/, '//***@') }, 'Stream service configured (rtmp_custom)');
+                    log.info({ service: commonService }, 'Stream configured via rtmp_common (RTMPS)');
                     return {
                         success: true,
-                        message: `Stream configured: service=${service}, server=${server}`,
+                        message: `Stream configured: ${commonService} (RTMPS enabled)`,
                     };
                 }
+                // For all other services, use rtmp_custom with the provided server URL
+                await this.obs.call('SetStreamServiceSettings', {
+                    streamServiceType: 'rtmp_custom',
+                    streamServiceSettings: {
+                        server,
+                        key,
+                    },
+                });
+                log.info({ service, server: server.replace(/\/\/.+@/, '//***@') }, 'Stream service configured');
+                return {
+                    success: true,
+                    message: `Stream configured: ${service} → ${server}`,
+                };
             }
             catch (err) {
                 const message = err instanceof Error ? err.message : String(err);

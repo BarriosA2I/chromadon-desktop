@@ -7,7 +7,19 @@
 
 ---
 
-## Recent Changes (v1.30.7 — 2026-02-17)
+## Recent Changes (v1.30.9 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.9 — "could not access the specified channel or stream key" on Facebook Live. `configureStream()` dropped `server` param for `rtmp_common`, causing OBS to use wrong Facebook ingest server. Now passes server URL so OBS uses the correct endpoint matching the stream key | `resources/brain/dist/` |
+
+## Changes (v1.30.8 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.8 — OBS Facebook Live streaming: `rtmp_custom` cannot do RTMPS (TLS fails silently). Now uses `rtmp_common` for Facebook Live only (OBS handles RTMPS internally), `rtmp_custom` for everything else. Confirmed working: Facebook Live Producer shows green checkmark on "Connect video source" | `resources/brain/dist/` |
+
+## Changes (v1.30.7 — 2026-02-17)
 
 | Change | File |
 |--------|------|
