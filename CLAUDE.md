@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.15 — 2026-02-18)
+## Recent Changes (v1.30.16 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.16 — Scheduled posts STILL not typing text. Step 6 was too vague for FAST-tier Gemini ("Click and type" instead of "Call type_text with selector=... and text=..."). Now all posting steps explicitly name tools + params with inline content. Added tool call logging to scheduler for debugging | `resources/brain/dist/` |
+
+## Changes (v1.30.15 — 2026-02-18)
 
 | Change | File |
 |--------|------|

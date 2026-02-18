@@ -37,6 +37,9 @@ class CollectorWriter {
         else if (event === 'tool_result') {
             this.toolResultCount++;
         }
+        else if (event === 'tool_executing' && data.name) {
+            log.info({ tool: data.name, input: JSON.stringify(data.input || {}).slice(0, 300) }, `[TheScheduler] Tool call: ${data.name}`);
+        }
     }
     close() { this.closed = true; }
     isClosed() { return this.closed; }
@@ -227,6 +230,7 @@ class TheScheduler {
                 if (postContent && postContent.length > 10) {
                     log.info(`[TheScheduler] Built browser instruction with ${postContent.length} chars of content`);
                     task.instruction = this.buildPostingInstruction(task, postContent);
+                    log.debug({ instruction: task.instruction.slice(0, 500) }, '[TheScheduler] Final instruction');
                 }
                 else {
                     log.warn(`[TheScheduler] Task ${task.id} — no content available, proceeding with original instruction`);
@@ -523,21 +527,25 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
     buildPostingInstruction(task, content) {
         const platform = task.platforms?.[0] || 'LinkedIn';
         const mediaPath = task.mediaUrls?.[0];
-        let instruction = `Post the following content to ${platform}:\n\n${content}\n\nSteps:\n`;
-        instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise navigate to ${platform}.\n`;
+        // Escape content for embedding inline in tool call instruction
+        const safeContent = content.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        let instruction = `Steps:\n`;
+        instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise call navigate to go to ${platform}.\n`;
         instruction += `2. Click the compose/create post button.\n`;
         if (mediaPath) {
             instruction += `3. Click the photo/media/image upload button in the compose area.\n`;
             instruction += `4. Call upload_file with filePath="${mediaPath}".\n`;
             instruction += `5. Call wait with seconds=3 to let the upload preview render.\n`;
-            instruction += `6. Click in the text input area and type the EXACT post content shown above. Do NOT modify it.\n`;
-            instruction += `7. Click the Post/Share button to publish.\n`;
+            instruction += `6. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
+            instruction += `7. Call wait with seconds=2 to let the text render.\n`;
+            instruction += `8. Click the Post/Share button to publish.\n`;
         }
         else {
-            instruction += `3. Type the EXACT post content shown above into the compose text area.\n`;
-            instruction += `4. Click the Post/Share button to publish.\n`;
+            instruction += `3. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
+            instruction += `4. Call wait with seconds=2 to let the text render.\n`;
+            instruction += `5. Click the Post/Share button to publish.\n`;
         }
-        instruction += `\nCRITICAL: You MUST type the full post text into the compose box. The post is NOT complete without text content.`;
+        instruction += `\nCRITICAL: Step 6 MUST call the type_text tool. Do NOT skip it. The post content MUST appear in the text box before clicking Post.`;
         return instruction;
     }
     // ===========================================================================
