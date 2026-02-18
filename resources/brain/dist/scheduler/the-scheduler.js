@@ -28,6 +28,7 @@ const PLATFORM_POST_CONFIGS = {
         postText: 'Post',
         postFallbackSelector: 'div[aria-label="Post"]',
         mediaButtonText: 'Photo/video',
+        nextButtonText: 'Next',
     },
     linkedin: {
         url: 'https://www.linkedin.com',
@@ -660,7 +661,22 @@ class TheScheduler {
             log.info(`[DirectPost] Composer container found: ${ctr}`);
             // Step 4.5: Wait for dialog content to render (animation + React hydration)
             await this.delay(1000);
-            // Step 5: Type content (SCOPED to composer container) — retry once on failure
+            // Step 5: Upload media FIRST (if present) — must be before text for Facebook
+            // Uploading first ensures image + text stay in the same dialog.
+            // Container scoping (v1.15.24+) prevents DOM changes from breaking textbox targeting.
+            const mediaPath = task.mediaUrls?.[0];
+            if (mediaPath) {
+                const uploadOk = await this.directUpload(tabId, mediaPath, config.mediaButtonText, config.mediaButtonSelector, ctr);
+                if (uploadOk) {
+                    log.info(`[DirectPost] Upload OK: ${mediaPath}`);
+                }
+                else {
+                    log.warn(`[DirectPost] Upload failed (non-fatal): ${mediaPath}`);
+                }
+                // Wait for upload preview to render
+                await this.delay(3000);
+            }
+            // Step 6: Type content (SCOPED to composer container) — retry once on failure
             let typeOk = await this.directType(tabId, config.textboxSelector, content, ctr);
             if (!typeOk) {
                 log.warn('[DirectPost] Type attempt 1 failed — retrying after 1s');
@@ -672,20 +688,18 @@ class TheScheduler {
                 throw new Error('type_failed');
             }
             log.info(`[DirectPost] Type OK (${content.length} chars)`);
-            // Step 6: Wait for text to render in React
+            // Step 7: Wait for text to render in React
             await this.delay(1500);
-            // Step 7: Upload media (if present) — click media button first, then upload
-            const mediaPath = task.mediaUrls?.[0];
-            if (mediaPath) {
-                const uploadOk = await this.directUpload(tabId, mediaPath, config.mediaButtonText, config.mediaButtonSelector, ctr);
-                if (uploadOk) {
-                    log.info(`[DirectPost] Upload OK: ${mediaPath}`);
+            // Step 8: Handle "Next" button (Facebook shows Next instead of Post when image attached)
+            if (config.nextButtonText && mediaPath) {
+                const nextOk = await this.directClick(tabId, config.nextButtonText, undefined, ctr);
+                if (nextOk) {
+                    log.info(`[DirectPost] Next button clicked — waiting for Post screen`);
+                    await this.delay(2000);
                 }
                 else {
-                    log.warn(`[DirectPost] Upload failed (non-fatal): ${mediaPath}`);
+                    log.info(`[DirectPost] No Next button found — trying Post directly`);
                 }
-                // Step 8: Wait for upload preview
-                await this.delay(3000);
             }
             // Step 9: Click Post button (SCOPED to composer container)
             const postOk = await this.directClick(tabId, config.postText, config.postFallbackSelector, ctr);
@@ -881,22 +895,24 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
         instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise call navigate to go to ${platform}.\n`;
         instruction += `2. Click the compose/create post button (e.g. "What's on your mind" on Facebook, "Start a post" on LinkedIn). Wait for the composer dialog to appear.\n`;
         if (mediaPath) {
-            // Type text FIRST into clean composer, THEN upload image.
-            // Uploading first changes the DOM and causes text to go into a separate box.
-            // upload_file finds input[type="file"] via CDP and sets files programmatically — no clicking needed.
-            instruction += `3. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
-            instruction += `4. Call wait with seconds=2 to let the text render.\n`;
-            instruction += `5. Call upload_file with filePath="${mediaPath}" to attach the image. Do NOT click any upload button — upload_file handles it programmatically.\n`;
-            instruction += `6. Call wait with seconds=3 to let the upload preview render.\n`;
-            instruction += `7. Click the Post/Share button to publish.\n`;
+            // Upload image FIRST, then type text. Image must be in the dialog before text to avoid
+            // separate dialog/DOM issues. Container scoping (v1.15.24+) handles DOM changes.
+            instruction += `3. Call upload_file with filePath="${mediaPath}" to attach the image. Do NOT click any upload button — upload_file handles it programmatically.\n`;
+            instruction += `4. Call wait with seconds=3 to let the upload preview render.\n`;
+            instruction += `5. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
+            instruction += `6. Call wait with seconds=2 to let the text render.\n`;
+            instruction += `7. If you see a "Next" button in the dialog, click it and wait 2 seconds. Then click the "Post" button.\n`;
+            instruction += `8. If there is no "Next" button, click the Post/Share button directly to publish.\n`;
         }
         else {
             instruction += `3. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
             instruction += `4. Call wait with seconds=2 to let the text render.\n`;
             instruction += `5. Click the Post/Share button to publish.\n`;
         }
-        instruction += `\nCRITICAL: Step 3 MUST call the type_text tool. Do NOT skip it. The post content MUST appear in the text box before uploading media.\nDo NOT click any photo/media/upload button or input[type="file"]. The upload_file tool handles file attachment programmatically.`;
-        instruction += `\nIMPORTANT: After the composer dialog opens, ALL actions (type, click Post) must target elements INSIDE the dialog. Do NOT click any button in the news feed — only interact with the composer dialog that appeared.`;
+        instruction += `\nCRITICAL: The post content MUST appear in the text box. Do NOT skip the type_text call.`;
+        instruction += `\nDo NOT click any photo/media/upload button or input[type="file"]. The upload_file tool handles file attachment programmatically.`;
+        instruction += `\nIMPORTANT: After the composer dialog opens, ALL actions (type, click Post, click Next) must target elements INSIDE the dialog. Do NOT click any button in the news feed.`;
+        instruction += `\nFACEBOOK: If you see TWO dialogs, close both and start over. After uploading an image, Facebook may show "Next" — click it before "Post".`;
         return instruction;
     }
     // ===========================================================================

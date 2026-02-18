@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.31.2 — 2026-02-18)
+## Recent Changes (v1.31.3 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.16.3 — Facebook image posts failed: image/text in separate dialogs, "Next" button never clicked. DirectPost now uploads media FIRST then types text (reversed from text-first). Facebook config has `nextButtonText: 'Next'` — clicked after typing when image is attached, before clicking "Post". LLM fallback instruction updated with upload-first flow, Next button handling, and dialog scoping | `resources/brain/dist/` |
+
+## Changes (v1.31.2 — 2026-02-18)
 
 | Change | File |
 |--------|------|
