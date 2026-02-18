@@ -27,6 +27,9 @@ class CollectorWriter {
     closed = false;
     errors = [];
     toolResultCount = 0;
+    lastToolSig = '';
+    repeatCount = 0;
+    stuckDetected = false;
     writeEvent(event, data) {
         if (event === 'text_delta' && data.text) {
             this.chunks.push(data.text);
@@ -38,6 +41,19 @@ class CollectorWriter {
             this.toolResultCount++;
         }
         else if (event === 'tool_executing' && data.name) {
+            // Stuck-loop detection: same tool+input 3+ times in a row
+            const sig = `${data.name}:${JSON.stringify(data.input || {})}`;
+            if (sig === this.lastToolSig) {
+                this.repeatCount++;
+                if (this.repeatCount >= 3) {
+                    this.stuckDetected = true;
+                    log.warn({ tool: data.name, repeats: this.repeatCount }, '[TheScheduler] STUCK: same tool call repeated 3+ times');
+                }
+            }
+            else {
+                this.lastToolSig = sig;
+                this.repeatCount = 1;
+            }
             log.info({ tool: data.name, input: JSON.stringify(data.input || {}).slice(0, 300) }, `[TheScheduler] Tool call: ${data.name}`);
         }
     }
@@ -533,11 +549,19 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
         instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise call navigate to go to ${platform}.\n`;
         instruction += `2. Click the compose/create post button.\n`;
         if (mediaPath) {
+            // Platform-specific media button text (vague instructions cause loops)
+            const mediaButtonByPlatform = {
+                'Facebook': 'Photo/video',
+                'LinkedIn': 'Add a photo',
+                'Twitter': 'Media',
+                'Instagram': 'Photo',
+            };
+            const mediaButtonText = mediaButtonByPlatform[platform] || 'Photo';
             // Type text FIRST into clean composer, THEN upload image.
             // Uploading first changes the DOM and causes text to go into a separate box.
             instruction += `3. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
             instruction += `4. Call wait with seconds=2 to let the text render.\n`;
-            instruction += `5. Click the photo/media/image upload button in the compose area.\n`;
+            instruction += `5. Call click with text="${mediaButtonText}" to open the media upload dialog.\n`;
             instruction += `6. Call upload_file with filePath="${mediaPath}".\n`;
             instruction += `7. Call wait with seconds=3 to let the upload preview render.\n`;
             instruction += `8. Click the Post/Share button to publish.\n`;

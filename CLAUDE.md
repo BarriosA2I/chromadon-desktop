@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.18 — 2026-02-18)
+## Recent Changes (v1.30.19 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.19 — LinkedIn scheduled posts stuck in loop clicking non-existent "Add media" 13+ times. buildPostingInstruction now uses platform-specific media button text (LinkedIn="Add a photo", Facebook="Photo/video"). Added stuck-loop detection in scheduler (warns on 3+ identical tool calls). Updated SkillMemory LinkedIn rule to "Type text FIRST" | `resources/brain/dist/` |
+
+## Changes (v1.30.18 — 2026-02-18)
 
 | Change | File |
 |--------|------|
