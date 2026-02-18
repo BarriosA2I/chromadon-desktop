@@ -1625,7 +1625,18 @@ function startControlServer() {
   })
 
   // Upload file to a file input on the page using CDP DOM.setFileInputFiles
+  // with Page.setInterceptFileChooserDialog to prevent native file dialogs
   server.post('/tabs/upload', async (req: Request, res: Response) => {
+    let debuggerAttached = false
+    let view: any = null
+    const cleanup = async () => {
+      if (view && debuggerAttached) {
+        try { await view.webContents.debugger.sendCommand('Page.setInterceptFileChooserDialog', { enabled: false }) } catch (e) {}
+        try { view.webContents.debugger.detach() } catch (e) {}
+        debuggerAttached = false
+      }
+    }
+
     try {
       const { id, selector, filePath } = req.body
       if (id === undefined || !filePath) {
@@ -1639,62 +1650,91 @@ function startControlServer() {
         return
       }
 
-      const view = browserViewManager.getView(id)
+      view = browserViewManager.getView(id)
       if (!view) {
         res.status(404).json({ success: false, error: `Tab ${id} not found` })
         return
       }
 
-      // If a selector is provided that's not a file input, click it first to reveal the file input
-      if (selector && !selector.includes('type="file"') && !selector.includes("type='file'")) {
+      // Attach CDP debugger
+      try { view.webContents.debugger.attach('1.3') } catch (e) { /* already attached */ }
+      debuggerAttached = true
+
+      // Intercept file dialogs so they never show to the user
+      await view.webContents.debugger.sendCommand('Page.setInterceptFileChooserDialog', { enabled: true })
+
+      // Listen for file chooser events (captures backendNodeId from intercepted dialog)
+      let fileChooserBackendNodeId: number | null = null
+      const onMessage = (_event: any, method: string, params: any) => {
+        if (method === 'Page.fileChooserOpened') {
+          fileChooserBackendNodeId = params.backendNodeId
+          console.log(`[CHROMADON] File chooser intercepted (backendNodeId: ${params.backendNodeId})`)
+        }
+      }
+      view.webContents.debugger.on('message', onMessage)
+
+      // If selector is NOT a file input, click it to trigger the (now-intercepted) file chooser
+      const isFileInputSelector = selector && (selector.includes('type="file"') || selector.includes("type='file'"))
+      if (selector && !isFileInputSelector) {
         await view.webContents.executeJavaScript(`
           (function() {
-            var el = document.querySelector('${selector.replace(/'/g, "\\'")}');
-            if (el) { el.click(); return 'clicked'; }
+            var el = document.querySelector(${JSON.stringify(selector)});
+            if (el) { el.scrollIntoView({block:'center'}); el.click(); return 'clicked'; }
             return 'not_found';
           })()
         `)
-        // Wait for file input to appear
-        await new Promise(r => setTimeout(r, 500))
+        // Wait for file chooser interception event or file input to appear
+        await new Promise(r => setTimeout(r, 1000))
       }
 
-      // Attach CDP debugger to the webContents
-      try {
-        view.webContents.debugger.attach('1.3')
-      } catch (e) {
-        // Already attached, that's fine
-      }
-
-      // Find the file input element
-      const fileInputSelector = selector && (selector.includes('type="file"') || selector.includes("type='file'"))
-        ? selector
-        : 'input[type="file"]'
-
+      // Find file input in DOM
+      const fileInputSelector = isFileInputSelector ? selector : 'input[type="file"]'
       const { root } = await view.webContents.debugger.sendCommand('DOM.getDocument', {})
       const { nodeId } = await view.webContents.debugger.sendCommand('DOM.querySelector', {
         nodeId: root.nodeId,
         selector: fileInputSelector,
       })
 
-      if (!nodeId) {
-        view.webContents.debugger.detach()
+      // Set file using backendNodeId from intercepted dialog OR nodeId from DOM query
+      if (fileChooserBackendNodeId) {
+        await view.webContents.debugger.sendCommand('DOM.setFileInputFiles', {
+          backendNodeId: fileChooserBackendNodeId,
+          files: [filePath],
+        })
+        console.log(`[CHROMADON] File set via intercepted file chooser`)
+      } else if (nodeId) {
+        await view.webContents.debugger.sendCommand('DOM.setFileInputFiles', {
+          nodeId,
+          files: [filePath],
+        })
+        console.log(`[CHROMADON] File set via DOM querySelector`)
+      } else {
+        view.webContents.debugger.removeListener('message', onMessage)
+        await cleanup()
         res.json({ success: false, error: `No file input found with selector: ${fileInputSelector}` })
         return
       }
 
-      // Set the file on the input
-      await view.webContents.debugger.sendCommand('DOM.setFileInputFiles', {
-        nodeId,
-        files: [filePath],
-      })
+      // Dispatch change + input events for React-based sites (they use synthetic events)
+      await view.webContents.executeJavaScript(`
+        (function() {
+          var fi = document.querySelector('input[type="file"]');
+          if (fi) {
+            fi.dispatchEvent(new Event('change', { bubbles: true }));
+            fi.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        })()
+      `)
 
-      view.webContents.debugger.detach()
+      // Clean up
+      view.webContents.debugger.removeListener('message', onMessage)
+      await cleanup()
 
       const fileName = path.basename(filePath)
       console.log(`[CHROMADON] Uploaded file: ${fileName} to tab ${id}`)
       res.json({ success: true, result: `Uploaded ${fileName} to file input` })
     } catch (error) {
-      try { browserViewManager.getView(req.body.id)?.webContents.debugger.detach() } catch (e) {}
+      await cleanup()
       res.status(500).json({ success: false, error: (error as Error).message })
     }
   })

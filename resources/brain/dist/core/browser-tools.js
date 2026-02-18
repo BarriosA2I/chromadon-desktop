@@ -288,11 +288,11 @@ exports.BROWSER_TOOLS = [
     },
     {
         name: 'upload_file',
-        description: 'Upload a file to a file input. Provide absolute filePath.',
+        description: 'Upload a file to a file input. Provide absolute filePath. The selector can be either the file input itself OR a button that reveals it (e.g. "Add a photo" button) — the handler clicks it with dialog interception and sets files programmatically.',
         input_schema: {
             type: 'object',
             properties: {
-                selector: { type: 'string', description: 'CSS selector for the file input element (e.g. input[type="file"]). If omitted, finds the first file input on the page.' },
+                selector: { type: 'string', description: 'CSS selector for EITHER the file input OR the upload button that reveals it (e.g. button[aria-label="Add a photo"]). If omitted, finds the first input[type="file"] on the page.' },
                 filePath: { type: 'string', description: 'Absolute path to the file to upload (e.g. C:\\Users\\gary\\images\\post.jpg)' },
             },
             required: ['filePath'],

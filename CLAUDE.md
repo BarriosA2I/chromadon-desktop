@@ -21,7 +21,14 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.19 — 2026-02-18)
+## Recent Changes (v1.30.20 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: upload_file opened native Windows file dialog that blocked LinkedIn Post button. `/tabs/upload` handler now uses CDP `Page.setInterceptFileChooserDialog` to prevent native dialogs. Clicks upload button internally with interception, then sets files via `DOM.setFileInputFiles`. Dispatches change/input events for React sites | `electron/main.ts` |
+| Fixed: Brain v1.15.20 — Merged separate click+upload_file steps in scheduler into single upload_file call with platform-specific CSS selector. No more native dialog from separate click | `resources/brain/dist/` |
+
+## Changes (v1.30.19 — 2026-02-18)
 
 | Change | File |
 |--------|------|
