@@ -72,6 +72,8 @@ class AgenticOrchestrator {
     hasAnthropicKey;
     anthropicDead = false; // Set true when Anthropic returns billing/auth errors — prevents futile bounce loops
     anthropicDeadSince = 0; // Timestamp when anthropicDead was set — enables cooldown-based retry
+    lastGeminiCallMs = 0; // Timestamp of last Gemini API call — enables burst prevention
+    static GEMINI_MIN_SPACING_MS = 2000; // 2s minimum between Gemini API calls
     _budgetMonitor = null;
     constructor(apiKey, toolExecutor, config, additionalTools, additionalExecutor, getSkillsForPrompt, getClientKnowledge, getLinkedPlatforms, getOnboardingContext) {
         this.hasAnthropicKey = apiKey !== 'gemini-only-no-anthropic-fallback';
@@ -193,6 +195,7 @@ class AgenticOrchestrator {
         // 4. Agentic loop
         let loopCount = 0;
         let transientRetryCount = 0; // Independent counter for network/timeout retries (resets on success)
+        let gemini429RetryCount = 0; // Retries for Gemini 429 when Anthropic is dead (backoff: 5s, 10s)
         let overloadedRetryCount = 0; // Capped retries for API overloaded errors
         let rateLimitRetryCount = 0; // Capped retries for 429 rate limits
         let currentModel = this.config.model; // Local model — allows fallback without affecting other sessions
@@ -250,6 +253,13 @@ class AgenticOrchestrator {
                         ? (0, orchestrator_system_prompt_1.buildCompactSystemPrompt)(linkedPlatforms || undefined)
                         : finalSystemPrompt;
                 let stream;
+                // Minimum spacing between Gemini API calls to prevent burst 429s
+                if (this.useGemini && this.lastGeminiCallMs > 0) {
+                    const elapsed = Date.now() - this.lastGeminiCallMs;
+                    if (elapsed < AgenticOrchestrator.GEMINI_MIN_SPACING_MS) {
+                        await new Promise(r => setTimeout(r, AgenticOrchestrator.GEMINI_MIN_SPACING_MS - elapsed));
+                    }
+                }
                 if (this.useGemini && this.geminiProvider) {
                     try {
                         // Force function calling (mode: "ANY") ONLY on the first loop iteration
@@ -276,6 +286,7 @@ class AgenticOrchestrator {
                             temperature: 0,
                             toolConfig: geminiToolConfig,
                         });
+                        this.lastGeminiCallMs = Date.now();
                         usingGemini = true;
                         if (loopCount === 1) {
                             log.info(`[PROVIDER] Gemini ${retryModel} | prompt: ${effectiveSystemPrompt.length < 2000 ? 'compact' : 'full'}${canForceAny ? ` | toolConfig: ANY (${options.allowedToolNames.length} tools)` : ''}`);
@@ -720,13 +731,15 @@ class AgenticOrchestrator {
                         break;
                     // Push tool results as user message
                     session.messages.push({ role: 'user', content: toolResults });
-                    // Reset transient retry counter on successful tool execution
+                    // Reset retry counters on successful tool execution
                     transientRetryCount = 0;
+                    gemini429RetryCount = 0;
                     // Continue the loop - Claude will process tool results
                     continue;
                 }
                 // 9. stop_reason is "end_turn" or "max_tokens"
                 transientRetryCount = 0; // Reset on success
+                gemini429RetryCount = 0;
                 // Auto-continue logic — conditional on active workflow
                 const responseText = finalMessage.content
                     .filter((b) => b.type === 'text')
@@ -857,15 +870,24 @@ class AgenticOrchestrator {
                         continue;
                     }
                     else {
-                        // No viable Anthropic fallback — retry Gemini once for non-429 errors before giving up
+                        // No viable Anthropic fallback — retry Gemini with backoff before giving up
                         const isGemini429 = error?.status === 429 || (errorMsg.includes('429') && errorMsg.includes('Too Many Requests'));
+                        // Gemini 429: exponential backoff retry (5s, 10s) to wait out rate limit window
+                        if (isGemini429 && gemini429RetryCount < 2) {
+                            gemini429RetryCount++;
+                            const backoffMs = gemini429RetryCount * 5000;
+                            log.warn(`[PROVIDER] Gemini 429, no Anthropic fallback — backoff retry in ${backoffMs}ms (attempt ${gemini429RetryCount}/2)`);
+                            await new Promise(resolve => setTimeout(resolve, backoffMs));
+                            continue;
+                        }
+                        // Non-429 Gemini error: single retry after 3s
                         if (!isGemini429 && transientRetryCount < 1) {
                             transientRetryCount++;
                             log.warn(`[PROVIDER] Gemini non-429 error, no Anthropic fallback — retrying Gemini in 3s (attempt ${transientRetryCount})`);
                             await new Promise(resolve => setTimeout(resolve, 3000));
                             continue;
                         }
-                        // No viable fallback — graceful error (never expose provider details to clients)
+                        // All retries exhausted — graceful error (never expose provider details to clients)
                         log.error(`[PROVIDER] Gemini failed, no viable fallback (hasAnthropicKey=${this.hasAnthropicKey}, anthropicDead=${this.anthropicDead})`);
                         if (!writer.isClosed()) {
                             writer.writeEvent('error', { message: "I'm temporarily unavailable. Please try again in about 30 seconds." });

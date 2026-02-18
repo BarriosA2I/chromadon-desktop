@@ -62,6 +62,8 @@ export declare class AgenticOrchestrator {
     private hasAnthropicKey;
     private anthropicDead;
     private anthropicDeadSince;
+    private lastGeminiCallMs;
+    private static readonly GEMINI_MIN_SPACING_MS;
     private _budgetMonitor;
     constructor(apiKey: string, toolExecutor: ToolExecutor, config?: OrchestratorConfig, additionalTools?: ToolDefinition[], additionalExecutor?: AdditionalToolExecutor, getSkillsForPrompt?: () => string, getClientKnowledge?: () => string | null, getLinkedPlatforms?: () => Promise<string> | string, getOnboardingContext?: () => string | null);
     /** Inject BudgetMonitor for cost tracking (optional, set after construction) */

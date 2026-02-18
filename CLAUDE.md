@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.11 — 2026-02-17)
+## Recent Changes (v1.30.12 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.12 — Gemini 429 still caused instant "temporarily unavailable" when Anthropic dead. Added exponential backoff retry for 429s (5s, 10s) + 2s minimum spacing between Gemini API calls to prevent burst rate limits | `resources/brain/dist/` |
+
+## Changes (v1.30.11 — 2026-02-17)
 
 | Change | File |
 |--------|------|
