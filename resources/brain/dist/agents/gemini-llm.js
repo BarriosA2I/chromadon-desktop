@@ -15,6 +15,26 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.callGeminiVision = exports.callGemini = exports.getGeminiModelId = void 0;
 const generative_ai_1 = require("@google/generative-ai");
+/** Retry wrapper for Gemini API calls — 429 backoff (5s, 10s) */
+async function withGeminiRetry(fn, label = 'callGemini') {
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            return await fn();
+        }
+        catch (err) {
+            const is429 = err?.status === 429 || err?.message?.includes?.('429');
+            if (is429 && attempt < MAX_RETRIES) {
+                const backoffMs = (attempt + 1) * 5000;
+                console.warn(`[Gemini] ${label} 429 — retrying in ${backoffMs}ms (${attempt + 1}/${MAX_RETRIES})`);
+                await new Promise(r => setTimeout(r, backoffMs));
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw new Error('Unreachable');
+}
 /** Map agent model tiers to Gemini model IDs */
 function getGeminiModelId(tier) {
     switch (tier) {
@@ -50,8 +70,10 @@ async function callGemini(systemPrompt, userMessage, options = {}) {
                 temperature: options.temperature ?? 0.7,
             },
         });
-        const result = await model.generateContent(userMessage);
-        return result.response.text();
+        return withGeminiRetry(async () => {
+            const result = await model.generateContent(userMessage);
+            return result.response.text();
+        }, 'callGemini');
     }
     // Fallback to Anthropic
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -83,11 +105,13 @@ async function callGeminiVision(systemPrompt, imageBase64, userMessage, options 
                 maxOutputTokens: options.maxTokens ?? 4096,
             },
         });
-        const result = await model.generateContent([
-            { inlineData: { data: imageBase64, mimeType } },
-            { text: userMessage },
-        ]);
-        return result.response.text();
+        return withGeminiRetry(async () => {
+            const result = await model.generateContent([
+                { inlineData: { data: imageBase64, mimeType } },
+                { text: userMessage },
+            ]);
+            return result.response.text();
+        }, 'callGeminiVision');
     }
     // Fallback to Anthropic vision
     const Anthropic = (await import('@anthropic-ai/sdk')).default;

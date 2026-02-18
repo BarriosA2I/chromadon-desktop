@@ -11,6 +11,26 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.callLLMVision = exports.callLLMConversation = exports.callLLM = void 0;
 const generative_ai_1 = require("@google/generative-ai");
+/** Retry wrapper for Gemini API calls — 429 backoff (5s, 10s) */
+async function withGeminiRetry(fn, label = 'callLLM') {
+    const MAX_RETRIES = 2;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            return await fn();
+        }
+        catch (err) {
+            const is429 = err?.status === 429 || err?.message?.includes?.('429');
+            if (is429 && attempt < MAX_RETRIES) {
+                const backoffMs = (attempt + 1) * 5000;
+                console.warn(`[Gemini] ${label} 429 — retrying in ${backoffMs}ms (${attempt + 1}/${MAX_RETRIES})`);
+                await new Promise(r => setTimeout(r, backoffMs));
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw new Error('Unreachable');
+}
 /**
  * Simple text generation: Gemini first, Anthropic fallback.
  */
@@ -22,8 +42,10 @@ async function callLLM(systemPrompt, userMessage, maxTokens = 1000) {
             model: 'gemini-2.0-flash',
             systemInstruction: systemPrompt,
         });
-        const result = await model.generateContent(userMessage);
-        return result.response.text();
+        return withGeminiRetry(async () => {
+            const result = await model.generateContent(userMessage);
+            return result.response.text();
+        }, 'callLLM');
     }
     // Fallback to Anthropic if no Gemini key
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -55,9 +77,11 @@ async function callLLMConversation(systemPrompt, messages, maxTokens = 500) {
             parts: [{ text: m.content }],
         }));
         const lastMessage = messages[messages.length - 1];
-        const chat = model.startChat({ history });
-        const result = await chat.sendMessage(lastMessage.content);
-        return result.response.text();
+        return withGeminiRetry(async () => {
+            const chat = model.startChat({ history });
+            const result = await chat.sendMessage(lastMessage.content);
+            return result.response.text();
+        }, 'callLLMConversation');
     }
     // Fallback to Anthropic
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -80,11 +104,13 @@ async function callLLMVision(base64Data, mimeType, prompt, maxTokens = 4000) {
     if (geminiKey) {
         const genAI = new generative_ai_1.GoogleGenerativeAI(geminiKey);
         const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-        const result = await model.generateContent([
-            { inlineData: { data: base64Data, mimeType } },
-            { text: prompt },
-        ]);
-        return result.response.text();
+        return withGeminiRetry(async () => {
+            const result = await model.generateContent([
+                { inlineData: { data: base64Data, mimeType } },
+                { text: prompt },
+            ]);
+            return result.response.text();
+        }, 'callLLMVision');
     }
     // Fallback to Anthropic vision
     const Anthropic = (await import('@anthropic-ai/sdk')).default;

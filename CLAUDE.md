@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.12 — 2026-02-18)
+## Recent Changes (v1.30.13 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.13 — Tool-level Gemini calls (client_get_voice, preGenerateContent, all 27 agents) had zero retry protection. Added `withGeminiRetry` wrapper to all 5 helper functions (llm-helper.ts + gemini-llm.ts) protecting 15+ call sites with 429 backoff (5s, 10s) | `resources/brain/dist/` |
+
+## Changes (v1.30.12 — 2026-02-18)
 
 | Change | File |
 |--------|------|
