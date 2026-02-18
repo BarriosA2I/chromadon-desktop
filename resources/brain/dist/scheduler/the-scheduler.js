@@ -18,6 +18,34 @@ const scheduler_persistence_1 = require("./scheduler-persistence");
 const llm_helper_1 = require("../client-context/llm-helper");
 const logger_1 = require("../lib/logger");
 const log = (0, logger_1.createChildLogger)('scheduler');
+const PLATFORM_POST_CONFIGS = {
+    facebook: {
+        url: 'https://www.facebook.com',
+        domainMatch: ['facebook.com'],
+        composeText: "What's on your mind",
+        textboxSelector: "div[contenteditable='true'][role='textbox']",
+        postText: 'Post',
+        postFallbackSelector: 'div[aria-label="Post"]',
+    },
+    linkedin: {
+        url: 'https://www.linkedin.com',
+        domainMatch: ['linkedin.com'],
+        composeText: 'Start a post',
+        composeFallbackSelector: 'button.share-box-feed-entry__trigger',
+        textboxSelector: "div[contenteditable='true'][role='textbox']",
+        postText: 'Post',
+        postFallbackSelector: 'button.share-actions__primary-action',
+    },
+    twitter: {
+        url: 'https://x.com',
+        domainMatch: ['twitter.com', 'x.com'],
+        composeText: "What is happening",
+        composeFallbackSelector: '[data-testid="tweetTextarea_0"]',
+        textboxSelector: "div[contenteditable='true'][role='textbox']",
+        postText: 'Post',
+        postFallbackSelector: '[data-testid="tweetButton"]',
+    },
+};
 /**
  * Silent writer that captures orchestrator output without sending to user chat.
  * Tracks text, errors, and tool results for post-execution validation.
@@ -226,33 +254,54 @@ class TheScheduler {
             }
             // 2. Coordinate with SocialMonitor — wait if it's active
             await this.coordinateWithMonitor();
-            // 3. Ensure social posts have explicit step-by-step browser instructions
-            // Handles BOTH paths: content pre-provided (use directly) or topic-only (generate via LLM)
-            if (task.taskType === 'social_post' && !task.instruction.includes('Steps:\n')) {
-                let postContent = null;
+            // 3. Resolve content for social_post tasks
+            let resolvedContent = null;
+            if (task.taskType === 'social_post') {
                 // Path 2: content was pre-provided by schedule_post — use directly (zero LLM cost)
                 if (task.content && task.content.length > 10) {
-                    postContent = task.content;
+                    resolvedContent = task.content;
                 }
                 // Path 1: generate content from topic via Gemini
                 else {
                     try {
-                        postContent = await this.preGenerateContent(task);
+                        resolvedContent = await this.preGenerateContent(task);
                     }
                     catch (err) {
                         log.warn({ err: err.message }, '[TheScheduler] Content pre-generation failed');
                     }
                 }
-                if (postContent && postContent.length > 10) {
-                    log.info(`[TheScheduler] Built browser instruction with ${postContent.length} chars of content`);
-                    task.instruction = this.buildPostingInstruction(task, postContent);
-                    log.debug({ instruction: task.instruction.slice(0, 500) }, '[TheScheduler] Final instruction');
-                }
-                else {
-                    log.warn(`[TheScheduler] Task ${task.id} — no content available, proceeding with original instruction`);
-                }
             }
-            // 4. Execute via orchestrator.chat() — with 5min timeout to prevent hanging
+            // 4. DIRECT POST — try zero-LLM execution via Desktop HTTP endpoints
+            if (task.taskType === 'social_post' && resolvedContent && resolvedContent.length > 10) {
+                const directSuccess = await this.executeDirectPost(task, resolvedContent);
+                if (directSuccess) {
+                    // Direct post succeeded — mark completed and return
+                    task.resultSummary = `[DIRECT POST] ${resolvedContent.slice(0, 200)}`;
+                    task.status = scheduler_types_1.TaskStatus.COMPLETED;
+                    task.completedAt = new Date().toISOString();
+                    task.executionDurationMs = Date.now() - new Date(task.executedAt).getTime();
+                    task.consecutiveFailures = 0;
+                    this.state.stats.totalCompleted++;
+                    log.info(`[TheScheduler] Task ${task.id} completed via DIRECT POST in ${task.executionDurationMs}ms`);
+                    if (task.recurrence !== 'none') {
+                        this.generateNextOccurrence(task);
+                    }
+                    this.persist();
+                    return;
+                }
+                // Direct post failed — fall through to LLM path
+                log.warn(`[TheScheduler] Direct post failed for task ${task.id} — falling back to LLM`);
+            }
+            // 5. LLM FALLBACK — Build instruction and execute via orchestrator.chat()
+            if (task.taskType === 'social_post' && resolvedContent && resolvedContent.length > 10 && !task.instruction.includes('Steps:\n')) {
+                log.info(`[TheScheduler] Built browser instruction with ${resolvedContent.length} chars of content`);
+                task.instruction = this.buildPostingInstruction(task, resolvedContent);
+                log.debug({ instruction: task.instruction.slice(0, 500) }, '[TheScheduler] Final instruction');
+            }
+            else if (task.taskType === 'social_post' && !resolvedContent) {
+                log.warn(`[TheScheduler] Task ${task.id} — no content available, proceeding with original instruction`);
+            }
+            // 6. Execute via orchestrator.chat() — with 5min timeout to prevent hanging
             const writer = new CollectorWriter();
             const { context, pageContext } = await this.contextFactory();
             const EXECUTION_TIMEOUT_MS = 5 * 60_000; // 5 minutes
@@ -263,7 +312,7 @@ class TheScheduler {
                 writer, context, pageContext, { systemPromptOverride: undefined }),
                 timeoutPromise,
             ]);
-            // 4. Validate result — detect orchestrator failures before marking complete
+            // 7. Validate result — detect orchestrator failures before marking complete
             const collectedText = writer.getText();
             if (writer.hasErrors()) {
                 const errorSummary = writer.getErrors().join('; ');
@@ -284,7 +333,7 @@ class TheScheduler {
             task.consecutiveFailures = 0; // Reset on success
             this.state.stats.totalCompleted++;
             log.info(`[TheScheduler] Task ${task.id} completed in ${task.executionDurationMs}ms`);
-            // 5. Handle recurrence
+            // 8. Handle recurrence
             if (task.recurrence !== 'none') {
                 this.generateNextOccurrence(task);
             }
@@ -393,6 +442,183 @@ class TheScheduler {
             }
             log.info('[TheScheduler] Waiting for SocialMonitor to finish...');
             await new Promise(r => setTimeout(r, this.config.monitorCoordinationWaitMs));
+        }
+    }
+    // ===========================================================================
+    // DIRECT POST — Zero-LLM browser automation via Desktop HTTP endpoints
+    // ===========================================================================
+    delay(ms) {
+        return new Promise(r => setTimeout(r, ms));
+    }
+    async fetchDesktop(path, body) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        try {
+            const resp = await fetch(`${this.desktopUrl}${path}`, {
+                method: body ? 'POST' : 'GET',
+                headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                body: body ? JSON.stringify(body) : undefined,
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+            return await resp.json();
+        }
+        catch (err) {
+            clearTimeout(timeout);
+            throw err;
+        }
+    }
+    async directClick(tabId, text, fallbackSelector) {
+        // Attempt 1: text-based click
+        try {
+            const res = await this.fetchDesktop('/tabs/click', { id: tabId, text });
+            if (res.success)
+                return true;
+        }
+        catch { /* fall through */ }
+        // If text click failed and we have a CSS fallback, try that
+        if (fallbackSelector) {
+            await this.delay(1000);
+            try {
+                const res = await this.fetchDesktop('/tabs/click', { id: tabId, selector: fallbackSelector });
+                if (res.success)
+                    return true;
+            }
+            catch { /* fall through */ }
+        }
+        // Retry text click once after 2s
+        await this.delay(2000);
+        try {
+            const res = await this.fetchDesktop('/tabs/click', { id: tabId, text });
+            return res.success === true;
+        }
+        catch {
+            return false;
+        }
+    }
+    async directType(tabId, selector, text) {
+        try {
+            const res = await this.fetchDesktop('/tabs/type', { id: tabId, selector, text });
+            return res.success === true;
+        }
+        catch {
+            return false;
+        }
+    }
+    async directUpload(tabId, filePath) {
+        try {
+            const res = await this.fetchDesktop('/tabs/upload', { id: tabId, filePath });
+            return res.success === true;
+        }
+        catch {
+            return false;
+        }
+    }
+    async findOrCreatePlatformTab(config) {
+        try {
+            // Check existing tabs for a match
+            const tabsRes = await this.fetchDesktop('/tabs');
+            if (tabsRes.tabs && Array.isArray(tabsRes.tabs)) {
+                for (const tab of tabsRes.tabs) {
+                    const tabUrl = (tab.url || '').toLowerCase();
+                    for (const domain of config.domainMatch) {
+                        if (tabUrl.includes(domain)) {
+                            log.info(`[DirectPost] Found existing tab ${tab.id} for ${domain}`);
+                            // Focus it + navigate to ensure we're on the main feed
+                            await this.fetchDesktop('/tabs/focus', { id: tab.id });
+                            await this.fetchDesktop('/tabs/navigate', { id: tab.id, url: config.url });
+                            return tab.id;
+                        }
+                    }
+                }
+            }
+            // No existing tab — create with authenticated session partition
+            const platformName = config.domainMatch[0].replace('.com', '');
+            const createRes = await this.fetchDesktop('/tabs/platform', {
+                url: config.url,
+                platform: platformName,
+            });
+            if (createRes.id) {
+                log.info(`[DirectPost] Created platform tab ${createRes.id} for ${platformName}`);
+                return createRes.id;
+            }
+            return null;
+        }
+        catch (err) {
+            log.error({ err: err.message }, '[DirectPost] Tab creation failed');
+            return null;
+        }
+    }
+    /**
+     * Execute a social post by calling Desktop HTTP endpoints directly.
+     * Zero LLM involvement — pure HTTP calls to Desktop control server.
+     *
+     * Returns true if the post was successfully executed, false otherwise.
+     */
+    async executeDirectPost(task, content) {
+        const platform = (task.platforms?.[0] || '').toLowerCase();
+        const config = PLATFORM_POST_CONFIGS[platform];
+        if (!config) {
+            log.warn(`[DirectPost] No config for platform "${platform}" — skipping direct path`);
+            return false;
+        }
+        const startMs = Date.now();
+        log.info(`[TheScheduler] Attempting DIRECT POST for task ${task.id} (${platform})`);
+        try {
+            // Step 1: Find or create platform tab
+            const tabId = await this.findOrCreatePlatformTab(config);
+            if (tabId === null) {
+                log.warn('[DirectPost] Could not get platform tab');
+                return false;
+            }
+            log.info(`[DirectPost] Using tab ${tabId} for ${platform}`);
+            // Step 2: Wait for page load
+            await this.delay(3000);
+            // Step 3: Click compose button
+            const composeOk = await this.directClick(tabId, config.composeText, config.composeFallbackSelector);
+            if (!composeOk) {
+                log.warn('[DirectPost] Compose click FAILED');
+                return false;
+            }
+            log.info('[DirectPost] Compose click OK');
+            // Step 4: Wait for composer to open
+            await this.delay(1500);
+            // Step 5: Type content
+            const typeOk = await this.directType(tabId, config.textboxSelector, content);
+            if (!typeOk) {
+                log.warn('[DirectPost] Type FAILED');
+                return false;
+            }
+            log.info(`[DirectPost] Type OK (${content.length} chars)`);
+            // Step 6: Wait for text to render
+            await this.delay(2000);
+            // Step 7: Upload media (if present) — non-fatal if fails
+            const mediaPath = task.mediaUrls?.[0];
+            if (mediaPath) {
+                const uploadOk = await this.directUpload(tabId, mediaPath);
+                if (uploadOk) {
+                    log.info(`[DirectPost] Upload OK: ${mediaPath}`);
+                }
+                else {
+                    log.warn(`[DirectPost] Upload failed (non-fatal): ${mediaPath}`);
+                }
+                // Step 8: Wait for upload preview
+                await this.delay(3000);
+            }
+            // Step 9: Click Post button
+            const postOk = await this.directClick(tabId, config.postText, config.postFallbackSelector);
+            if (!postOk) {
+                log.warn('[DirectPost] Post click FAILED');
+                return false;
+            }
+            log.info('[DirectPost] Post click OK');
+            const elapsed = Date.now() - startMs;
+            log.info(`[TheScheduler] Task ${task.id} DIRECT POST completed in ${elapsed}ms`);
+            return true;
+        }
+        catch (err) {
+            log.error({ err: err.message }, `[DirectPost] Unexpected error`);
+            return false;
         }
     }
     // ===========================================================================

@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.22 — 2026-02-18)
+## Recent Changes (v1.30.23 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| ARCHITECTURE: Brain v1.15.23 — Eliminated LLM from scheduled post browser automation. Scheduler now calls Desktop HTTP endpoints directly (`/tabs/platform`, `/tabs/click`, `/tabs/type`, `/tabs/upload`) — zero Gemini involvement for posting. Platform configs define text-based click targets + CSS fallbacks for Facebook, LinkedIn, Twitter. Falls back to LLM path if direct post fails. Fixes 8 consecutive failures (v1.15.15–v1.15.22) where Gemini misinterpreted English browser instructions | `resources/brain/dist/` |
+
+## Changes (v1.30.22 — 2026-02-18)
 
 | Change | File |
 |--------|------|

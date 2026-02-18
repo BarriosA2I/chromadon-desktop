@@ -65,6 +65,19 @@ export declare class TheScheduler {
     private generateNextOccurrence;
     private checkDesktopHealth;
     private coordinateWithMonitor;
+    private delay;
+    private fetchDesktop;
+    private directClick;
+    private directType;
+    private directUpload;
+    private findOrCreatePlatformTab;
+    /**
+     * Execute a social post by calling Desktop HTTP endpoints directly.
+     * Zero LLM involvement — pure HTTP calls to Desktop control server.
+     *
+     * Returns true if the post was successfully executed, false otherwise.
+     */
+    private executeDirectPost;
     addTask(params: {
         instruction: string;
         taskType?: TaskType;
