@@ -939,7 +939,7 @@ async function executeDesktop(toolName, input, tabId, desktopUrl, context) {
             const result = await desktopUploadFile(tabId, selector || null, filePath, desktopUrl);
             return {
                 success: true,
-                result: result + ' IMPORTANT: If you need to type text in the post composer, do it NOW (after the upload). Any text typed BEFORE the upload was likely erased by the platform re-render.',
+                result: result + ' NEXT STEP: Call wait with seconds=3 to let the upload preview render before typing. Any text typed BEFORE the upload was likely erased by the platform re-render. Type your post content AFTER the wait.',
             };
         }
         case 'get_video_ids': {

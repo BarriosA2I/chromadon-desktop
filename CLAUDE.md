@@ -7,7 +7,14 @@
 
 ---
 
-## Recent Changes (v1.30.9 — 2026-02-17)
+## Recent Changes (v1.30.10 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Panel overlay — added `showVaultModal` to BrowserView hide trigger (MasterPasswordModal wasn't hiding BrowserView). Removed `showProfileManager` from trigger (dropdown shouldn't collapse entire browser). Fixed DocumentVault/StrategyDashboard z-index from z-40 to z-50 for consistency | `src/App.tsx` |
+| Fixed: Brain v1.15.10 — Scheduled LinkedIn posts stuck on image uploads. All instruction paths now explicitly say "Call wait with seconds=3" after upload_file instead of vague "Wait for preview". upload_file result message changed to directive | `resources/brain/dist/` |
+
+## Changes (v1.30.9 — 2026-02-17)
 
 | Change | File |
 |--------|------|

@@ -459,9 +459,10 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
         instruction += `2. Click the compose/create post button.\n`;
         if (mediaPath) {
             instruction += `3. Click the photo/media/image upload button in the compose area.\n`;
-            instruction += `4. Call upload_file with filePath="${mediaPath}". Wait for the upload preview to appear.\n`;
-            instruction += `5. Click in the text input area and type the EXACT post content shown above. Do NOT modify it.\n`;
-            instruction += `6. Click the Post/Share button to publish.\n`;
+            instruction += `4. Call upload_file with filePath="${mediaPath}".\n`;
+            instruction += `5. Call wait with seconds=3 to let the upload preview render.\n`;
+            instruction += `6. Click in the text input area and type the EXACT post content shown above. Do NOT modify it.\n`;
+            instruction += `7. Click the Post/Share button to publish.\n`;
         }
         else {
             instruction += `3. Type the EXACT post content shown above into the compose text area.\n`;

@@ -344,6 +344,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
     setShowStrategyDashboard,
     showSettings,
     setShowSettings,
+    showVaultModal,
     apiKeyStatus,
     setApiKeyStatus,
     geminiKeyStatus,
@@ -373,9 +374,9 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
   // Hide BrowserViews when any modal is open (BrowserViews are native OS overlays above web content)
   useEffect(() => {
-    const anyModalOpen = showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard || showProfileManager || showSettings || showInterviewScreen || showDocumentVault || showStrategyDashboard
+    const anyModalOpen = showVaultModal || showSessionSetup || showMarketingQueue || showCredentialVault || showAnalyticsDashboard || showSettings || showInterviewScreen || showDocumentVault || showStrategyDashboard
     window.electronAPI?.viewsSetVisible?.(!anyModalOpen)
-  }, [showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showProfileManager, showSettings, showInterviewScreen, showDocumentVault, showStrategyDashboard])
+  }, [showVaultModal, showSessionSetup, showMarketingQueue, showCredentialVault, showAnalyticsDashboard, showSettings, showInterviewScreen, showDocumentVault, showStrategyDashboard])
 
   // Check API key status on mount — auto-open settings if no key set
   useEffect(() => {
@@ -837,7 +838,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
       {/* Document Vault */}
       {showDocumentVault && activeClient && (
-        <div className="fixed inset-0 z-40 bg-chroma-dark flex flex-col">
+        <div className="fixed inset-0 z-50 bg-chroma-dark flex flex-col">
           <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
             <h2 className="text-sm font-bold text-white">Document Vault — {activeClient.name}</h2>
             <button onClick={() => setShowDocumentVault(false)} className="text-white/30 hover:text-white/60 text-lg">✕</button>
@@ -850,7 +851,7 @@ function MainUI({ onVaultSubmit, loadVaultData }: MainUIProps) {
 
       {/* Strategy Dashboard */}
       {showStrategyDashboard && activeClient && (
-        <div className="fixed inset-0 z-40 bg-chroma-dark flex flex-col">
+        <div className="fixed inset-0 z-50 bg-chroma-dark flex flex-col">
           <div className="flex items-center justify-between px-4 py-2 border-b border-white/10">
             <h2 className="text-sm font-bold text-white">Growth Strategy — {activeClient.name}</h2>
             <button onClick={() => setShowStrategyDashboard(false)} className="text-white/30 hover:text-white/60 text-lg">✕</button>

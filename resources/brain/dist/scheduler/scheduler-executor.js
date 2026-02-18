@@ -177,7 +177,7 @@ function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClient
                             ? hashtags.map((h) => h.startsWith('#') ? h : '#' + h).join(' ')
                             : autoHashtags;
                         const mediaInstruction = platformMedia.length
-                            ? ` MEDIA UPLOAD: Before typing any post content, you MUST upload media first. Click the platform's photo/media/image upload button, then call upload_file with filePath="${platformMedia[0]}". Wait for the upload preview to appear in the composer, then type the post content.`
+                            ? ` MEDIA UPLOAD: Before typing any post content, you MUST upload media first. Click the platform's photo/media/image upload button, then call upload_file with filePath="${platformMedia[0]}". Then call wait with seconds=3 to let the upload preview render. Only AFTER the wait, type the post content.`
                             : '';
                         const platformGenInstruction = `Generate an engaging ${platform} post about: ${topicStr}. Then post it to ${platform}.${hashtagStr ? ' Include hashtags: ' + hashtagStr : ''}${isChromadonPost ? ' Include link: barriosa2i.com' : ''}${mediaInstruction}`;
                         const taskId = scheduler.addTask({
