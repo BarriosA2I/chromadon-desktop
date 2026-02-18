@@ -7,7 +7,13 @@
 
 ---
 
-## Recent Changes (v1.30.6 — 2026-02-17)
+## Recent Changes (v1.30.7 — 2026-02-17)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.7 — OBS "failed to connect to server" on Facebook Live. configureStream() hardcoded rtmp_custom — Facebook requires RTMPS. Now uses rtmp_common for known platforms (Facebook Live, YouTube, Twitch). Added Facebook preset stream config. Fixed YouTube RTMPS URL | `resources/brain/dist/` |
+
+## Changes (v1.30.6 — 2026-02-17)
 
 | Change | File |
 |--------|------|

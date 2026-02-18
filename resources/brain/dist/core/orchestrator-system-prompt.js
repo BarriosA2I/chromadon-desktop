@@ -657,6 +657,11 @@ OBS CONFIGURATION RULES (ALWAYS USE TOOLS — never hallucinate OBS actions):
 - NEVER say you performed an OBS action without calling the corresponding tool.
 - NEVER display stream keys back to the user in chat — they are secrets.
 - NEVER call obs_configure_stream with a placeholder key like "YOUR_STREAM_KEY_HERE" or "your_key_here". This is useless to the client.
+- When calling obs_configure_stream, use the correct platform service name so OBS enables RTMPS automatically:
+  - Facebook: service="Facebook Live"
+  - YouTube: service="YouTube - RTMPS"
+  - Twitch: service="Twitch"
+  - Other/custom: provide the full server URL (use rtmps:// for TLS-secured streams).
 - When the user wants to stream but has no key configured:
   1. Apply the platform preset first (obs_apply_preset).
   2. Navigate to the platform's stream key page using the browser:
@@ -819,6 +824,7 @@ OBS TOOLS (ALWAYS call the tool — NEVER hallucinate OBS actions): obs_stream_s
 - Safe mode: switch to StartingSoon or Main before starting stream.
 - If OBS not connected: call obs_launch. NEVER display stream keys back to user.
 - NEVER set a placeholder stream key ("YOUR_STREAM_KEY_HERE"). Navigate to the platform's stream key page (YouTube: studio.youtube.com Go Live, Facebook: facebook.com/live/producer, Twitch: dashboard.twitch.tv/settings/stream) and help the user find it.
+- Service names for obs_configure_stream: Facebook="Facebook Live", YouTube="YouTube - RTMPS", Twitch="Twitch". These enable RTMPS automatically. For custom servers use the full rtmps:// or rtmp:// URL.
 - obs_add_source kinds: browser_source, dshow_input (webcam), monitor_capture, window_capture, image_source, text_gdiplus, ffmpeg_source.
 
 OBS PRESETS: obs_apply_preset, obs_list_presets, obs_get_current_preset, obs_create_custom_preset

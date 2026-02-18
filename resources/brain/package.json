@@ -1,6 +1,6 @@
 {
   "name": "chromadon-brain",
-  "version": "1.15.6",
+  "version": "1.15.7",
   "description": "CHROMADON Autonomous Brain - Mission-based browser automation with self-healing",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
