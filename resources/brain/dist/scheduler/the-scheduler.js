@@ -533,11 +533,13 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
         instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise call navigate to go to ${platform}.\n`;
         instruction += `2. Click the compose/create post button.\n`;
         if (mediaPath) {
-            instruction += `3. Click the photo/media/image upload button in the compose area.\n`;
-            instruction += `4. Call upload_file with filePath="${mediaPath}".\n`;
-            instruction += `5. Call wait with seconds=3 to let the upload preview render.\n`;
-            instruction += `6. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
-            instruction += `7. Call wait with seconds=2 to let the text render.\n`;
+            // Type text FIRST into clean composer, THEN upload image.
+            // Uploading first changes the DOM and causes text to go into a separate box.
+            instruction += `3. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
+            instruction += `4. Call wait with seconds=2 to let the text render.\n`;
+            instruction += `5. Click the photo/media/image upload button in the compose area.\n`;
+            instruction += `6. Call upload_file with filePath="${mediaPath}".\n`;
+            instruction += `7. Call wait with seconds=3 to let the upload preview render.\n`;
             instruction += `8. Click the Post/Share button to publish.\n`;
         }
         else {
@@ -545,7 +547,7 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
             instruction += `4. Call wait with seconds=2 to let the text render.\n`;
             instruction += `5. Click the Post/Share button to publish.\n`;
         }
-        instruction += `\nCRITICAL: Step 6 MUST call the type_text tool. Do NOT skip it. The post content MUST appear in the text box before clicking Post.`;
+        instruction += `\nCRITICAL: Step 3 MUST call the type_text tool. Do NOT skip it. The post content MUST appear in the text box before uploading media.`;
         return instruction;
     }
     // ===========================================================================

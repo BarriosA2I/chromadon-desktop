@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.16 — 2026-02-18)
+## Recent Changes (v1.30.17 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.17 — Scheduled posts had image and text in separate boxes. Reversed order: type text FIRST into clean composer, then upload image. Uploading first changed Facebook DOM | `resources/brain/dist/` |
+
+## Changes (v1.30.16 — 2026-02-18)
 
 | Change | File |
 |--------|------|
