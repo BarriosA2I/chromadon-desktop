@@ -259,6 +259,10 @@ class ChromadonAgentSystem {
     getAgentEventBus() {
         return this.eventBus;
     }
+    /** Get TheLearningEngine for SkillMemory wiring */
+    getLearningEngine() {
+        return this.agents.learningEngine;
+    }
     /** Set the YouTube Tool Bridge (called from server.ts after both systems are init'd) */
     setYouTubeBridge(bridge) {
         this.youtube = bridge;

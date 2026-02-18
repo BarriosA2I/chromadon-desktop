@@ -24,7 +24,10 @@ export declare abstract class BaseAgent {
 }
 export declare class TheCortex extends BaseAgent {
     private workflowTemplates;
+    private skillSummaryFn;
     constructor();
+    /** Inject SkillMemory summary callback for informed DAG planning */
+    setSkillSummaryFn(fn: () => string): void;
     private loadWorkflowTemplates;
     planWorkflow(userRequest: string, context?: Record<string, unknown>): Promise<WorkflowDAG>;
     private findMatchingTemplate;

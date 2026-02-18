@@ -2972,8 +2972,20 @@ async function initializeCortexRouter() {
             socialBridge = new social_tool_bridge_1.SocialMediaToolBridge(socialOverlord, trinityIntelligence || undefined);
             log.info({ hasTrinity: !!trinityIntelligence }, 'Social Media Tool Bridge connected');
         }
+        // Inject SkillMemory into TheCortex for informed DAG planning
+        const cortex = agentSystem.getCortex();
+        if (skillMemory) {
+            cortex.setSkillSummaryFn(() => skillMemory.getSkillsSummary());
+            log.info('[CHROMADON] ✅ SkillMemory injected into TheCortex for DAG planning');
+            // Wire TheLearningEngine to persist learning events to SkillMemory
+            const learningEngine = agentSystem.getLearningEngine();
+            learningEngine.setSkillPersistence((domain, taskName, success, durationMs, error) => {
+                skillMemory.recordExecution(domain, taskName, success, durationMs, undefined, error);
+            });
+            log.info('[CHROMADON] ✅ TheLearningEngine wired to SkillMemory persistence');
+        }
         cortexRouter = new cortex_router_1.CortexRouter({
-            cortex: agentSystem.getCortex(),
+            cortex,
             sequencer: agentSystem.getSequencer(),
             orchestrator,
             youtubeBridge,

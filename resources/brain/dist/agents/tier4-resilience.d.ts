@@ -105,7 +105,10 @@ export declare class TheLearningEngine extends BaseResilienceAgent {
     private patterns;
     private optimizations;
     private readonly maxEventsSize;
+    private skillPersistFn;
     constructor();
+    /** Inject SkillMemory persistence callback to close the learning loop */
+    setSkillPersistence(fn: (domain: string, taskName: string, success: boolean, durationMs?: number, error?: string) => void): void;
     recordEvent(event: LearningEvent): void;
     analyzePatterns(): Promise<PatternMatch[]>;
     getOptimization(taskType: string, context?: Record<string, unknown>): Promise<Record<string, unknown> | null>;

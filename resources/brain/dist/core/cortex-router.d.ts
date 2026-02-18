@@ -82,7 +82,23 @@ export declare class CortexRouter {
     private executeSimpleCommand;
     private executeYouTubeAPI;
     private executeSocialMedia;
-    private executeDAG;
+    /**
+     * Detect multi-step browser tasks that benefit from DAG planning.
+     * Must NOT overlap with higher-priority routes (scheduling, OBS, YouTube Studio, etc.)
+     * Only catches compound instructions with 2+ distinct browser actions.
+     */
+    private isCompoundBrowserTask;
+    /**
+     * Execute a compound browser task via the 27-agent system.
+     * Plans a DAG with TheCortex, executes via TheTemporalSequencer.
+     * Per-step monolithic fallback: if an agent step fails, tries monolithic orchestrator.
+     * Full monolithic fallback: if planning fails or all steps fail, falls through entirely.
+     */
+    private executeCortexPlanning;
+    /**
+     * Translate a failed DAG step into a natural language instruction for monolithic fallback.
+     */
+    private stepToInstruction;
 }
 export {};
 //# sourceMappingURL=cortex-router.d.ts.map

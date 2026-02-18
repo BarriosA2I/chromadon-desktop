@@ -76,10 +76,15 @@ exports.BaseAgent = BaseAgent;
 // =============================================================================
 class TheCortex extends BaseAgent {
     workflowTemplates;
+    skillSummaryFn = null;
     constructor() {
         super('THE_CORTEX', { model: 'sonnet' });
         this.workflowTemplates = new Map();
         this.loadWorkflowTemplates();
+    }
+    /** Inject SkillMemory summary callback for informed DAG planning */
+    setSkillSummaryFn(fn) {
+        this.skillSummaryFn = fn;
     }
     loadWorkflowTemplates() {
         // Pre-built templates for common tasks
@@ -160,9 +165,20 @@ Rules:
 5. Consider failure paths and alternatives
 
 Output your plan as a JSON object matching the WorkflowDAG interface.`;
+        // Inject SkillMemory knowledge if available — lets TheCortex plan with real selector/flow data
+        let skillContext = '';
+        if (this.skillSummaryFn) {
+            try {
+                const summary = this.skillSummaryFn();
+                if (summary && summary !== '{}') {
+                    skillContext = `\n\nPrevious execution knowledge (selectors that work, platform patterns):\n${summary}`;
+                }
+            }
+            catch { /* SkillMemory not available — plan without it */ }
+        }
         const userPrompt = `User Request: "${userRequest}"
 
-Context: ${JSON.stringify(context ?? {})}
+Context: ${JSON.stringify(context ?? {})}${skillContext}
 
 Create a detailed workflow plan as JSON. Include all necessary steps, dependencies, and checkpoints.`;
         const response = await this.callLLM(systemPrompt, userPrompt, { temperature: 0.3 });

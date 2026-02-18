@@ -179,14 +179,12 @@ class CortexRouter {
             {
                 name: 'cortex_planning',
                 priority: 50,
-                // DISABLED: 27-agent system cannot execute — EventBus not wired,
-                // agents have no DesktopBrowserAdapter access. All unmatched messages
-                // go straight to monolithic orchestrator via chat() default path.
-                // TODO: Re-enable when 27-agent EventBus request/response + DesktopBrowserAdapter is wired.
-                // See: agents/event-bus.ts, agents/index.ts, agents/tier0-orchestration.ts
-                match: () => false,
+                // RE-ENABLED v1.16.0: 27-agent system wired end-to-end.
+                // EventBus request/respond RPC → ChromadonAgentSystem AGENT_REQUEST subscription → routeRequest() → CDP
+                // Falls back to monolithic orchestrator if DAG planning fails or steps fail.
+                match: (msg) => this.isCompoundBrowserTask(msg),
                 execute: async (_m, sessionId, message, writer, context, pageContext) => {
-                    return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+                    return this.executeCortexPlanning(sessionId, message, writer, context, pageContext);
                 },
             },
         ];
@@ -607,43 +605,165 @@ class CortexRouter {
         writer.writeEvent('done', { apiCalls: 1, inputTokens: 0, outputTokens: 0, costUSD: 0 });
     }
     // ==========================================================================
-    // DAG EXECUTION (TheTemporalSequencer → per-step SSE events)
+    // COMPOUND BROWSER TASK DETECTION
     // ==========================================================================
-    async executeDAG(dag, sessionId, writer) {
-        let stepCount = 0;
-        let failedStep = null;
-        for await (const step of this.sequencer.execute(dag)) {
-            stepCount++;
-            const toolName = `${step.agent}.${step.action}`;
-            writer.writeEvent('tool_start', { id: step.nodeId, name: toolName });
-            writer.writeEvent('tool_result', {
-                id: step.nodeId,
-                name: toolName,
-                success: step.success,
-                result: step.data ? JSON.stringify(step.data).slice(0, 500) : undefined,
-                error: step.error?.message,
-                durationMs: step.durationMs,
-            });
-            if (!step.success) {
-                failedStep = `${toolName}: ${step.error?.message || 'unknown error'}`;
+    /**
+     * Detect multi-step browser tasks that benefit from DAG planning.
+     * Must NOT overlap with higher-priority routes (scheduling, OBS, YouTube Studio, etc.)
+     * Only catches compound instructions with 2+ distinct browser actions.
+     */
+    isCompoundBrowserTask(msg) {
+        // Must have at least 2 action verbs connected by "and", "then", or comma
+        const compoundPattern = /\b(?:go\s+to|open|navigate|visit)\b.+\b(?:and|then|,)\s+\b(?:post|type|fill|search|click|submit|upload|extract|scrape|sign\s+(?:in|up)|log\s*in|create|write|comment|reply|like|follow|download|book|buy|purchase|order)\b/i;
+        if (compoundPattern.test(msg))
+            return true;
+        // Multi-step explicit: "first X then Y", "step 1 X step 2 Y"
+        if (/\b(?:first|step\s*1)\b.+\b(?:then|next|step\s*2|after\s+that)\b/i.test(msg))
+            return true;
+        // "do X on Y" compound actions with platform context
+        // e.g. "search for AI news on google and post about it on twitter"
+        if (/\bon\s+(?:facebook|twitter|linkedin|instagram|google)\b.+\b(?:and|then)\b.+\bon\s+(?:facebook|twitter|linkedin|instagram|google)\b/i.test(msg))
+            return true;
+        return false;
+    }
+    // ==========================================================================
+    // CORTEX PLANNING EXECUTION (TheCortex → DAG → TheTemporalSequencer)
+    // ==========================================================================
+    /**
+     * Execute a compound browser task via the 27-agent system.
+     * Plans a DAG with TheCortex, executes via TheTemporalSequencer.
+     * Per-step monolithic fallback: if an agent step fails, tries monolithic orchestrator.
+     * Full monolithic fallback: if planning fails or all steps fail, falls through entirely.
+     */
+    async executeCortexPlanning(sessionId, message, writer, context, pageContext) {
+        const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
+        // Guard: check if agent system is actually ready
+        try {
+            const testEventBus = (0, event_bus_1.getEventBus)();
+            if (!testEventBus) {
+                log.info('[CortexRouter] EventBus not available, falling back to monolithic');
+                return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
             }
         }
-        // Only write completion events if steps actually ran (caller handles 0-step fallback)
-        if (stepCount > 0) {
-            if (failedStep) {
-                writer.writeEvent('text_delta', { text: `Completed ${stepCount} steps with errors: ${failedStep}` });
-            }
-            else {
-                writer.writeEvent('text_delta', { text: `Completed ${stepCount} step${stepCount !== 1 ? 's' : ''} successfully.` });
-            }
-            writer.writeEvent('done', {
-                apiCalls: 1,
-                inputTokens: 0,
-                outputTokens: 0,
-                costUSD: 0,
-            });
+        catch {
+            log.info('[CortexRouter] Agent system not ready, falling back to monolithic');
+            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
         }
-        return stepCount;
+        // Phase 1: Plan the DAG
+        let dag;
+        try {
+            log.info(`[CortexRouter] cortex_planning: Planning DAG for "${message.slice(0, 80)}"`);
+            dag = await this.cortex.planWorkflow(message, pageContext ? { url: pageContext.url, title: pageContext.title } : undefined);
+            if (!dag || !dag.nodes || dag.nodes.length === 0) {
+                log.info('[CortexRouter] cortex_planning: Empty DAG, falling back to monolithic');
+                return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+            }
+            log.info(`[CortexRouter] cortex_planning: Planned ${dag.nodes.length} steps`);
+        }
+        catch (error) {
+            log.error({ err: error }, '[CortexRouter] cortex_planning: Planning failed, falling back to monolithic');
+            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+        }
+        // Phase 2: Execute DAG steps with per-step fallback
+        writer.writeEvent('session_id', { sessionId: sid });
+        writer.writeEvent('text_delta', { text: `Planning complete: ${dag.nodes.length} steps. Executing via agent system...\n` });
+        let successCount = 0;
+        let failCount = 0;
+        let fallbackCount = 0;
+        try {
+            for await (const step of this.sequencer.execute(dag)) {
+                const toolName = `${step.agent}.${step.action}`;
+                writer.writeEvent('tool_start', { id: step.nodeId, name: toolName });
+                writer.writeEvent('tool_result', {
+                    id: step.nodeId,
+                    name: toolName,
+                    success: step.success,
+                    result: step.data ? JSON.stringify(step.data).slice(0, 500) : undefined,
+                    error: step.error?.message,
+                    durationMs: step.durationMs,
+                });
+                if (step.success) {
+                    successCount++;
+                    writer.writeEvent('text_delta', { text: `[${successCount + failCount + fallbackCount}/${dag.nodes.length}] ${toolName}: OK\n` });
+                }
+                else {
+                    // Per-step monolithic fallback
+                    log.info(`[CortexRouter] Step ${step.nodeId} (${toolName}) failed, trying monolithic fallback`);
+                    const fallbackInstruction = this.stepToInstruction(step);
+                    try {
+                        // Use a sub-session for the fallback to avoid polluting the main SSE stream
+                        let fallbackSuccess = false;
+                        const fallbackWriter = {
+                            writeEvent: (event, data) => {
+                                // Pass through tool events but track success
+                                if (event === 'tool_result' && data?.success)
+                                    fallbackSuccess = true;
+                                // Forward text_delta to the main writer
+                                if (event === 'text_delta')
+                                    writer.writeEvent(event, data);
+                            },
+                        };
+                        await this.orchestrator.chat(sid, fallbackInstruction, fallbackWriter, context, pageContext);
+                        if (fallbackSuccess) {
+                            fallbackCount++;
+                            writer.writeEvent('text_delta', { text: `[${successCount + failCount + fallbackCount}/${dag.nodes.length}] ${toolName}: OK (via fallback)\n` });
+                        }
+                        else {
+                            failCount++;
+                            writer.writeEvent('text_delta', { text: `[${successCount + failCount + fallbackCount}/${dag.nodes.length}] ${toolName}: FAILED\n` });
+                        }
+                    }
+                    catch (fallbackError) {
+                        failCount++;
+                        writer.writeEvent('text_delta', { text: `[${successCount + failCount + fallbackCount}/${dag.nodes.length}] ${toolName}: FAILED (fallback error)\n` });
+                        log.error({ err: fallbackError }, `[CortexRouter] Monolithic fallback failed for step ${step.nodeId}`);
+                    }
+                }
+            }
+        }
+        catch (seqError) {
+            log.error({ err: seqError }, '[CortexRouter] Sequencer execution failed');
+        }
+        const totalSteps = successCount + failCount + fallbackCount;
+        // If zero steps executed, fall back entirely
+        if (totalSteps === 0) {
+            log.info('[CortexRouter] cortex_planning: 0 steps executed, falling back to monolithic entirely');
+            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+        }
+        // If ALL steps failed, also try monolithic as complete fallback
+        if (failCount === totalSteps) {
+            log.info('[CortexRouter] cortex_planning: All steps failed, falling back to monolithic entirely');
+            writer.writeEvent('text_delta', { text: '\nAll agent steps failed. Retrying with full orchestrator...\n' });
+            return this.orchestrator.chat(sessionId, message, writer, context, pageContext);
+        }
+        // Summary
+        const summary = `\nCompleted: ${successCount} direct + ${fallbackCount} via fallback. Failed: ${failCount}.`;
+        writer.writeEvent('text_delta', { text: summary });
+        writer.writeEvent('done', { apiCalls: 1, inputTokens: 0, outputTokens: 0, costUSD: 0 });
+    }
+    /**
+     * Translate a failed DAG step into a natural language instruction for monolithic fallback.
+     */
+    stepToInstruction(step) {
+        const params = step.data || {};
+        switch (step.action) {
+            case 'navigate':
+            case 'navigate_to_url':
+                return `Navigate to ${params.url || 'the page'}`;
+            case 'click':
+            case 'click_element':
+                return `Click on ${params.selector || params.target || 'the element'}`;
+            case 'type':
+            case 'type_text':
+                return `Type "${(params.text || '').slice(0, 100)}" into ${params.selector || 'the input'}`;
+            case 'scroll':
+            case 'scroll_down':
+                return `Scroll ${params.direction || 'down'}`;
+            case 'upload':
+                return `Upload file to ${params.selector || 'the upload input'}`;
+            default:
+                return `Perform ${step.agent} ${step.action} with params: ${JSON.stringify(params).slice(0, 200)}`;
+        }
     }
 }
 exports.CortexRouter = CortexRouter;

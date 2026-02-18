@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.24 — 2026-02-18)
+## Recent Changes (v1.31.0 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| ARCHITECTURE: Brain v1.16.0 — 27-Agent System WIRED END-TO-END. Re-enabled `cortex_planning` route in CortexRouter. Compound browser tasks (2+ actions) now execute via TheCortex DAG planning → TheTemporalSequencer → EventBus RPC → ChromadonAgentSystem → CDP. Per-step monolithic fallback if agent step fails. SkillMemory injected into TheCortex for informed planning. TheLearningEngine persists to SkillMemory, closing the learning loop | `resources/brain/dist/` |
+
+## Changes (v1.30.24 — 2026-02-18)
 
 | Change | File |
 |--------|------|

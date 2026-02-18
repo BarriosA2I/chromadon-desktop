@@ -197,6 +197,8 @@ export declare class ChromadonAgentSystem {
     getSequencer(): TheTemporalSequencer;
     /** Get the EventBus for direct agent dispatch */
     getAgentEventBus(): AgentEventBus;
+    /** Get TheLearningEngine for SkillMemory wiring */
+    getLearningEngine(): import("./tier4-resilience").TheLearningEngine;
     /** Set the YouTube Tool Bridge (called from server.ts after both systems are init'd) */
     setYouTubeBridge(bridge: YouTubeToolBridge): void;
     private setupEventHandlers;

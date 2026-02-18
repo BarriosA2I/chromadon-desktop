@@ -711,8 +711,13 @@ class TheLearningEngine extends BaseResilienceAgent {
     patterns = [];
     optimizations = new Map();
     maxEventsSize = 5000;
+    skillPersistFn = null;
     constructor() {
         super('THE_LEARNING_ENGINE', { model: 'sonnet' });
+    }
+    /** Inject SkillMemory persistence callback to close the learning loop */
+    setSkillPersistence(fn) {
+        this.skillPersistFn = fn;
     }
     recordEvent(event) {
         this.learningEvents.push({
@@ -722,6 +727,17 @@ class TheLearningEngine extends BaseResilienceAgent {
         // Trim if too large
         if (this.learningEvents.length > this.maxEventsSize) {
             this.learningEvents = this.learningEvents.slice(-this.maxEventsSize / 2);
+        }
+        // Persist to SkillMemory if available — closes the learning loop
+        if (this.skillPersistFn && event.action) {
+            const domain = event.metadata?.platform || event.metadata?.domain || 'general';
+            const taskName = event.taskType
+                ? `${event.taskType}.${event.action}`
+                : event.action;
+            try {
+                this.skillPersistFn(domain, taskName, event.success, event.durationMs, event.error);
+            }
+            catch { /* SkillMemory write failure — non-fatal */ }
         }
         this.publishEvent('learning.event_recorded', {
             eventType: event.type,
