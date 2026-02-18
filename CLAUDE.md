@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.31.3 — 2026-02-18)
+## Recent Changes (v1.31.4 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.16.4 — Facebook image upload completely broken. Root causes: (1) "Photo/video" button is icon-only with aria-label, but `deepFindByText` searches textContent → click failed → no `input[type="file"]` in DOM → upload failed. Added CSS fallback `[aria-label*="Photo" i]` + 3-strategy click cascade. (2) "Next" button clicked despite upload failure, causing broken navigation. Now gated on `uploadSucceeded`. (3) Client brand asset paths validated with `fs.existsSync()` before use | `resources/brain/dist/` |
+
+## Changes (v1.31.3 — 2026-02-18)
 
 | Change | File |
 |--------|------|

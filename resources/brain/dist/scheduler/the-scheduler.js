@@ -28,6 +28,7 @@ const PLATFORM_POST_CONFIGS = {
         postText: 'Post',
         postFallbackSelector: 'div[aria-label="Post"]',
         mediaButtonText: 'Photo/video',
+        mediaButtonSelector: '[aria-label*="Photo" i]',
         nextButtonText: 'Next',
     },
     linkedin: {
@@ -524,35 +525,59 @@ class TheScheduler {
         }
     }
     /**
-     * Upload file. Optionally click a media button first (within container) to make input[type="file"] appear.
+     * Upload file. Tries 3 strategies to click the media button, then calls /tabs/upload.
+     * Strategy 1: Text-based click scoped to container (handles visible-text buttons)
+     * Strategy 2: CSS selector click scoped to container (handles aria-label icon buttons)
+     * Strategy 3: Text-based click WITHOUT container scoping (last resort)
      */
     async directUpload(tabId, filePath, mediaButtonText, mediaButtonSelector, container) {
-        // Some platforms need a media button click to inject input[type="file"] into DOM
-        if (mediaButtonText || mediaButtonSelector) {
+        let mediaButtonClicked = false;
+        // Strategy 1: Text-based click (scoped to container)
+        if (mediaButtonText && !mediaButtonClicked) {
             try {
-                const clickBody = { id: tabId, container };
-                if (mediaButtonText)
-                    clickBody.text = mediaButtonText;
-                else if (mediaButtonSelector)
-                    clickBody.selector = mediaButtonSelector;
-                const clickRes = await this.fetchDesktop('/tabs/click', clickBody);
-                if (clickRes.success) {
-                    log.info(`[DirectPost] Media button click OK`);
-                    await this.delay(1000); // Wait for file input to appear
-                }
-                else {
-                    log.warn(`[DirectPost] Media button click failed — trying upload anyway`);
-                }
+                const clickRes = await this.fetchDesktop('/tabs/click', { id: tabId, container, text: mediaButtonText });
+                mediaButtonClicked = clickRes.success === true;
+                if (mediaButtonClicked)
+                    log.info('[DirectPost] Media button click OK (text)');
             }
-            catch {
-                log.warn(`[DirectPost] Media button click error — trying upload anyway`);
-            }
+            catch { /* continue to next strategy */ }
         }
+        // Strategy 2: CSS selector click (scoped to container) — handles aria-label buttons like Facebook
+        if (mediaButtonSelector && !mediaButtonClicked) {
+            try {
+                const clickRes = await this.fetchDesktop('/tabs/click', { id: tabId, container, selector: mediaButtonSelector });
+                mediaButtonClicked = clickRes.success === true;
+                if (mediaButtonClicked)
+                    log.info('[DirectPost] Media button click OK (css selector)');
+            }
+            catch { /* continue to next strategy */ }
+        }
+        // Strategy 3: Text-based click WITHOUT container (in case button is outside dialog scope)
+        if (mediaButtonText && !mediaButtonClicked) {
+            try {
+                const clickRes = await this.fetchDesktop('/tabs/click', { id: tabId, text: mediaButtonText });
+                mediaButtonClicked = clickRes.success === true;
+                if (mediaButtonClicked)
+                    log.info('[DirectPost] Media button click OK (unscoped text)');
+            }
+            catch { /* all strategies exhausted */ }
+        }
+        if (mediaButtonClicked) {
+            await this.delay(1500); // Wait for file input to appear in DOM
+        }
+        else if (mediaButtonText || mediaButtonSelector) {
+            log.warn('[DirectPost] All media button click strategies failed (text, css, unscoped)');
+        }
+        // Upload file via Desktop CDP
         try {
             const res = await this.fetchDesktop('/tabs/upload', { id: tabId, filePath });
+            if (res.success !== true) {
+                log.warn({ error: res.error, filePath }, '[DirectPost] Upload API returned failure');
+            }
             return res.success === true;
         }
-        catch {
+        catch (err) {
+            log.warn({ err: err.message, filePath }, '[DirectPost] Upload API call failed');
             return false;
         }
     }
@@ -665,16 +690,17 @@ class TheScheduler {
             // Uploading first ensures image + text stay in the same dialog.
             // Container scoping (v1.15.24+) prevents DOM changes from breaking textbox targeting.
             const mediaPath = task.mediaUrls?.[0];
+            let uploadSucceeded = false;
             if (mediaPath) {
-                const uploadOk = await this.directUpload(tabId, mediaPath, config.mediaButtonText, config.mediaButtonSelector, ctr);
-                if (uploadOk) {
+                uploadSucceeded = await this.directUpload(tabId, mediaPath, config.mediaButtonText, config.mediaButtonSelector, ctr);
+                if (uploadSucceeded) {
                     log.info(`[DirectPost] Upload OK: ${mediaPath}`);
+                    // Wait for upload preview to render
+                    await this.delay(3000);
                 }
                 else {
-                    log.warn(`[DirectPost] Upload failed (non-fatal): ${mediaPath}`);
+                    log.warn(`[DirectPost] Upload FAILED: ${mediaPath}`);
                 }
-                // Wait for upload preview to render
-                await this.delay(3000);
             }
             // Step 6: Type content (SCOPED to composer container) — retry once on failure
             let typeOk = await this.directType(tabId, config.textboxSelector, content, ctr);
@@ -690,8 +716,8 @@ class TheScheduler {
             log.info(`[DirectPost] Type OK (${content.length} chars)`);
             // Step 7: Wait for text to render in React
             await this.delay(1500);
-            // Step 8: Handle "Next" button (Facebook shows Next instead of Post when image attached)
-            if (config.nextButtonText && mediaPath) {
+            // Step 8: Handle "Next" button — ONLY if upload succeeded (Next appears only with images)
+            if (config.nextButtonText && uploadSucceeded) {
                 const nextOk = await this.directClick(tabId, config.nextButtonText, undefined, ctr);
                 if (nextOk) {
                     log.info(`[DirectPost] Next button clicked — waiting for Post screen`);

@@ -77,7 +77,10 @@ export declare class TheScheduler {
      */
     private directType;
     /**
-     * Upload file. Optionally click a media button first (within container) to make input[type="file"] appear.
+     * Upload file. Tries 3 strategies to click the media button, then calls /tabs/upload.
+     * Strategy 1: Text-based click scoped to container (handles visible-text buttons)
+     * Strategy 2: CSS selector click scoped to container (handles aria-label icon buttons)
+     * Strategy 3: Text-based click WITHOUT container scoping (last resort)
      */
     private directUpload;
     /**

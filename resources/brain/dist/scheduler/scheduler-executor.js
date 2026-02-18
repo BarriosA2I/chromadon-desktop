@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.createSchedulerExecutor = void 0;
+const fs = __importStar(require("fs"));
 const chrono = __importStar(require("chrono-node"));
 const logger_1 = require("../lib/logger");
 const log = (0, logger_1.createChildLogger)('scheduler');
@@ -122,15 +123,21 @@ function createSchedulerExecutor(scheduler, getAuthenticatedPlatforms, getClient
                     // Priority 1: User-provided media_urls
                     if (userMedia && userMedia.length > 0)
                         return userMedia;
-                    // Priority 2: Client's brand assets (primary logo/video)
+                    // Priority 2: Client's brand assets (primary logo/video) — validate file exists
                     if (getClientMedia) {
                         const clientMedia = getClientMedia();
                         if (clientMedia) {
                             const p = platform.toLowerCase();
-                            if ((p === 'tiktok' || p === 'youtube') && clientMedia.primaryVideo)
-                                return [clientMedia.primaryVideo];
-                            if (clientMedia.primaryLogo)
-                                return [clientMedia.primaryLogo];
+                            if ((p === 'tiktok' || p === 'youtube') && clientMedia.primaryVideo) {
+                                if (fs.existsSync(clientMedia.primaryVideo))
+                                    return [clientMedia.primaryVideo];
+                                log.warn(`[Schedule] Client video not found: ${clientMedia.primaryVideo} — falling through`);
+                            }
+                            if (clientMedia.primaryLogo) {
+                                if (fs.existsSync(clientMedia.primaryLogo))
+                                    return [clientMedia.primaryLogo];
+                                log.warn(`[Schedule] Client logo not found: ${clientMedia.primaryLogo} — falling through`);
+                            }
                         }
                     }
                     // Priority 3: CHROMADON defaults (only for CHROMADON-related posts)
