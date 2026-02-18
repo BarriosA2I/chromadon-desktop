@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.17 — 2026-02-18)
+## Recent Changes (v1.30.18 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.18 — AI couldn't interact with arbitrary websites. CortexRouter now context-aware (checks current page URL before routing to API). System prompt allows page discovery for unfamiliar sites. New GENERAL BROWSER INTERACTION section teaches search/form patterns for any website | `resources/brain/dist/` |
+
+## Changes (v1.30.17 — 2026-02-18)
 
 | Change | File |
 |--------|------|

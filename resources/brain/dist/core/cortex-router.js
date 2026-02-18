@@ -90,7 +90,7 @@ class CortexRouter {
             {
                 name: 'youtube_api',
                 priority: 80,
-                match: (msg) => this.parseYouTubeAPICommand(msg),
+                match: (msg, pageCtx) => this.parseYouTubeAPICommand(msg, pageCtx),
                 execute: async (ytCommand, sessionId, _message, writer) => {
                     log.info(`[CortexRouter] YouTube API: ${ytCommand.tool}`);
                     const sid = sessionId || `cortex-${(0, uuid_1.v4)()}`;
@@ -203,7 +203,7 @@ class CortexRouter {
         const msg = message.trim();
         const routeStartMs = Date.now();
         for (const route of this.routes) {
-            const matchData = route.match(msg);
+            const matchData = route.match(msg, pageContext);
             if (matchData) {
                 const routeMs = Date.now() - routeStartMs;
                 this._lastRouteDecision = { route: route.name, priority: route.priority, message: msg.slice(0, 80), routeMs, timestamp: Date.now() };
@@ -336,10 +336,16 @@ class CortexRouter {
         }
         return null; // Not a simple command → continue to Cortex
     }
-    parseYouTubeAPICommand(msg) {
+    parseYouTubeAPICommand(msg, pageContext) {
         if (!this.youtubeBridge)
             return null;
         const lower = msg.toLowerCase();
+        // If user is already ON youtube.com (not Studio), let browser tools handle it
+        // They're looking at the page — use browser interaction, not API
+        if (pageContext?.url && /youtube\.com/i.test(pageContext.url)
+            && !/studio\.youtube\.com/i.test(pageContext.url)) {
+            return null;
+        }
         // Must mention youtube/channel/video/playlist/comment context
         if (!/youtube|channel|video|playlist|subscriber|comment/i.test(lower))
             return null;

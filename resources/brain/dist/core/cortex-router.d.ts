@@ -35,7 +35,7 @@ interface CortexRouterDeps {
 interface RouteCandidate {
     name: string;
     priority: number;
-    match: (msg: string) => any;
+    match: (msg: string, pageContext?: PageContext) => any;
     execute: (matchData: any, sessionId: string | undefined, message: string, writer: SSEWriter, context: ExecutionContext, pageContext?: PageContext) => Promise<void>;
 }
 export declare class CortexRouter {
