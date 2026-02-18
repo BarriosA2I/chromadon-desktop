@@ -630,9 +630,11 @@ class TheScheduler {
         const startMs = Date.now();
         const ctr = config.composerContainer; // Container for scoped operations
         log.info(`[TheScheduler] Attempting DIRECT POST for task ${task.id} (${platform}, container=${ctr})`);
+        let tabId = null;
+        let composeClicked = false; // Track whether we opened a dialog (for cleanup on failure)
         try {
             // Step 1: Find or create platform tab
-            const tabId = await this.findOrCreatePlatformTab(config);
+            tabId = await this.findOrCreatePlatformTab(config);
             if (tabId === null) {
                 log.warn('[DirectPost] Could not get platform tab');
                 return false;
@@ -646,19 +648,28 @@ class TheScheduler {
                 log.warn('[DirectPost] Compose click FAILED');
                 return false;
             }
+            composeClicked = true;
             log.info('[DirectPost] Compose click OK');
             // Step 4: Poll for composer container to appear (replaces fixed 1.5s delay)
             const containerFound = await this.waitForElement(tabId, ctr, 6000);
             if (!containerFound) {
                 log.warn(`[DirectPost] Composer container "${ctr}" never appeared`);
-                return false;
+                // Fall through to cleanup — dialog may be partially open
+                throw new Error('composer_container_not_found');
             }
             log.info(`[DirectPost] Composer container found: ${ctr}`);
-            // Step 5: Type content (SCOPED to composer container)
-            const typeOk = await this.directType(tabId, config.textboxSelector, content, ctr);
+            // Step 4.5: Wait for dialog content to render (animation + React hydration)
+            await this.delay(1000);
+            // Step 5: Type content (SCOPED to composer container) — retry once on failure
+            let typeOk = await this.directType(tabId, config.textboxSelector, content, ctr);
             if (!typeOk) {
-                log.warn('[DirectPost] Type FAILED');
-                return false;
+                log.warn('[DirectPost] Type attempt 1 failed — retrying after 1s');
+                await this.delay(1000);
+                typeOk = await this.directType(tabId, config.textboxSelector, content, ctr);
+            }
+            if (!typeOk) {
+                log.warn('[DirectPost] Type FAILED after retry');
+                throw new Error('type_failed');
             }
             log.info(`[DirectPost] Type OK (${content.length} chars)`);
             // Step 6: Wait for text to render in React
@@ -680,7 +691,7 @@ class TheScheduler {
             const postOk = await this.directClick(tabId, config.postText, config.postFallbackSelector, ctr);
             if (!postOk) {
                 log.warn('[DirectPost] Post click FAILED');
-                return false;
+                throw new Error('post_click_failed');
             }
             log.info('[DirectPost] Post click OK');
             // Step 10: Verify composer dismissed (post accepted)
@@ -701,8 +712,20 @@ class TheScheduler {
         }
         catch (err) {
             log.error({ err: err.message }, `[DirectPost] Unexpected error`);
-            return false;
         }
+        // Cleanup: dismiss dialog if we opened it (prevents double-dialog on LLM fallback)
+        if (composeClicked && tabId !== null) {
+            try {
+                await this.fetchDesktop('/tabs/execute', {
+                    id: tabId,
+                    script: `(function(){ var d = document.querySelector('div[role="dialog"]'); if(d){ var btn = d.querySelector('[aria-label="Close"]'); if(btn) btn.click(); else document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true})); } })()`,
+                });
+                await this.delay(500);
+                log.info('[DirectPost] Dismissed composer dialog before LLM fallback');
+            }
+            catch { /* best-effort cleanup */ }
+        }
+        return false;
     }
     // ===========================================================================
     // PUBLIC API — Called by scheduler-executor.ts
@@ -856,7 +879,7 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
         const safeContent = content.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         let instruction = `Steps:\n`;
         instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise call navigate to go to ${platform}.\n`;
-        instruction += `2. Click the compose/create post button.\n`;
+        instruction += `2. Click the compose/create post button (e.g. "What's on your mind" on Facebook, "Start a post" on LinkedIn). Wait for the composer dialog to appear.\n`;
         if (mediaPath) {
             // Type text FIRST into clean composer, THEN upload image.
             // Uploading first changes the DOM and causes text to go into a separate box.
@@ -873,6 +896,7 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
             instruction += `5. Click the Post/Share button to publish.\n`;
         }
         instruction += `\nCRITICAL: Step 3 MUST call the type_text tool. Do NOT skip it. The post content MUST appear in the text box before uploading media.\nDo NOT click any photo/media/upload button or input[type="file"]. The upload_file tool handles file attachment programmatically.`;
+        instruction += `\nIMPORTANT: After the composer dialog opens, ALL actions (type, click Post) must target elements INSIDE the dialog. Do NOT click any button in the news feed — only interact with the composer dialog that appeared.`;
         return instruction;
     }
     // ===========================================================================

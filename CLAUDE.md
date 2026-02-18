@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.31.1 — 2026-02-18)
+## Recent Changes (v1.31.2 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.16.2 — Facebook double "Create post" dialog. DirectPost now waits 1s after dialog opens for contenteditable to render, retries type once on failure, and dismisses dialog before LLM fallback to prevent second dialog from opening. LLM fallback instruction now tells AI to work inside the composer dialog only | `resources/brain/dist/` |
+
+## Changes (v1.31.1 — 2026-02-18)
 
 | Change | File |
 |--------|------|
