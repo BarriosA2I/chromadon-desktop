@@ -207,19 +207,29 @@ class TheScheduler {
             }
             // 2. Coordinate with SocialMonitor — wait if it's active
             await this.coordinateWithMonitor();
-            // 3. Pre-generate content for social posts (two-phase execution)
-            // Phase 1: Generate text content via direct LLM call (BALANCED model)
-            // Phase 2: Replace instruction with browser-only actions + pre-written content
-            if (task.taskType === 'social_post' && task.instruction.match(/^Generate an engaging/i)) {
-                try {
-                    const generated = await this.preGenerateContent(task);
-                    if (generated) {
-                        log.info(`[TheScheduler] Pre-generated content (${generated.length} chars): ${generated.slice(0, 80)}...`);
-                        task.instruction = this.buildPostingInstruction(task, generated);
+            // 3. Ensure social posts have explicit step-by-step browser instructions
+            // Handles BOTH paths: content pre-provided (use directly) or topic-only (generate via LLM)
+            if (task.taskType === 'social_post' && !task.instruction.includes('Steps:\n')) {
+                let postContent = null;
+                // Path 2: content was pre-provided by schedule_post — use directly (zero LLM cost)
+                if (task.content && task.content.length > 10) {
+                    postContent = task.content;
+                }
+                // Path 1: generate content from topic via Gemini
+                else {
+                    try {
+                        postContent = await this.preGenerateContent(task);
+                    }
+                    catch (err) {
+                        log.warn({ err: err.message }, '[TheScheduler] Content pre-generation failed');
                     }
                 }
-                catch (err) {
-                    log.warn({ err: err.message }, 'Content pre-generation failed, using original instruction');
+                if (postContent && postContent.length > 10) {
+                    log.info(`[TheScheduler] Built browser instruction with ${postContent.length} chars of content`);
+                    task.instruction = this.buildPostingInstruction(task, postContent);
+                }
+                else {
+                    log.warn(`[TheScheduler] Task ${task.id} — no content available, proceeding with original instruction`);
                 }
             }
             // 4. Execute via orchestrator.chat() — with 5min timeout to prevent hanging

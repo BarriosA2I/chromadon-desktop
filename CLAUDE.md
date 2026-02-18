@@ -7,7 +7,27 @@
 
 ---
 
-## Recent Changes (v1.30.14 — 2026-02-18)
+## Pre-Release Smoke Test (REQUIRED before every version bump)
+
+Run these 5 checks in Desktop dev mode BEFORE building installer:
+
+1. **Chat works** — Send "hello" in AI assistant → get a response (not "temporarily unavailable")
+2. **Tools work** — Send "open linkedin" → browser navigates successfully
+3. **Schedule works** — Send "schedule a facebook post for 2 min from now about AI" → task accepted
+4. **Execution works** — Wait 2 min → check brain.log for task execution → confirm post content was generated AND typed into composer
+5. **No regressions** — Check brain.log for errors, [PROVIDER] warnings, [TheScheduler] failures
+
+If ANY check fails, DO NOT release. Fix and re-test.
+
+---
+
+## Recent Changes (v1.30.15 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.15 — Scheduled posts missing text content. Tasks with pre-provided content got no step-by-step browser commands. Now all social_post tasks get explicit browser instruction builder at execution time (navigate → compose → upload → wait → type EXACT content → Post) | `resources/brain/dist/` |
+
+## Changes (v1.30.14 — 2026-02-18)
 
 | Change | File |
 |--------|------|
