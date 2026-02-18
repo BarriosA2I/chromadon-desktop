@@ -549,20 +549,12 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
         instruction += `1. Call list_tabs to check for existing ${platform} tab. Switch to it if found, otherwise call navigate to go to ${platform}.\n`;
         instruction += `2. Click the compose/create post button.\n`;
         if (mediaPath) {
-            // Platform-specific upload button CSS selector (used by upload_file handler
-            // which clicks the button with file dialog interception, then sets files via CDP)
-            const uploadButtonByPlatform = {
-                'Facebook': '[aria-label="Photo/video"]',
-                'LinkedIn': 'button[aria-label="Add a photo"]',
-                'Twitter': '[data-testid="fileInput"]',
-                'Instagram': '[aria-label="Photo"]',
-            };
-            const uploadBtn = uploadButtonByPlatform[platform] || 'input[type="file"]';
             // Type text FIRST into clean composer, THEN upload image.
             // Uploading first changes the DOM and causes text to go into a separate box.
+            // upload_file finds input[type="file"] via CDP and sets files programmatically — no clicking needed.
             instruction += `3. Call type_text with selector="div[contenteditable='true'][role='textbox']" and text="${safeContent}".\n`;
             instruction += `4. Call wait with seconds=2 to let the text render.\n`;
-            instruction += `5. Call upload_file with filePath="${mediaPath}" and selector="${uploadBtn}".\n`;
+            instruction += `5. Call upload_file with filePath="${mediaPath}" to attach the image. Do NOT click any upload button — upload_file handles it programmatically.\n`;
             instruction += `6. Call wait with seconds=3 to let the upload preview render.\n`;
             instruction += `7. Click the Post/Share button to publish.\n`;
         }
@@ -571,7 +563,7 @@ Reply with ONLY the post text. No explanations, no quotes, no formatting.`;
             instruction += `4. Call wait with seconds=2 to let the text render.\n`;
             instruction += `5. Click the Post/Share button to publish.\n`;
         }
-        instruction += `\nCRITICAL: Step 3 MUST call the type_text tool. Do NOT skip it. The post content MUST appear in the text box before uploading media.`;
+        instruction += `\nCRITICAL: Step 3 MUST call the type_text tool. Do NOT skip it. The post content MUST appear in the text box before uploading media.\nDo NOT click any photo/media/upload button or input[type="file"]. The upload_file tool handles file attachment programmatically.`;
         return instruction;
     }
     // ===========================================================================

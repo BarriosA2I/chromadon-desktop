@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.30.20 — 2026-02-18)
+## Recent Changes (v1.30.21 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.15.21 — Removed ALL click-to-upload steps from scheduler. AI was clicking 7 elements (Photo/video, Add Photo/Video, input[type='file'], etc.) opening native file dialog. upload_file now runs with NO selector — finds file input via CDP directly. Explicit "Do NOT click any upload button" in instruction footer | `resources/brain/dist/` |
+
+## Changes (v1.30.20 — 2026-02-18)
 
 | Change | File |
 |--------|------|
