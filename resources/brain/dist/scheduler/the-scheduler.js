@@ -525,13 +525,59 @@ class TheScheduler {
         }
     }
     /**
-     * Upload file. Tries 3 strategies to click the media button, then calls /tabs/upload.
+     * Smart media button finder — searches ALL attributes (aria-label, title, data-tooltip,
+     * textContent) of ALL interactive elements in the dialog for photo/video keywords.
+     * Works with icon-only buttons that have no visible text.
+     */
+    async smartClickMediaButton(tabId, container) {
+        try {
+            const res = await this.fetchDesktop('/tabs/execute', {
+                id: tabId,
+                script: `(function() {
+          var dialog = document.querySelector(${JSON.stringify(container)});
+          if (!dialog) return 'no_dialog';
+          var btns = dialog.querySelectorAll('[role="button"], button, [tabindex="0"], [tabindex="-1"]');
+          for (var i = 0; i < btns.length; i++) {
+            var b = btns[i];
+            var label = (b.getAttribute('aria-label') || '').toLowerCase();
+            var title = (b.getAttribute('title') || '').toLowerCase();
+            var text = (b.textContent || '').toLowerCase().substring(0, 100);
+            var tooltip = (b.getAttribute('data-tooltip') || '').toLowerCase();
+            var combined = label + '|' + title + '|' + text + '|' + tooltip;
+            if (/photo|video/.test(combined) && !/profile|cover|avatar/.test(combined)) {
+              b.scrollIntoView({block: 'center'});
+              b.click();
+              return 'clicked:' + (label || title || text).substring(0, 50);
+            }
+          }
+          return 'not_found';
+        })()`,
+            });
+            if (res.result && typeof res.result === 'string' && res.result.startsWith('clicked:')) {
+                log.info(`[DirectPost] Smart JS media button: ${res.result}`);
+                return true;
+            }
+            log.info(`[DirectPost] Smart JS media button: ${res.result || 'no result'}`);
+            return false;
+        }
+        catch (err) {
+            log.warn({ err: err.message }, '[DirectPost] Smart JS media button error');
+            return false;
+        }
+    }
+    /**
+     * Upload file. Tries 4 strategies to click the media button, then calls /tabs/upload.
+     * Strategy 0: Smart JS — multi-attribute regex search (aria-label, title, tooltip, text)
      * Strategy 1: Text-based click scoped to container (handles visible-text buttons)
-     * Strategy 2: CSS selector click scoped to container (handles aria-label icon buttons)
+     * Strategy 2: CSS selector click scoped to container (handles specific CSS selectors)
      * Strategy 3: Text-based click WITHOUT container scoping (last resort)
      */
     async directUpload(tabId, filePath, mediaButtonText, mediaButtonSelector, container) {
         let mediaButtonClicked = false;
+        // Strategy 0: Smart JS — searches aria-label, title, data-tooltip, textContent with regex
+        if (container && !mediaButtonClicked) {
+            mediaButtonClicked = await this.smartClickMediaButton(tabId, container);
+        }
         // Strategy 1: Text-based click (scoped to container)
         if (mediaButtonText && !mediaButtonClicked) {
             try {
@@ -542,7 +588,7 @@ class TheScheduler {
             }
             catch { /* continue to next strategy */ }
         }
-        // Strategy 2: CSS selector click (scoped to container) — handles aria-label buttons like Facebook
+        // Strategy 2: CSS selector click (scoped to container) — handles aria-label buttons
         if (mediaButtonSelector && !mediaButtonClicked) {
             try {
                 const clickRes = await this.fetchDesktop('/tabs/click', { id: tabId, container, selector: mediaButtonSelector });
@@ -565,8 +611,8 @@ class TheScheduler {
         if (mediaButtonClicked) {
             await this.delay(1500); // Wait for file input to appear in DOM
         }
-        else if (mediaButtonText || mediaButtonSelector) {
-            log.warn('[DirectPost] All media button click strategies failed (text, css, unscoped)');
+        else if (mediaButtonText || mediaButtonSelector || container) {
+            log.warn('[DirectPost] All media button click strategies failed (smartJS, text, css, unscoped)');
         }
         // Upload file via Desktop CDP
         try {

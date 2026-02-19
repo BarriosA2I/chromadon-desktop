@@ -77,9 +77,16 @@ export declare class TheScheduler {
      */
     private directType;
     /**
-     * Upload file. Tries 3 strategies to click the media button, then calls /tabs/upload.
+     * Smart media button finder — searches ALL attributes (aria-label, title, data-tooltip,
+     * textContent) of ALL interactive elements in the dialog for photo/video keywords.
+     * Works with icon-only buttons that have no visible text.
+     */
+    private smartClickMediaButton;
+    /**
+     * Upload file. Tries 4 strategies to click the media button, then calls /tabs/upload.
+     * Strategy 0: Smart JS — multi-attribute regex search (aria-label, title, tooltip, text)
      * Strategy 1: Text-based click scoped to container (handles visible-text buttons)
-     * Strategy 2: CSS selector click scoped to container (handles aria-label icon buttons)
+     * Strategy 2: CSS selector click scoped to container (handles specific CSS selectors)
      * Strategy 3: Text-based click WITHOUT container scoping (last resort)
      */
     private directUpload;

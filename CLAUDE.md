@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.31.4 — 2026-02-18)
+## Recent Changes (v1.31.5 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: Brain v1.16.5 — Facebook media button click failed because all Desktop click strategies search textContent only, but Facebook uses icon-only buttons. New `smartClickMediaButton()` uses `/tabs/execute` JS to search ALL attributes (aria-label, title, tooltip, text) with regex. Runs as Strategy 0 before text/CSS fallbacks | `resources/brain/dist/` |
+
+## Changes (v1.31.4 — 2026-02-18)
 
 | Change | File |
 |--------|------|
