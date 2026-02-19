@@ -21,7 +21,13 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.31.5 — 2026-02-18)
+## Recent Changes (v1.31.6 — 2026-02-18)
+
+| Change | File |
+|--------|------|
+| Fixed: CRITICAL — NSIS installer was missing `deleteAppDataOnUninstall: false`, causing the uninstaller (run during upgrades via `customInit` macro) to wipe user AppData including vault, sessions, and brain data. Added `deleteAppDataOnUninstall: false` to NSIS config. Vault data in Roaming path was preserved but Local AppData was lost | `package.json` |
+
+## Changes (v1.31.5 — 2026-02-18)
 
 | Change | File |
 |--------|------|
