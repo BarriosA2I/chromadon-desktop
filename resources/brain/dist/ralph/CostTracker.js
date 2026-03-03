@@ -47,7 +47,7 @@ const MODEL_COSTS = {
     'claude-3-opus': { input: 0.015, output: 0.075 },
     'claude-3-sonnet': { input: 0.003, output: 0.015 },
     'claude-3-haiku': { input: 0.00025, output: 0.00125 },
-    'claude-haiku-4-5-20251001': { input: 0.00025, output: 0.00125 },
+    'claude-3-haiku-20240307': { input: 0.00025, output: 0.00125 },
     // GPT models
     'gpt-4': { input: 0.03, output: 0.06 },
     'gpt-4-turbo': { input: 0.01, output: 0.03 },

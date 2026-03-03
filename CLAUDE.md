@@ -21,7 +21,19 @@ If ANY check fails, DO NOT release. Fix and re-test.
 
 ---
 
-## Recent Changes (v1.31.6 — 2026-02-18)
+## Recent Changes (v1.32.0 — 2026-03-02)
+
+| Change | File |
+|--------|------|
+| Added: Click Strategy 2.5 (attribute match) — new click strategy between text_deep and testid that searches aria-label, title, placeholder, data-tooltip, and name attributes. Fixes Gmail interaction where fields have empty textContent but meaningful aria-labels. Benefits ALL platforms with attribute-only buttons | `electron/main.ts` |
+| Fixed: Type endpoint now fires input+change events after insertText() for contenteditable elements — ensures Gmail's editor and other complex editors register the typed text | `electron/main.ts` |
+| Fixed: Session Setup OAuth — switched from bare puppeteer-core to puppeteer-extra + stealth plugin, added userDataDir to prevent CDP connection loss when Chrome is already running. Matches pattern already used by other Puppeteer launch sites | `electron/main.ts` |
+| Fixed: Chrome UA version updated from 131→134 across all constants (CHROME_UA, SEC_CH_UA, SEC_CH_UA_FULL) and OAuth popup loadURL | `electron/main.ts` |
+| Fixed: UpdateNotifier removed error state entirely — auto-updater errors silently ignored (not actionable for user). Prevents "Update check failed" banner in dev mode | `src/components/UpdateNotifier.tsx` |
+| Fixed: login-preload.js Chrome version updated from 131→134 in navigator.userAgentData brands/fullVersionList | `electron/login-preload.js` |
+| Updated: Brain dist v1.17.0 — new `send_email` tool for autonomous Gmail compose/send with file attachments. Gmail system prompt guidance added | `resources/brain/dist/` |
+
+## Changes (v1.31.6 — 2026-02-18)
 
 | Change | File |
 |--------|------|

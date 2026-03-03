@@ -26,8 +26,8 @@ const MODEL_COSTS = {
     'gemini-2.5-flash': { input: 0.00015, output: 0.0006 },
     'gemini-2.5-pro': { input: 0.00125, output: 0.005 },
     // Anthropic fallback models
-    'claude-haiku-4-5-20251001': { input: 0.00025, output: 0.00125 },
-    'claude-haiku-4-5-20251001': { input: 0.0008, output: 0.004 },
+    'claude-3-haiku-20240307': { input: 0.00025, output: 0.00125 },
+    'claude-3-5-haiku-20241022': { input: 0.0008, output: 0.004 },
     'claude-3-5-sonnet-20241022': { input: 0.003, output: 0.015 },
     'claude-3-opus-20240229': { input: 0.015, output: 0.075 },
     'claude-sonnet-4-5-20250929': { input: 0.003, output: 0.015 },

@@ -299,6 +299,25 @@ exports.BROWSER_TOOLS = [
         },
     },
     {
+        name: 'send_email',
+        description: 'Compose and send an email via Gmail. Opens Gmail if needed, fills To/Subject/Body, attaches files if provided, and sends. Requires Google session to be authenticated. ALWAYS ask user to confirm before calling this tool unless they explicitly said to send.',
+        input_schema: {
+            type: 'object',
+            properties: {
+                to: { type: 'string', description: 'Recipient email address' },
+                subject: { type: 'string', description: 'Email subject line' },
+                body: { type: 'string', description: 'Email body text (plain text, newlines will be preserved)' },
+                attachments: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional array of absolute file paths to attach (e.g. ["C:/Users/gary/Downloads/doc.pdf"])',
+                },
+                send: { type: 'boolean', description: 'Whether to actually click Send. Default true. Set false to just compose without sending.' },
+            },
+            required: ['to', 'subject', 'body'],
+        },
+    },
+    {
         name: 'get_video_ids',
         description: 'Extract video IDs with copyright flags from YouTube Studio. Only returns flagged videos when copyright filter is applied.',
         input_schema: {
@@ -519,6 +538,108 @@ async function desktopCreateTab(url, desktopUrl) {
     if (!data.success)
         throw new Error(data.error || 'Failed to create tab');
     return { id: data.id, url: url || 'about:blank', title: data.title || '' };
+}
+async function desktopSendEmail(to, subject, body, attachments, shouldSend, desktopUrl) {
+    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    // 1. Find or create Gmail tab
+    const tabs = await desktopListTabs(desktopUrl);
+    let gmailTab = tabs.find(t => t.url.includes('mail.google.com'));
+    let tabId;
+    if (gmailTab) {
+        tabId = gmailTab.id;
+        await desktopFocusTab(tabId, desktopUrl);
+    }
+    else {
+        const newTab = await desktopCreateTab('https://mail.google.com', desktopUrl);
+        tabId = newTab.id;
+        await wait(5000); // Wait for Gmail to fully load
+    }
+    // 2. Wait for Gmail to be ready (inbox loaded)
+    for (let i = 0; i < 10; i++) {
+        try {
+            const ready = await desktopExecuteScript(tabId, `!!document.querySelector('[gh="cm"]') || !!document.querySelector('[role="navigation"]')`, desktopUrl);
+            if (ready)
+                break;
+        }
+        catch { /* ignore */ }
+        await wait(1000);
+    }
+    // 3. Click Compose button
+    await desktopClick(tabId, null, 'Compose', desktopUrl);
+    await wait(2000); // Wait for compose window to open
+    // 4. Fill To field — focus input, set value, press Enter to confirm chip
+    await desktopExecuteScript(tabId, `
+    (function() {
+      var toInput = document.querySelector('input[aria-label="To recipients"]') || document.querySelector('input[aria-label="To"]') || document.querySelector('[name="to"]');
+      if (toInput) { toInput.focus(); toInput.click(); toInput.value = ${JSON.stringify(to)}; toInput.dispatchEvent(new Event('input', {bubbles:true})); }
+      return !!toInput;
+    })()
+  `, desktopUrl);
+    await wait(500);
+    // Press Enter to confirm the email address as a chip
+    const keyResp = await fetch(`${desktopUrl}/tabs/key/${tabId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'Enter' }),
+    });
+    await keyResp.json();
+    await wait(500);
+    // 5. Fill Subject field
+    await desktopClick(tabId, 'input[name="subjectbox"]', null, desktopUrl);
+    await wait(300);
+    await desktopTypeText(tabId, 'input[name="subjectbox"]', subject, false, desktopUrl);
+    await wait(300);
+    // 6. Fill Body — focus contenteditable and type
+    await desktopExecuteScript(tabId, `
+    (function() {
+      var body = document.querySelector('[aria-label="Message Body"][contenteditable="true"]') || document.querySelector('.Am.aiL.Al.editable');
+      if (body) { body.focus(); body.click(); }
+      return !!body;
+    })()
+  `, desktopUrl);
+    await wait(300);
+    await desktopTypeText(tabId, null, body, false, desktopUrl);
+    await wait(500);
+    // 7. Attach files
+    const attachResults = [];
+    for (const filePath of attachments) {
+        try {
+            const result = await desktopUploadFile(tabId, 'div[aria-label="Attach files"]', filePath, desktopUrl);
+            attachResults.push(`Attached: ${filePath.split(/[\\/]/).pop()}`);
+            await wait(2000); // Wait for each attachment to upload
+        }
+        catch (e) {
+            attachResults.push(`Failed to attach ${filePath.split(/[\\/]/).pop()}: ${e.message}`);
+        }
+    }
+    // 8. Verify compose state
+    const verifyResult = await desktopExecuteScript(tabId, `
+    (function() {
+      var toChips = document.querySelectorAll('[aria-label*="Attachment"], .vR .vM');
+      var subjectEl = document.querySelector('input[name="subjectbox"]');
+      var bodyEl = document.querySelector('[aria-label="Message Body"]') || document.querySelector('.Am.aiL.Al.editable');
+      return JSON.stringify({
+        toFilled: document.querySelectorAll('.vR .vM').length > 0,
+        subject: subjectEl ? subjectEl.value : '',
+        bodyLength: bodyEl ? bodyEl.innerText.length : 0,
+        attachmentCount: document.querySelectorAll('[aria-label*="Attachment:"]').length,
+      });
+    })()
+  `, desktopUrl);
+    let verification = { toFilled: false, subject: '', bodyLength: 0, attachmentCount: 0 };
+    try {
+        verification = JSON.parse(verifyResult);
+    }
+    catch { /* ignore */ }
+    // 9. Send (or leave as draft)
+    if (shouldSend) {
+        await desktopClick(tabId, null, 'Send', desktopUrl);
+        await wait(2000);
+        return `Email sent to ${to}. Subject: "${subject}". Body: ${verification.bodyLength} chars. ${attachResults.length > 0 ? attachResults.join(', ') : 'No attachments'}`;
+    }
+    else {
+        return `Email composed (NOT sent) to ${to}. Subject: "${subject}". Body: ${verification.bodyLength} chars. ${attachResults.length > 0 ? attachResults.join(', ') : 'No attachments'}. Tell the user the email is ready and ask if they want to send it.`;
+    }
 }
 async function extractDesktopPageContext(tabId, desktopUrl) {
     const urlResult = await desktopExecuteScript(tabId, 'window.location.href', desktopUrl);
@@ -941,6 +1062,15 @@ async function executeDesktop(toolName, input, tabId, desktopUrl, context) {
                 success: true,
                 result: result + ' NEXT STEP: Call wait with seconds=3 to let the upload preview render before typing. Any text typed BEFORE the upload was likely erased by the platform re-render. Type your post content AFTER the wait.',
             };
+        }
+        case 'send_email': {
+            const to = input.to;
+            const subject = input.subject;
+            const emailBody = input.body;
+            const attachments = input.attachments || [];
+            const shouldSend = input.send !== false; // default true
+            const result = await desktopSendEmail(to, subject, emailBody, attachments, shouldSend, desktopUrl);
+            return { success: true, result };
         }
         case 'get_video_ids': {
             const result = await desktopGetVideoIds(tabId, desktopUrl);

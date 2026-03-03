@@ -918,6 +918,17 @@ function startControlServer() {
       // Step 4: Use Electron's insertText - works like a real keyboard
       await view.webContents.insertText(text)
 
+      // Step 5: Fire input/change events to ensure editors (Draft.js, Gmail, etc.) pick up the change
+      await view.webContents.executeJavaScript(`
+        (function() {
+          var el = document.activeElement;
+          if (el) {
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+          }
+        })()
+      `)
+
       console.log(`[CHROMADON] Typed ${text.length} chars via insertText into ${focusResult}`)
       res.json({ success: true, result: `Typed ${text.length} chars into ${focusResult}` })
     } catch (error) {
@@ -1132,6 +1143,65 @@ function startControlServer() {
         }
         if (result?.error) {
           console.log(`[CHROMADON] Strategy2 skipped: ${result.error}`)
+        }
+      }
+
+      // ── Strategy 2.5: Attribute match (aria-label, title, placeholder, data-tooltip) ──
+      // Finds elements where text matches an attribute value, not textContent.
+      // Critical for Gmail (To field: aria-label="To"), icon buttons, etc.
+      if (text) {
+        const result = await execWithTimeout(`
+          (function() {
+            var searchText = ${JSON.stringify(text)};
+            var searchLower = searchText.toLowerCase();
+            var scope = ${containerSelector} ? document.querySelector(${containerSelector}) : null;
+            var root = scope || document;
+            // Try exact attribute selectors first
+            var selectors = [
+              '[aria-label="' + searchText + '"]',
+              '[title="' + searchText + '"]',
+              '[placeholder="' + searchText + '"]',
+              '[data-tooltip="' + searchText + '"]',
+              '[name="' + searchText + '"]',
+            ];
+            for (var i = 0; i < selectors.length; i++) {
+              try {
+                var el = root.querySelector(selectors[i]);
+                if (el) {
+                  var rect = el.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) {
+                    el.scrollIntoView({block:'center'});
+                    rect = el.getBoundingClientRect();
+                    return { x: Math.round(rect.left + rect.width/2), y: Math.round(rect.top + rect.height/2), tag: el.tagName, text: (el.getAttribute('aria-label') || el.getAttribute('title') || el.textContent || '').substring(0,50) };
+                  }
+                }
+              } catch(e) {}
+            }
+            // Case-insensitive fallback: scan all visible elements
+            var all = root.querySelectorAll('*');
+            for (var j = 0; j < all.length; j++) {
+              var el = all[j];
+              var attrs = ['aria-label', 'title', 'placeholder', 'data-tooltip'];
+              for (var a = 0; a < attrs.length; a++) {
+                var val = el.getAttribute && el.getAttribute(attrs[a]);
+                if (val && val.toLowerCase().indexOf(searchLower) >= 0) {
+                  var rect = el.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0) {
+                    el.scrollIntoView({block:'center'});
+                    rect = el.getBoundingClientRect();
+                    return { x: Math.round(rect.left + rect.width/2), y: Math.round(rect.top + rect.height/2), tag: el.tagName, text: val.substring(0,50) };
+                  }
+                }
+              }
+            }
+            return null;
+          })()
+        `, 'Strategy2.5:attr_match')
+
+        if (result) {
+          await nativeClick(view, result.x, result.y)
+          console.log(`[CHROMADON] Click: "${text}" → attr_match (${result.tag}:${result.text})`)
+          return res.json({ success: true, result: `clicked_attr:${result.tag}:${result.text}`, strategy: 'attr_match' })
         }
       }
 
@@ -3879,7 +3949,9 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
   if (platform === 'google' || platform === 'youtube') {
     console.log(`[CHROMADON] Using Chrome for ${platform} sign-in`)
 
-    const puppeteer = require('puppeteer-core')
+    const puppeteer = require('puppeteer-extra')
+    const StealthPlugin = require('puppeteer-extra-plugin-stealth')
+    puppeteer.use(StealthPlugin())
     const fs = require('fs')
 
     // Find Chrome
@@ -3900,11 +3972,19 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
       return { success: false, error: 'Chrome not found' }
     }
 
+    console.log('[CHROMADON] Found Chrome at:', chromePath)
+
     try {
-      // Launch Chrome with puppeteer (visible)
+      // Use a fixed userDataDir so Chrome launches as a separate instance
+      // (avoids conflict with already-running Chrome) and preserves sign-in state
+      const authDataDir = path.join(require('os').tmpdir(), 'chromadon-google-auth')
+      fs.mkdirSync(authDataDir, { recursive: true })
+
+      // Launch Chrome with puppeteer-extra stealth (visible)
       const browser = await puppeteer.launch({
         executablePath: chromePath,
         headless: false,
+        userDataDir: authDataDir,
         args: ['--no-first-run', '--no-default-browser-check', '--disable-blink-features=AutomationControlled'],
         ignoreDefaultArgs: ['--enable-automation'],
       })
@@ -3922,6 +4002,8 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
         try {
           const url = page.url()
           if (url.includes('myaccount.google.com') ||
+              url.includes('consent.google.com') ||
+              url.includes('gds.google.com') ||
               (url.includes('google.com') && !url.includes('signin') && !url.includes('accounts.google.com'))) {
             signedIn = true
             break
@@ -4064,7 +4146,7 @@ ipcMain.handle('oauth:signIn', async (_event, platform: Platform) => {
   // Load the login page
   // Use latest Chrome user agent to bypass Google's Electron detection
   oauthWindow.loadURL(loginUrl, {
-    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
   })
 
   // Return a promise that resolves when auth completes or window closes
@@ -4249,9 +4331,9 @@ app.whenReady().then(() => {
   // Spoof User-Agent AND Sec-CH-UA Client Hints headers on ALL platform
   // session partitions. Sec-CH-UA is the #1 detection vector — Chromium
   // sends "Electron" in these headers by default, independent of setUserAgent().
-  const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-  const SEC_CH_UA = '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"'
-  const SEC_CH_UA_FULL = '"Google Chrome";v="131.0.6778.86", "Chromium";v="131.0.6778.86", "Not_A Brand";v="24.0.0.0"'
+  const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36'
+  const SEC_CH_UA = '"Google Chrome";v="134", "Chromium";v="134", "Not_A Brand";v="24"'
+  const SEC_CH_UA_FULL = '"Google Chrome";v="134.0.6998.89", "Chromium";v="134.0.6998.89", "Not_A Brand";v="24.0.0.0"'
   const platformPartitions = ['google', 'twitter', 'linkedin', 'facebook', 'instagram', 'tiktok']
   for (const plat of platformPartitions) {
     const ses = session.fromPartition(`persist:platform-${plat}`)
@@ -4384,7 +4466,9 @@ app.on('web-contents-created', (_, contents) => {
       // Launch Chrome for Google sign-in asynchronously
       ;(async () => {
         try {
-          const puppeteer = require('puppeteer-core')
+          const puppeteer = require('puppeteer-extra')
+          const StealthPlugin = require('puppeteer-extra-plugin-stealth')
+          puppeteer.use(StealthPlugin())
           const fs = require('fs')
 
           const chromePaths = [
@@ -4405,9 +4489,16 @@ app.on('web-contents-created', (_, contents) => {
             return
           }
 
+          console.log('[CHROMADON] Found Chrome at:', chromePath)
+
+          // Use fixed userDataDir to avoid conflict with running Chrome
+          const authDataDir = require('path').join(require('os').tmpdir(), 'chromadon-google-auth')
+          fs.mkdirSync(authDataDir, { recursive: true })
+
           const browser = await puppeteer.launch({
             executablePath: chromePath,
             headless: false,
+            userDataDir: authDataDir,
             args: ['--no-first-run', '--no-default-browser-check', '--disable-blink-features=AutomationControlled'],
             ignoreDefaultArgs: ['--enable-automation'],
           })
@@ -4423,6 +4514,8 @@ app.on('web-contents-created', (_, contents) => {
             try {
               const currentUrl = page.url()
               if (currentUrl.includes('myaccount.google.com') ||
+                  currentUrl.includes('consent.google.com') ||
+                  currentUrl.includes('gds.google.com') ||
                   (currentUrl.includes('google.com') && !currentUrl.includes('signin') && !currentUrl.includes('accounts.google.com'))) {
                 signedIn = true
                 break

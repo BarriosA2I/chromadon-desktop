@@ -97,16 +97,16 @@
     Object.defineProperty(navigator, 'userAgentData', {
       get: () => ({
         brands: [
-          { brand: 'Google Chrome', version: '131' },
-          { brand: 'Chromium', version: '131' },
+          { brand: 'Google Chrome', version: '134' },
+          { brand: 'Chromium', version: '134' },
           { brand: 'Not_A Brand', version: '24' },
         ],
         mobile: false,
         platform: 'Windows',
         getHighEntropyValues: () => Promise.resolve({
           brands: [
-            { brand: 'Google Chrome', version: '131' },
-            { brand: 'Chromium', version: '131' },
+            { brand: 'Google Chrome', version: '134' },
+            { brand: 'Chromium', version: '134' },
             { brand: 'Not_A Brand', version: '24' },
           ],
           mobile: false,
@@ -115,17 +115,17 @@
           architecture: 'x86',
           bitness: '64',
           model: '',
-          uaFullVersion: '131.0.6778.86',
+          uaFullVersion: '134.0.6998.89',
           fullVersionList: [
-            { brand: 'Google Chrome', version: '131.0.6778.86' },
-            { brand: 'Chromium', version: '131.0.6778.86' },
+            { brand: 'Google Chrome', version: '134.0.6998.89' },
+            { brand: 'Chromium', version: '134.0.6998.89' },
             { brand: 'Not_A Brand', version: '24.0.0.0' },
           ],
         }),
         toJSON: () => ({
           brands: [
-            { brand: 'Google Chrome', version: '131' },
-            { brand: 'Chromium', version: '131' },
+            { brand: 'Google Chrome', version: '134' },
+            { brand: 'Chromium', version: '134' },
             { brand: 'Not_A Brand', version: '24' },
           ],
           mobile: false,
